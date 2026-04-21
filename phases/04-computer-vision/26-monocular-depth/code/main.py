@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 import numpy as np
 import torch
 
@@ -93,7 +96,7 @@ def main():
     print(f"  y range [{pc[..., 1].min():.2f}, {pc[..., 1].max():.2f}]")
     print(f"  z range [{pc[..., 2].min():.2f}, {pc[..., 2].max():.2f}]")
 
-    path = "/tmp/depth_demo.ply"
+    path = os.path.join(tempfile.gettempdir(), "depth_demo.ply")
     write_ply(path, pc)
     print(f"  wrote {path}  ({pc.reshape(-1, 3).shape[0]} points)")
 

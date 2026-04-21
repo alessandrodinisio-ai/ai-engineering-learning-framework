@@ -173,8 +173,7 @@ One function, every 3D-lifted application. Export the point cloud to `.ply` and 
 ```python
 def synthetic_depth(size=96):
     yy, xx = np.meshgrid(np.arange(size), np.arange(size), indexing="ij")
-    depth = np.full((size, size), 5.0, dtype=np.float32)
-    # Floor: linear gradient from near to far
+    # Floor: linear gradient from near (top) to far (bottom)
     depth = 1.0 + (yy / size) * 4.0
     # Box in the middle: closer
     mask = (np.abs(xx - size / 2) < size / 6) & (np.abs(yy - size * 0.6) < size / 6)
