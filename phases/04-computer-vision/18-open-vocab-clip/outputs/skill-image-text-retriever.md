@@ -72,9 +72,21 @@ class ImageTextRetriever:
         return out.cpu().numpy().astype(np.float32)
 
     def build_index(self, folder, index_type="flat"):
-        self.filenames = sorted(glob.glob(os.path.join(folder, "*.jpg")))
+        exts = ("*.jpg", "*.jpeg", "*.png", "*.webp", "*.bmp")
+        files = []
+        for ext in exts:
+            files.extend(glob.glob(os.path.join(folder, ext)))
+        self.filenames = sorted(files)
         embs = self._encode_images(self.filenames)
-        self.index = faiss.IndexFlatIP(self.dim)
+        if index_type == "IVF":
+            quantizer = faiss.IndexFlatIP(self.dim)
+            nlist = min(256, max(4, len(embs) // 32))
+            self.index = faiss.IndexIVFFlat(quantizer, self.dim, nlist)
+            self.index.train(embs)
+        elif index_type == "HNSW":
+            self.index = faiss.IndexHNSWFlat(self.dim, 32)
+        else:
+            self.index = faiss.IndexFlatIP(self.dim)
         self.index.add(embs)
 
     def search_by_text(self, text, k=5):

@@ -56,7 +56,7 @@ You are a zero-shot prompt designer.
   - alpha-blend with super-category prompts: yes | no
 ```
 
-## Rules
+## Operational Guidelines
 
 - Always include the three base templates.
 - For `expected_hardness == hard`, add the super-category templates; without them fine-grained classes collapse.
