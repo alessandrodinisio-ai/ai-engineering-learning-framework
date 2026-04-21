@@ -9,10 +9,10 @@
     },
     {
       "stage": "pre",
-      "question": "You evaluate a 10-class classifier and get 92% accuracy. Class 0 has 9000 examples, classes 1-9 have 1000 each. What does the headline number hide?",
-      "options": ["Nothing — accuracy is accuracy", "The model could be predicting class 0 for every input and still score 90%; the remaining 2% could come from any other class. Per-class precision/recall tells you what is really happening", "The validation loss is wrong", "The model is definitely over-fitting"],
+      "question": "You evaluate a 10-class classifier and get 92% accuracy. Class 0 has 9,000 examples; classes 1-9 share 1,000 examples (roughly 111 each, 10,000 total). What does the headline number hide?",
+      "options": ["Nothing — accuracy is accuracy", "The model could be predicting class 0 for every input and still score 90% (9000/10000); the remaining 2% could come from any other class. Per-class precision/recall tells you what is really happening", "The validation loss is wrong", "The model is definitely over-fitting"],
       "correct": 1,
-      "explanation": "On a 9-to-1 imbalanced dataset, always predicting the majority class gets 90%. A 92% number could hide nine classes at 20% accuracy each. Per-class precision, recall, F1, and the confusion matrix are the diagnostics that surface this, which is why aggregate accuracy alone never justifies shipping a classifier."
+      "explanation": "On a 9000/1000 split (90/10 imbalance with 10,000 total examples), always predicting the majority class gets 9000/10000 = 90% accuracy. A 92% number could hide nine minority classes at roughly 20% accuracy each. Per-class precision, recall, F1, and the confusion matrix are the diagnostics that surface this, which is why aggregate accuracy alone never justifies shipping a classifier."
     },
     {
       "stage": "post",
