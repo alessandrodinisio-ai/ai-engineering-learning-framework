@@ -9,13 +9,19 @@ tags: [computer-vision, mask-rcnn, fine-tuning, torchvision]
 
 # Mask R-CNN Head Swapper
 
-Produces the head-swap boilerplate for any torchvision detection model. No tool hides this step well, and getting the dimensions wrong silently breaks training.
+Produces the head-swap boilerplate for Mask R-CNN specifically. The template below assumes `model.roi_heads.box_predictor` and `model.roi_heads.mask_predictor`, which exist on `maskrcnn_resnet50_fpn` and `maskrcnn_resnet50_fpn_v2` only. Faster R-CNN has a box predictor but no mask predictor; RetinaNet uses `RetinaNetHead` and has no `roi_heads` at all — both require different skills.
 
 ## When to use
 
-- Fine-tuning `maskrcnn_resnet50_fpn`, `maskrcnn_resnet50_fpn_v2`, `fasterrcnn_*`, or `retinanet_*` on a custom class set.
-- Porting a checkpoint trained on COCO to a non-COCO class count.
-- Debugging a training run that crashes on `cls_score.out_features` mismatch.
+- Fine-tuning `maskrcnn_resnet50_fpn` or `maskrcnn_resnet50_fpn_v2` on a custom class set.
+- Porting a Mask R-CNN checkpoint trained on COCO to a non-COCO class count.
+- Debugging a Mask R-CNN training run that crashes on `cls_score.out_features` or `mask_predictor` mismatch.
+
+## Out of scope
+
+- `fasterrcnn_*` — no mask_predictor. Swap only `box_predictor`; use a separate Faster R-CNN head-swap recipe.
+- `retinanet_*` — no `roi_heads`; classifier + regression heads live under `model.head.classification_head` and `model.head.regression_head`. Use a RetinaNet-specific skill.
+- `keypointrcnn_*` — uses `keypoint_predictor` instead of `mask_predictor`.
 
 ## Inputs
 
