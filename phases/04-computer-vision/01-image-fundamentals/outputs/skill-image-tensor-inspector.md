@@ -30,8 +30,8 @@ A diagnostic skill for any point in a vision pipeline where you are holding an i
 2. **Classify rank**:
    - rank 2 -> single-channel image (H, W).
    - rank 3 -> `HWC` if the last axis is 1, 3, or 4 and is strictly smaller than the other two; otherwise `CHW`.
-   - rank 4 -> `NCHW` if axis 1 is 1, 3, or 4; otherwise `NHWC`.
-   - Flag ambiguous cases (e.g. square images with 3 channels where axis order cannot be inferred).
+   - rank 4 -> prefer `NCHW` if axis 1 is in {1, 3, 4} **and** either axis 2 or axis 3 is larger than 16; otherwise prefer `NHWC`. Pure axis-1 check misclassifies small-image NHWC batches like `(3, 4, 224, 3)`.
+   - Always flag ambiguous cases (e.g. `(1, 3, 3, 3)`) as `ambiguous` rather than guessing; require the caller to provide `expected`.
 
 3. **Classify dtype and range**:
    - `uint8` in [0, 255] -> `raw`.

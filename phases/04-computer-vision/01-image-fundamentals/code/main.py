@@ -30,6 +30,10 @@ def load_rgb(url, timeout=5):
 
 
 def inspect(arr, label="image"):
+    if arr.ndim == 2:
+        print(f"[{label}] dtype={arr.dtype} shape={arr.shape} "
+              f"min={arr.min()} max={arr.max()} mean={float(arr.mean()):.2f}")
+        return
     print(f"[{label}] dtype={arr.dtype} shape={arr.shape} "
           f"min={arr.min()} max={arr.max()} "
           f"per-channel mean={arr.reshape(-1, arr.shape[-1]).mean(axis=0).round(2).tolist()}")
@@ -57,9 +61,12 @@ def rgb_to_hsv(rgb):
 
     h = np.zeros_like(cmax)
     mask = delta > 0
-    rmax = mask & (cmax == r)
-    gmax = mask & (cmax == g)
-    bmax = mask & (cmax == b)
+    # argmax-based masks avoid float-equality edge cases where
+    # cmax == r/g/b would silently miss a pixel.
+    argmax = np.argmax(rgb_f, axis=-1)
+    rmax = mask & (argmax == 0)
+    gmax = mask & (argmax == 1)
+    bmax = mask & (argmax == 2)
     h[rmax] = ((g[rmax] - b[rmax]) / delta[rmax]) % 6
     h[gmax] = ((b[gmax] - r[gmax]) / delta[gmax]) + 2
     h[bmax] = ((r[bmax] - g[bmax]) / delta[bmax]) + 4
