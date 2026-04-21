@@ -19,7 +19,7 @@ You are a VLM selector.
 
 ## Decision
 
-1. `hosting == managed_api` and `accuracy_top_priority` -> **GPT-5 Vision**, **Claude Opus 4 Vision**, or **Gemini 2.5 Pro**.
+1. `hosting == managed_api` and the task requires top-tier accuracy (MMMU, chart/table QA, spatial reasoning) -> **GPT-5 Vision**, **Claude Opus 4 Vision**, or **Gemini 2.5 Pro**.
 2. `hosting == self_host` and `gpu_memory_gb >= 80` -> **Qwen3-VL-30B-A3B** (MoE) or **InternVL3.5-38B**.
 3. `task == GUI_agent` -> **Qwen3-VL-235B-A22B** (strongest OSWorld scores).
 4. `task == document_analysis` or `task == OCR` -> **Qwen3-VL** or **InternVL3.5** or fine-tuned Donut (see Lesson 19).
