@@ -77,9 +77,15 @@ class VisionPipeline:
 
     def preprocess(self, image):
         if isinstance(image, np.ndarray):
+            if image.ndim != 3 or image.shape[-1] != 3:
+                raise ValueError(f"expected HxWx3 RGB image, got shape {image.shape}")
             tensor = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
+        elif isinstance(image, torch.Tensor):
+            if image.ndim != 3 or image.shape[0] != 3:
+                raise ValueError(f"expected (3, H, W) tensor, got shape {tuple(image.shape)}")
+            tensor = image.float()
         else:
-            tensor = image
+            raise TypeError(f"image must be numpy ndarray or torch Tensor, got {type(image)}")
         return tensor.to(self.device)
 
     @torch.no_grad()
@@ -131,7 +137,7 @@ class VisionPipeline:
             classifications.append(Classification(
                 detection_index=valid_idx,
                 class_id=int(cls_id),
-                class_name=self.class_names[cls_id % len(self.class_names)],
+                class_name=self.class_names[cls_id] if cls_id < len(self.class_names) else f"class_{cls_id}",
                 score=float(cls_score),
             ))
 
@@ -147,11 +153,19 @@ def benchmark(pipe, num_runs=10, image_size=(400, 600)):
     img = (np.random.rand(*image_size, 3) * 255).astype(np.uint8)
     pipe.run(img)
     stages = {"preprocess": [], "detect": [], "classify": [], "total": []}
+
+    def sync():
+        if pipe.device == "cuda" and torch.cuda.is_available():
+            torch.cuda.synchronize()
+
     for _ in range(num_runs):
+        sync()
         t0 = time.perf_counter()
         tensor = pipe.preprocess(img)
+        sync()
         t1 = time.perf_counter()
         det = pipe.detect(tensor)
+        sync()
         t2 = time.perf_counter()
         crops = []
         for box in det["boxes"]:
@@ -165,6 +179,7 @@ def benchmark(pipe, num_runs=10, image_size=(400, 600)):
                 )[0]
                 crops.append(crop)
         pipe.classify(crops)
+        sync()
         t3 = time.perf_counter()
         stages["preprocess"].append((t1 - t0) * 1000)
         stages["detect"].append((t2 - t1) * 1000)
