@@ -88,6 +88,9 @@ class PointCloudDataset(Dataset):
         else:
             reps = int(np.ceil(self.num_points / len(pts)))
             pts = np.tile(pts, (reps, 1))[:self.num_points]
+        # Shuffle point order to break any accidental dependencies (especially
+        # important when tiling repeats points in deterministic order).
+        np.random.shuffle(pts)
         if self.augment:
             theta = np.random.uniform(0, 2 * np.pi)
             R = np.array([[np.cos(theta), 0, np.sin(theta)],
