@@ -228,6 +228,9 @@ On small datasets, freeze the backbone and the FPN. Only the RPN objectness + re
 
 ```python
 def freeze_backbone_and_fpn(model):
+    # torchvision Mask R-CNN packs the FPN inside `model.backbone` (as
+    # `model.backbone.fpn`), so iterating `model.backbone.parameters()` covers
+    # both the ResNet feature layers and the FPN lateral/output convs.
     for p in model.backbone.parameters():
         p.requires_grad = False
     return model

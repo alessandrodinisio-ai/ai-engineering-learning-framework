@@ -9,8 +9,8 @@ def roi_align_single(feature, box, output_size=7, spatial_scale=1 / 16.0):
     bin_w = (x2 - x1) / output_size
     bin_h = (y2 - y1) / output_size
 
-    grid_y = torch.linspace(y1 + bin_h / 2, y2 - bin_h / 2, output_size)
-    grid_x = torch.linspace(x1 + bin_w / 2, x2 - bin_w / 2, output_size)
+    grid_y = torch.linspace(y1 + bin_h / 2, y2 - bin_h / 2, output_size, device=feature.device)
+    grid_x = torch.linspace(x1 + bin_w / 2, x2 - bin_w / 2, output_size, device=feature.device)
     yy, xx = torch.meshgrid(grid_y, grid_x, indexing="ij")
 
     gx = 2 * (xx + 0.5) / W - 1
@@ -67,6 +67,8 @@ def build_custom_maskrcnn(num_classes):
 
 
 def freeze_backbone(model):
+    # torchvision Mask R-CNN's backbone includes the FPN (model.backbone.fpn),
+    # so freezing model.backbone.parameters() also freezes the FPN parameters.
     for p in model.backbone.parameters():
         p.requires_grad = False
     return model
