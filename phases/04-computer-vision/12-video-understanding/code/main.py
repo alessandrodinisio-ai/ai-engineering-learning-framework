@@ -5,6 +5,8 @@ from torchvision.models import resnet18, ResNet18_Weights
 
 
 def sample_uniform(num_frames_total, T):
+    if num_frames_total <= 0:
+        raise ValueError(f"num_frames_total must be positive, got {num_frames_total}")
     if num_frames_total <= T:
         return list(range(num_frames_total)) + [num_frames_total - 1] * (T - num_frames_total)
     step = num_frames_total / T
@@ -12,6 +14,8 @@ def sample_uniform(num_frames_total, T):
 
 
 def sample_dense(num_frames_total, T, rng=None):
+    if num_frames_total <= 0:
+        raise ValueError(f"num_frames_total must be positive, got {num_frames_total}")
     rng = rng or np.random.default_rng()
     if num_frames_total <= T:
         return list(range(num_frames_total)) + [num_frames_total - 1] * (T - num_frames_total)
@@ -41,15 +45,18 @@ def inflate_2d_to_3d(conv2d, time_kernel=3):
     pad_w = conv2d.padding[1] if isinstance(conv2d.padding, tuple) else conv2d.padding
     stride_h = conv2d.stride[0] if isinstance(conv2d.stride, tuple) else conv2d.stride
     stride_w = conv2d.stride[1] if isinstance(conv2d.stride, tuple) else conv2d.stride
+    has_bias = conv2d.bias is not None
     conv3d = nn.Conv3d(
         in_c, out_c,
         kernel_size=(time_kernel, kh, kw),
         padding=(time_kernel // 2, pad_h, pad_w),
         stride=(1, stride_h, stride_w),
-        bias=False,
+        bias=has_bias,
     )
     weight_3d = conv2d.weight.data.unsqueeze(2).repeat(1, 1, time_kernel, 1, 1) / time_kernel
     conv3d.weight.data = weight_3d
+    if has_bias:
+        conv3d.bias.data = conv2d.bias.data.clone()
     return conv3d
 
 
