@@ -30,10 +30,11 @@ def q_sample(x0, t, noise, schedule):
 
 
 def timestep_embedding(t, dim=64):
-    half = dim // 2
+    half = (dim + 1) // 2
     freqs = torch.exp(-math.log(10000) * torch.arange(half, device=t.device) / half)
     args = t[:, None].float() * freqs[None]
-    return torch.cat([args.sin(), args.cos()], dim=-1)
+    emb = torch.cat([args.sin(), args.cos()], dim=-1)
+    return emb[:, :dim]
 
 
 class TinyUNet(nn.Module):
@@ -111,7 +112,7 @@ def sample_ddim(model, schedule, shape, steps=50, T=1000, device="cpu", eta=0.0)
         t_batch = torch.full((shape[0],), t, dtype=torch.long, device=device)
         eps = model(x, t_batch)
         a_t = alphas_cumprod[t]
-        a_prev = alphas_cumprod[t_prev] if t_prev >= 0 else torch.tensor(1.0, device=device)
+        a_prev = alphas_cumprod[t_prev]
         x0_pred = (x - torch.sqrt(1 - a_t) * eps) / torch.sqrt(a_t)
         sigma = eta * torch.sqrt((1 - a_prev) / (1 - a_t) * (1 - a_t / a_prev).clamp_min(0))
         dir_xt = torch.sqrt((1 - a_prev - sigma ** 2).clamp_min(0)) * eps

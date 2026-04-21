@@ -50,7 +50,7 @@ k = 6 to 12. Good middle ground; used by some SDXL variants.
 1. Compute betas per formula.
 2. Precompute `alphas`, `alphas_cumprod`, `sqrt_alphas_cumprod`, `sqrt_one_minus_alphas_cumprod`.
 3. Compute SNR_t = alpha_bar_t / (1 - alpha_bar_t); produce an SNR-over-time summary.
-4. Verify `alphas_cumprod[T-1]` is within 10% of `target_alpha_bar_final`; else tune beta_end (linear) or s (cosine) and retry.
+4. Verify `alphas_cumprod[T-1]` is within 10% of `target_alpha_bar_final`; else tune beta_end (linear), s (cosine), or k (sigmoid) and retry.
 5. Report three checkpoints:
    - `t=T*0.25` — early corruption
    - `t=T*0.5` — midway
