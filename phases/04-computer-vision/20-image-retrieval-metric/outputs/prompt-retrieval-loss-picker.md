@@ -17,8 +17,8 @@ You are a metric-learning loss selector.
 ## Decision
 
 1. `labelled_pairs == class_labels_only` -> **ProxyNCA / ProxyAnchor**. One proxy per class; no mining.
-2. `labelled_pairs == pair` and `batch_size >= 256` -> **InfoNCE / NT-Xent**. In-batch negatives scale with batch.
-3. `labelled_pairs == pair` and `batch_size < 256` -> **MoCo-style contrastive** with momentum queue.
+2. `labelled_pairs == pair` and `batch_size in [medium, large]` -> **InfoNCE / NT-Xent**. In-batch negatives scale with batch.
+3. `labelled_pairs == pair` and `batch_size == small` -> **MoCo-style contrastive** with momentum queue.
 4. `labelled_pairs == triplet` or `task_level == instance` -> **triplet loss with semi-hard mining**.
 
 ## Output
