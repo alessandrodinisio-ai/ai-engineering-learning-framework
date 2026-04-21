@@ -47,8 +47,11 @@ def encode(box_xyxy, cell_x, cell_y, stride, anchor_wh):
     cy = 0.5 * (y1 + y2)
     w = x2 - x1
     h = y2 - y1
-    tx = cx / stride - cell_x
-    ty = cy / stride - cell_y
+    # Offset within the cell in [0, 1], converted to logit so decode(sigmoid(tx)) round-trips.
+    off_x = np.clip(cx / stride - cell_x, 1e-6, 1 - 1e-6)
+    off_y = np.clip(cy / stride - cell_y, 1e-6, 1 - 1e-6)
+    tx = float(np.log(off_x / (1 - off_x)))
+    ty = float(np.log(off_y / (1 - off_y)))
     tw = np.log(w / anchor_wh[0] + 1e-8)
     th = np.log(h / anchor_wh[1] + 1e-8)
     return np.array([tx, ty, tw, th])
@@ -86,9 +89,11 @@ def assign_targets(boxes_xyxy, classes, anchors, stride, grid_size, num_classes)
     for box, cls in zip(boxes_xyxy, classes):
         x1, y1, x2, y2 = box
         cx, cy = 0.5 * (x1 + x2), 0.5 * (y1 + y2)
-        gx, gy = int(cx / stride), int(cy / stride)
-        if not (0 <= gx < grid_size and 0 <= gy < grid_size):
+        gx_raw, gy_raw = int(cx / stride), int(cy / stride)
+        if not (0 <= gx_raw < grid_size and 0 <= gy_raw < grid_size):
             continue
+        gx = min(gx_raw, grid_size - 1)
+        gy = min(gy_raw, grid_size - 1)
         bw, bh = x2 - x1, y2 - y1
 
         ious = []
@@ -111,8 +116,8 @@ def assign_targets(boxes_xyxy, classes, anchors, stride, grid_size, num_classes)
 
 def yolo_loss(pred, target, has_obj,
               lambda_coord=5.0, lambda_obj=1.0, lambda_noobj=0.5, lambda_cls=1.0):
-    has_obj_t = torch.from_numpy(has_obj).bool()
-    target_t = torch.from_numpy(target).float()
+    has_obj_t = torch.from_numpy(has_obj).bool().to(pred.device)
+    target_t = torch.from_numpy(target).float().to(pred.device)
     if pred.dim() == 5 and pred.shape[0] == 1:
         pred = pred[0]
 
@@ -161,8 +166,9 @@ def postprocess(pred_tensor, anchors, stride, conf_threshold=0.25, iou_threshold
                 cls_idx = int(np.argmax(cls_probs))
                 cx = (sigmoid(tx) + gx) * stride
                 cy = (sigmoid(ty) + gy) * stride
-                w = anchors[a][0] * np.exp(tw)
-                h = anchors[a][1] * np.exp(th)
+                # Clamp tw/th to keep exp() finite on wild predictions.
+                w = anchors[a][0] * np.exp(np.clip(tw, -10.0, 10.0))
+                h = anchors[a][1] * np.exp(np.clip(th, -10.0, 10.0))
                 boxes.append([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2])
                 scores.append(score)
                 classes.append(cls_idx)
