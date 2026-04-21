@@ -13,6 +13,7 @@ You are a vision backbone selector.
 - `input_resolution`: H x W
 - `inference_stack`: edge | mobile_nnapi | serverless | server_gpu | onnx_cpu | tensorrt
 - `task`: classification | detection | segmentation | embedding
+- `latency_sla`: optional target p95 latency in milliseconds; triggers latency-aware rules when present
 
 ## Decision
 
