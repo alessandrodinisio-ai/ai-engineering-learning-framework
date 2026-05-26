@@ -1,21 +1,21 @@
-# Hierarchical Architecture and Its Failure Mode
+# 层级架构及其故障模式
 
-> Hierarchical is supervisor nested. Manager agents over sub-managers over workers. CrewAI `Process.hierarchical` is the textbook version: a `manager_llm` dynamically delegates tasks and validates outputs. The LangGraph equivalent is `create_supervisor(create_supervisor(...))`. It is the natural pattern when the task is a real org chart. It is also the pattern most likely to collapse into managerial looping — manager agents assign work poorly, misinterpret sub-outputs, or fail to reach consensus. Sequential often beats it.
+> 层级式就是嵌套的 supervisor。manager agent 管 sub-manager，sub-manager 管 worker。CrewAI 的 `Process.hierarchical` 是教科书版本：一个 `manager_llm` 动态分派任务、校验输出。它在 LangGraph 里的对应物是 `create_supervisor(create_supervisor(...))`。当任务本身就是一张真实的组织架构图时，这是自然的模式。它也是最容易塌缩成「管理层空转」的模式——manager agent 派活儿派得烂、误读下级输出、或达不成共识。串行往往打得过它。
 
-**Type:** Learn + Build
-**Languages:** Python (stdlib)
-**Prerequisites:** Phase 16 · 05 (Supervisor Pattern)
-**Time:** ~60 minutes
+**类型：** Learn + Build
+**语言：** Python（标准库）
+**前置要求：** Phase 16 · 05（Supervisor 模式）
+**预计时间：** ~60 分钟
 
-## Problem
+## 问题所在
 
-Once the supervisor pattern clicks, the natural next step is "what if the workers are themselves supervisors?" Teams have sub-teams; companies have departments of departments. Hierarchical architectures mirror that.
+一旦 supervisor 模式想通了，下一步很自然：「要是 worker 本身也是 supervisor 呢？」团队有子团队；公司有部门下的部门。层级架构正是这样的镜像。
 
-The issue: LLM managers are not the same as human managers. A human manager has stable priors about what their reports know. An LLM manager re-reasons the org every turn from whatever is in its context. Tiny drift in that context, and the whole tree misallocates work.
+问题在于：LLM 管理者跟人类管理者不是一回事。人类管理者对下属知道什么有稳定的先验。LLM 管理者每一轮都从它上下文里有什么、重新把整个组织推理一遍。那份上下文里只要有一点点漂移，整棵树就会派错活儿。
 
-## Concept
+## 核心概念
 
-### The shape
+### 形状
 
 ```
                  Manager
@@ -31,96 +31,96 @@ The issue: LLM managers are not the same as human managers. A human manager has 
        W1  W2  W3         W4  W5
 ```
 
-Every internal node plans, delegates, and synthesizes. Only leaves do work.
+每个内部节点都做规划、分派、综合。只有叶子节点干活儿。
 
-### Where it shines
+### 它的亮点在哪
 
-- **Clear org mapping.** If the real task is departmental ("legal review the doc, finance review the doc, engineering review the doc, then summarize for exec"), the hierarchy is explicit.
-- **Local summarization.** Each sub-manager synthesizes its team's output before the top manager sees it. Top manager sees three sub-manager summaries, not fifteen worker outputs.
+- **清晰的组织映射。** 如果真实任务是按部门划分的（「法务审这份文档、财务审这份文档、工程审这份文档，然后给高管做总结」），这套层级就很显式。
+- **局部总结。** 每个 sub-manager 在顶层 manager 看到之前先综合自己团队的输出。顶层 manager 看到的是三份 sub-manager 摘要，而不是十五份 worker 输出。
 
-### Where it breaks
+### 它在哪崩
 
-Three failure modes the 2026 post-mortems keep finding:
+2026 年的复盘反复发现三种故障模式：
 
-1. **Task assignment error.** The manager reads the goal, hallucinates a decomposition, and delegates to the wrong sub-manager. Because the sub-manager obediently works on what it was given, the error only surfaces at the top synthesis — one level removed from where a human could have caught it.
-2. **Output misinterpretation.** Sub-manager returns "unable to verify claim X." Top manager summarizes as "claim X not confirmed." Meaning drifts at every level.
-3. **Consensus loops.** Two sub-managers disagree; top manager asks them to reconcile; they re-delegate down; workers re-run; sub-managers return slightly different answers; loop. CrewAI's `Process.hierarchical` guards against this with step limits, but the limit itself is now a hyperparameter.
+1. **任务分配错误。** manager 读了目标，幻想出一个拆解，把活儿派给了错误的 sub-manager。因为 sub-manager 乖乖地按拿到的内容干活儿，错误只会在顶层综合时才浮出来——离人本可以抓住它的地方隔了一层。
+2. **输出误读。** sub-manager 返回「无法验证主张 X」。顶层 manager 总结成「主张 X 未被确认」。含义在每一层都漂移。
+3. **共识循环。** 两个 sub-manager 意见不合；顶层 manager 让它们去调和；它们又往下重新分派；worker 重跑；sub-manager 返回略有不同的答案；循环。CrewAI 的 `Process.hierarchical` 用步数上限来防这个，但这个上限本身现在成了一个超参数。
 
-### The deciding question
+### 决定性的那个问题
 
-Sequential (linear pipeline) vs hierarchical: does your task actually have independent sub-teams, or is it one linear flow pretending to be a tree? If the latter, use sequential. If the former, use hierarchical but budget explicit reconciliation rules.
+串行（线性流水线）对层级式：你的任务真有相互独立的子团队，还是一条假装成树的线性流？如果是后者，用串行。如果是前者，用层级式，但要给显式的调和规则留出预算。
 
-### CrewAI's implementation
+### CrewAI 的实现
 
-`Process.hierarchical` wires a manager LLM over specialist crews. The manager:
+`Process.hierarchical` 在专精 crew 之上接一个 manager LLM。manager：
 
-- receives the top-level task,
-- assigns subtasks to crews,
-- evaluates crew outputs,
-- decides whether to accept, re-delegate, or iterate.
+- 接收顶层任务，
+- 把子任务分配给各个 crew，
+- 评估 crew 输出，
+- 决定接受、重新分派、还是迭代。
 
-Documentation: https://docs.crewai.com/en/introduction (look for "Hierarchical Process" under Core Concepts).
+文档：https://docs.crewai.com/en/introduction（在 Core Concepts 下找「Hierarchical Process」）。
 
-### LangGraph's implementation
+### LangGraph 的实现
 
-LangGraph uses nested `create_supervisor` calls. The inner supervisor has its own graph; the outer supervisor treats the inner graph as an opaque node. This is cleaner than CrewAI for debugging (you can step through each graph separately) but harder to express dynamic reshaping of the tree.
+LangGraph 用嵌套的 `create_supervisor` 调用。内层 supervisor 有自己的图；外层 supervisor 把内层图当成一个不透明的节点。这在调试上比 CrewAI 干净（你可以分别单步跟踪每个图），但更难表达对树的动态重塑。
 
-Reference: https://reference.langchain.com/python/langgraph-supervisor.
+参考：https://reference.langchain.com/python/langgraph-supervisor。
 
-## Build It
+## 动手构建
 
-`code/main.py` runs a 3-level hierarchy:
+`code/main.py` 跑一个 3 层的层级：
 
-- top manager: splits a task into "engineering" and "legal" branches,
-- engineering sub-manager: splits into "frontend" and "backend" workers,
-- legal sub-manager: one worker.
+- 顶层 manager：把一个任务拆成「工程」和「法务」两个分支，
+- 工程 sub-manager：拆成「前端」和「后端」两个 worker，
+- 法务 sub-manager：一个 worker。
 
-Demo contrasts happy path (everyone agrees) against a **perturbed path** where the top manager's decomposition mislabels "legal" as "finance" and watches the error cascade — the sub-manager obediently does finance work, the top synthesizer reports finance findings, the original legal question goes unanswered.
+演示把顺风路径（人人意见一致）和一条**被扰动的路径**做对比：后者里顶层 manager 的拆解把「法务」错标成了「财务」，然后看着错误如何级联——sub-manager 乖乖做财务的活儿，顶层综合者报告财务发现，最初的法务问题没人回答。
 
-Run:
+运行：
 
 ```
 python3 code/main.py
 ```
 
-Output shows both paths with a clear side-by-side of "what was asked" vs "what was delivered."
+输出展示两条路径，并把「问了什么」对「交付了什么」清晰地并排摆出来。
 
-## Use It
+## 上手使用
 
-`outputs/skill-hierarchy-fitness.md` evaluates whether a given task should use hierarchical, sequential, or flat supervisor. Inputs: task description, org structure, reconciliation budget. Output: pattern recommendation with the specific failure modes to guard against.
+`outputs/skill-hierarchy-fitness.md` 评估一个给定任务该用层级式、串行、还是扁平 supervisor。输入：任务描述、组织结构、调和预算。输出：模式推荐，附上要防范的具体故障模式。
 
-## Ship It
+## 交付
 
-If you ship hierarchical:
+如果你要上层级式：
 
-- **Cap tree depth at 2.** Three levels already hides most errors from observability.
-- **Explicit reconciliation budget.** Set max rounds before the top manager must commit. Usually 2.
-- **Provenance on every synthesis.** Each node's summary must cite which leaf outputs produced it.
-- **Alert on decomposition drift.** Log the manager's decomposition per step; diff against the user query. If the decomposition no longer covers the query, fire an alert.
+- **把树深限制在 2。** 三层就已经把大多数错误藏到可观测性之外了。
+- **显式的调和预算。** 设定顶层 manager 必须拍板前的最大轮数。通常是 2。
+- **每份综合都带溯源。** 每个节点的摘要都必须标明它由哪些叶子输出产出。
+- **对拆解漂移告警。** 逐步记录 manager 的拆解；与用户查询做 diff。如果拆解不再覆盖查询，就触发告警。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py` and compare happy vs perturbed. How many levels of manager hand-off does it take before the top output fully diverges from the user's question?
-2. Add a third level (top → sub → sub-sub → worker). Measure how often the perturbed path corrects itself vs fully diverges as depth grows.
-3. Implement a "canary" worker at each sub-manager that is always asked the original user question unchanged. Use the canary answer to detect decomposition drift. How should the manager react when the canary disagrees with the synthesized answer?
-4. Read CrewAI's `Process.hierarchical` docs. Identify one concrete guardrail CrewAI applies (step limit, manager_llm constraint) and describe what failure mode it targets.
-5. Compare nested LangGraph supervisors to CrewAI hierarchical. Which makes reconciliation loops cheaper to detect?
+1. 跑 `code/main.py`，对比顺风和被扰动两条路径。要经过多少层 manager 交接，顶层输出才会与用户的问题彻底背离？
+2. 加第三层（top → sub → sub-sub → worker）。随着深度增长，测量被扰动路径自我纠正与彻底背离各占多大比例。
+3. 在每个 sub-manager 那里实现一个「金丝雀」worker，它永远被问原封不动的用户问题。用金丝雀的答案来检测拆解漂移。当金丝雀与综合答案不一致时，manager 该如何反应？
+4. 读 CrewAI 的 `Process.hierarchical` 文档。指出 CrewAI 应用的一个具体护栏（步数上限、manager_llm 约束），描述它针对哪种故障模式。
+5. 对比嵌套的 LangGraph supervisor 和 CrewAI 层级式。哪个让调和循环更便宜地被检测出来？
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么意思 |
 |------|----------------|------------------------|
-| Hierarchical | "Org chart pattern" | Supervisors over supervisors; only leaves do work. |
-| Manager LLM | "The boss" | The LLM that decomposes, assigns, and validates at an internal node. |
-| Decomposition drift | "The boss lost the plot" | Top manager's split no longer covers the original question. |
-| Reconciliation loop | "Endless meetings" | Sub-managers disagree; top re-delegates; workers re-run; loop until budget exhausted. |
-| Depth-2 ceiling | "Don't go deeper than 2 levels" | Empirical guardrail: 3+ levels collapses observability. |
-| Canary question | "Ground truth at every level" | A worker that is always asked the original query unchanged, to detect drift. |
-| Provenance chain | "Who said what" | Trace from each synthesis back to the leaf outputs that produced it. |
+| Hierarchical | 「组织架构图模式」 | supervisor 套 supervisor；只有叶子干活儿。 |
+| Manager LLM | 「老板」 | 在内部节点做拆解、分配、校验的那个 LLM。 |
+| Decomposition drift | 「老板跑题了」 | 顶层 manager 的拆分不再覆盖最初的问题。 |
+| Reconciliation loop | 「开不完的会」 | sub-manager 意见不合；顶层重新分派；worker 重跑；循环到预算耗尽。 |
+| Depth-2 ceiling | 「别超过 2 层」 | 经验护栏：3 层以上可观测性就塌了。 |
+| Canary question | 「每一层的 ground truth」 | 一个永远被问原始查询、原封不动的 worker，用来检测漂移。 |
+| Provenance chain | 「谁说了什么」 | 从每份综合追溯回产出它的叶子输出。 |
 
-## Further Reading
+## 延伸阅读
 
-- [CrewAI introduction — Process.hierarchical](https://docs.crewai.com/en/introduction) — textbook hierarchical with a manager LLM
-- [LangGraph supervisor reference](https://reference.langchain.com/python/langgraph-supervisor) — nested supervisor via `create_supervisor`
-- [Anthropic engineering — Research system](https://www.anthropic.com/engineering/multi-agent-research-system) — why Anthropic deliberately chose flat supervisor over hierarchical
-- [Cemri et al. — Why Do Multi-Agent LLM Systems Fail?](https://arxiv.org/abs/2503.13657) — MAST taxonomy; section on coordination failures documents decomposition drift
+- [CrewAI introduction — Process.hierarchical](https://docs.crewai.com/en/introduction) —— 带 manager LLM 的教科书层级式
+- [LangGraph supervisor reference](https://reference.langchain.com/python/langgraph-supervisor) —— 通过 `create_supervisor` 实现的嵌套 supervisor
+- [Anthropic engineering — Research system](https://www.anthropic.com/engineering/multi-agent-research-system) —— Anthropic 为何刻意选了扁平 supervisor 而非层级式
+- [Cemri et al. — Why Do Multi-Agent LLM Systems Fail?](https://arxiv.org/abs/2503.13657) —— MAST 分类法；讲协调失败的那一节记录了拆解漂移

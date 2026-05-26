@@ -1,38 +1,38 @@
-# Inference Optimization
+# 推理优化
 
-> Two phases define LLM inference. Prefill processes your prompt in parallel -- compute-bound. Decode generates tokens one at a time -- memory-bound. Every optimization targets one or both.
+> LLM 推理由两个阶段定义。Prefill 并行处理你的 prompt——计算受限。Decode 一次生成一个 token——内存受限。每个优化都瞄准其中一个或两个。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 10, Lessons 01-08 (Transformer architecture, attention)
-**Time:** ~120 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 阶段 10，第 01-08 课（transformer 架构、注意力）
+**预计时间：** ~120 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Implement KV-cache to eliminate redundant computation during autoregressive token generation
-- Explain the prefill vs decode phases of LLM inference and why each has different bottlenecks (compute-bound vs memory-bound)
-- Implement continuous batching and PagedAttention concepts to maximize GPU utilization under concurrent requests
-- Compare inference optimization techniques (KV-cache, speculative decoding, flash attention) and their throughput/latency tradeoffs
+- 实现 KV-cache，消除自回归 token 生成时的冗余计算
+- 解释 LLM 推理的 prefill vs decode 阶段，以及为什么各自的瓶颈不同（计算受限 vs 内存受限）
+- 实现连续批处理和 PagedAttention 的概念，在并发请求下最大化 GPU 利用率
+- 对比推理优化技术（KV-cache、推测解码、flash attention）及其吞吐/延迟权衡
 
-## The Problem
+## 问题所在
 
-You deploy Llama 3 70B on 4xA100 GPUs. A single user gets ~50 tokens per second. Feels fast. Then 100 users hit the endpoint simultaneously. Throughput drops to 3 tokens/second/user. Your $25,000/month GPU bill is serving responses slower than a human types.
+你在 4 张 A100 上部署 Llama 3 70B。单个用户能拿到约 50 token/秒。感觉很快。然后 100 个用户同时打到端点。吞吐掉到 3 token/秒/用户。你那 25,000 美元/月的 GPU 账单，服务回复的速度比人打字还慢。
 
-The model itself does not change between 1 user and 100 users. Same weights, same architecture, same math. What changes is how you schedule the work. Naive inference wastes 90%+ of available GPU compute. A user waiting for token 47 holds an entire batch slot open while the GPU memory bus sits idle between matmuls. Meanwhile, a new user's 2,000-token prompt could fill that dead time with useful compute.
+模型本身在 1 个用户和 100 个用户之间没变。同样的权重、同样的架构、同样的数学。变的是你怎么调度工作。朴素推理浪费了 90%+ 的可用 GPU 算力。一个等第 47 个 token 的用户占着整个 batch 槽位，而 GPU 内存总线在两次 matmul 之间闲着。与此同时，一个新用户的 2,000-token prompt 本可以用有用的计算填满那段死时间。
 
-This is not a scaling problem. It is a scheduling problem. The techniques in this lesson -- KV caching, continuous batching, PagedAttention, speculative decoding, prefix caching -- are what separate a $25k/month inference bill from a $5k/month one serving the same traffic.
+这不是个扩展问题。这是个调度问题。本节课的技术——KV 缓存、连续批处理、PagedAttention、推测解码、prefix 缓存——就是把同样流量的推理账单从 25k 美元/月降到 5k 美元/月的关键。
 
-vLLM serving Llama 3 70B on 4xA100-80GB achieves ~50 tokens/second/user at low concurrency, and sustains 15-25 TPS/user at 100 concurrent requests through continuous batching and PagedAttention. Without these optimizations, the same hardware serves 5 TPS/user at that concurrency. Same GPUs, same model, 4x the throughput.
+vLLM 在 4 张 A100-80GB 上服务 Llama 3 70B，低并发下达到约 50 token/秒/用户，并通过连续批处理和 PagedAttention 在 100 个并发请求下维持 15-25 TPS/用户。没有这些优化，同样的硬件在那个并发下只服务 5 TPS/用户。同样的 GPU、同样的模型，4 倍的吞吐。
 
-## The Concept
+## 核心概念
 
 ### Prefill vs Decode
 
-Every LLM inference request has two distinct phases.
+每个 LLM 推理请求有两个明确的阶段。
 
-**Prefill** processes the entire input prompt. All tokens are known, so attention can be computed in parallel across the full sequence. This is a large matrix multiplication -- GPU cores stay busy. The bottleneck is compute: how many FLOPS your hardware can deliver per second. An A100 does 312 TFLOPS (BF16). Prefill for a 4,096-token prompt on a 70B model takes ~400ms on a single A100.
+**Prefill** 处理整个输入 prompt。所有 token 已知，所以注意力能在完整序列上并行计算。这是一次大矩阵乘法——GPU 核心保持忙碌。瓶颈是计算：你的硬件每秒能交付多少 FLOPS。一张 A100 做 312 TFLOPS（BF16）。在单张 A100 上，70B 模型一个 4,096-token prompt 的 prefill 大约要 400ms。
 
-**Decode** generates output tokens one at a time. Each new token attends to all previous tokens, but only one token is produced per forward pass. The weight matrices are the same size as during prefill, but you are multiplying them by a single vector instead of a matrix. The GPU cores finish in microseconds, then wait for the next batch of weights to arrive from memory. The bottleneck is memory bandwidth: how fast you can stream model weights from HBM to the compute units. An A100 has 2 TB/s bandwidth. A 70B model in FP16 is 140 GB. Reading the full model once takes 70ms -- that is your floor for a single decode step.
+**Decode** 一次生成一个输出 token。每个新 token 注意到之前所有 token，但每次前向传播只产出一个 token。权重矩阵和 prefill 时一样大，但你是把它们乘以单个向量而不是矩阵。GPU 核心在微秒内完成，然后等下一批权重从内存到来。瓶颈是内存带宽：你能多快把模型权重从 HBM 流到计算单元。一张 A100 有 2 TB/s 带宽。FP16 下的 70B 模型是 140 GB。把整个模型读一遍要 70ms——那是你单个 decode 步骤的下限。
 
 ```mermaid
 graph LR
@@ -49,21 +49,21 @@ graph LR
     P3 --> D1
 ```
 
-The **ops:byte ratio** (also called arithmetic intensity) captures this tradeoff. It measures how many operations you perform per byte loaded from memory.
+**ops:byte 比率**（也叫算术强度）抓住了这个权衡。它衡量你每从内存加载一字节执行多少操作。
 
 ```
 ops:byte ratio = FLOPs per token / bytes read from memory
 ```
 
-During prefill with a batch of 4,096 tokens, you perform ~4,096 multiply-accumulate operations per weight loaded. The ratio is high -- you are compute-bound. During decode with batch size 1, you perform ~1 operation per weight loaded. The ratio is low -- you are memory-bound.
+在 4,096 token 一批的 prefill 时，你每加载一个权重执行约 4,096 次乘累加操作。比率高——你计算受限。在 batch size 1 的 decode 时，你每加载一个权重执行约 1 次操作。比率低——你内存受限。
 
-The fundamental insight: *decode is memory-bound because you read the entire model to produce a single token*. Every optimization below either reduces what you read, increases the batch of tokens processed per read, or avoids reads entirely.
+根本洞见：*decode 之所以内存受限，是因为你读整个模型就为产出单个 token*。下面每个优化要么减少你读的量，要么增加每次读处理的 token 批量，要么完全避免读。
 
 ### KV Cache
 
-During attention, each token's query attends to every previous token's key and value vectors. Without caching, generating token N requires recomputing the key and value projections for all N-1 preceding tokens. Token 1 gets projected when generating token 2, then again for token 3, then again for token 4. By token 1,000, you have projected token 1 a total of 999 times.
+注意力时，每个 token 的 query 注意到之前每个 token 的 key 和 value 向量。没有缓存，生成第 N 个 token 需要为之前所有 N-1 个 token 重算 key 和 value 投影。token 1 在生成 token 2 时被投影，然后为 token 3 再来一次，再为 token 4 又一次。到 token 1,000 时，你总共把 token 1 投影了 999 次。
 
-The KV cache stores the key and value projections from all previous tokens. When generating token N, you only compute the key and value for token N, then concatenate them with the cached K/V from tokens 1 through N-1.
+KV cache 存下之前所有 token 的 key 和 value 投影。生成第 N 个 token 时，你只为 token N 计算 key 和 value，然后把它们和 token 1 到 N-1 缓存的 K/V 拼接。
 
 ```mermaid
 graph TD
@@ -80,13 +80,13 @@ graph TD
     end
 ```
 
-**Memory formula for KV cache:**
+**KV cache 的内存公式：**
 
 ```
 KV cache size = 2 * num_layers * num_kv_heads * head_dim * seq_len * bytes_per_param
 ```
 
-For Llama 3 70B (80 layers, 8 KV heads with GQA, head_dim=128, BF16):
+对 Llama 3 70B（80 层，GQA 下 8 个 KV 头，head_dim=128，BF16）：
 
 ```
 per token: 2 * 80 * 8 * 128 * 2 bytes = 327,680 bytes = 320 KB
@@ -94,13 +94,13 @@ at 4,096 tokens: 320 KB * 4,096 = 1.28 GB
 at 128K tokens: 320 KB * 131,072 = 40 GB
 ```
 
-A single 128K-context conversation for Llama 3 70B consumes 40 GB of KV cache -- half an A100's memory. With 100 concurrent users at 4K tokens each, KV cache alone requires 128 GB. This is why KV cache management is the central challenge of inference optimization.
+Llama 3 70B 单个 128K-context 的对话消耗 40 GB 的 KV cache——半张 A100 的内存。100 个并发用户、每个 4K token，光 KV cache 就要 128 GB。这就是为什么 KV cache 管理是推理优化的核心挑战。
 
-### Continuous Batching
+### 连续批处理
 
-Static batching waits until a batch of N requests arrives, processes them together, and waits until *all* finish before accepting new requests. If one request needs 500 tokens and another needs 10, the short request sits idle for 490 decode steps after it finishes.
+静态批处理等到 N 个请求一批到齐，一起处理，并等到 *所有* 都完成才接受新请求。如果一个请求要 500 个 token、另一个要 10 个，短请求完成后会闲坐 490 个 decode 步骤。
 
-Continuous batching (also called iteration-level batching) inserts new requests into the batch as soon as any request completes. The batch is reevaluated at every decode step. A request that finishes after 10 tokens is immediately replaced by a waiting request.
+连续批处理（也叫迭代级批处理）只要任何请求完成，就把新请求插入批次。批次在每个 decode 步骤都被重新评估。一个 10 个 token 后完成的请求立刻被一个等待的请求替换。
 
 ```mermaid
 sequenceDiagram
@@ -125,13 +125,13 @@ sequenceDiagram
     Note over R3: R3 done at step 30
 ```
 
-The throughput improvement depends on how much output lengths vary. With uniform lengths, continuous batching matches static batching. With variable lengths (the common case), continuous batching can deliver 2-5x higher throughput because GPU slots never sit empty.
+吞吐提升取决于输出长度变化多大。长度一致时，连续批处理和静态批处理一样。长度可变时（常见情况），连续批处理能交付 2-5 倍更高的吞吐，因为 GPU 槽位从不空着。
 
 ### PagedAttention
 
-The KV cache for each request is a contiguous block of memory. As requests arrive and depart, memory fragments -- exactly like RAM fragmentation in operating systems. A 4K-token request needs 1.28 GB contiguous. Even if you have 2 GB free total, you might not have 1.28 GB *contiguous*. You either waste memory or reject the request.
+每个请求的 KV cache 是一块连续内存。请求到来和离开时，内存碎片化——和操作系统里的 RAM 碎片化一模一样。一个 4K-token 请求需要 1.28 GB 连续内存。即使你总共有 2 GB 空闲，也可能没有 1.28 GB *连续的*。你要么浪费内存，要么拒绝请求。
 
-PagedAttention (from vLLM) applies OS-style virtual memory to KV cache. Instead of allocating one contiguous block per request, it allocates fixed-size "pages" (typically 16 tokens each). Pages can be anywhere in physical GPU memory. A page table maps each request's logical sequence positions to physical page locations.
+PagedAttention（来自 vLLM）把 OS 风格的虚拟内存应用到 KV cache。它不为每个请求分配一块连续内存，而是分配固定大小的 "页"（通常每页 16 个 token）。页可以在 GPU 物理内存的任何地方。一张页表把每个请求的逻辑序列位置映射到物理页位置。
 
 ```mermaid
 graph TD
@@ -150,15 +150,15 @@ graph TD
     end
 ```
 
-PagedAttention also enables **copy-on-write** for shared prefixes. If 50 requests share the same system prompt, the KV cache pages for that system prompt are stored once and referenced by all 50 requests. Only when a request diverges (different user messages) does it get its own pages. This cuts memory usage dramatically for applications with shared system prompts.
+PagedAttention 还为共享前缀实现 **copy-on-write**。如果 50 个请求共享同一个 system prompt，那个 system prompt 的 KV cache 页只存一次、被全部 50 个请求引用。只有当一个请求分叉（不同的用户消息）时，它才获得自己的页。这对有共享 system prompt 的应用大幅削减内存用量。
 
-vLLM reports near-zero memory waste (~4% vs ~60-80% in naive allocation) through PagedAttention.
+vLLM 报告通过 PagedAttention 实现近乎零的内存浪费（约 4%，对比朴素分配的约 60-80%）。
 
-### Speculative Decoding
+### 推测解码
 
-Decode is slow because it is sequential -- you generate one token, feed it back, generate the next. But what if you could guess the next 5 tokens cheaply, then verify them all at once?
+Decode 慢是因为它是顺序的——你生成一个 token，喂回去，生成下一个。但要是你能廉价地猜出接下来 5 个 token，然后一次全部验证呢？
 
-Speculative decoding uses a small, fast **draft model** to generate K candidate tokens. The large **target model** then processes all K candidates in a single forward pass (which looks like a prefill -- parallel, compute-bound, efficient). If the target model agrees with the draft model's predictions, you accept all K tokens in the time of one target forward pass. If it disagrees at position j, you accept tokens 1 through j-1 and discard the rest.
+推测解码用一个小而快的 **draft 模型** 生成 K 个候选 token。然后大的 **target 模型** 在一次前向传播里处理所有 K 个候选（这看起来像 prefill——并行、计算受限、高效）。如果 target 模型同意 draft 模型的预测，你就在一次 target 前向传播的时间里接受所有 K 个 token。如果它在位置 j 不同意，你接受 token 1 到 j-1，丢掉其余的。
 
 ```mermaid
 graph LR
@@ -169,85 +169,85 @@ graph LR
     V -->|"Mismatch at pos 5"| R["Reject token 5<br/>Resample from target"]
 ```
 
-The speedup depends on the **acceptance rate** -- how often the draft model's predictions match the target. For a Llama 3 8B drafting for Llama 3 70B, acceptance rates of 70-85% are typical on natural language. This translates to 2-3x decode speedup.
+加速取决于 **接受率**——draft 模型的预测匹配 target 的频率。对一个为 Llama 3 70B 起草的 Llama 3 8B，自然语言上典型接受率为 70-85%。这转化为 2-3 倍的 decode 加速。
 
-Three approaches to speculative decoding:
+推测解码的三种方法：
 
-| Method | Draft source | Acceptance rate | Overhead |
+| 方法 | Draft 来源 | 接受率 | 开销 |
 |--------|-------------|-----------------|----------|
-| Draft-target (Leviathan et al.) | Separate small model | 70-85% | Draft model memory |
-| EAGLE (Li et al.) | Lightweight head on target | 75-90% | ~1% extra parameters |
-| N-gram lookup | Token n-gram table | 40-60% | Negligible |
+| Draft-target（Leviathan et al.） | 单独的小模型 | 70-85% | draft 模型内存 |
+| EAGLE（Li et al.） | target 上的轻量头 | 75-90% | ~1% 额外参数 |
+| N-gram 查表 | token n-gram 表 | 40-60% | 可忽略 |
 
-**EAGLE** trains a small autoregressive head on top of the target model's hidden states. It predicts the next token's embedding using the target model's second-to-last layer features. Because it operates on the target model's own representations (not a separate model's), it achieves higher acceptance rates with minimal extra memory. EAGLE-2 adds a dynamic draft tree that adjusts candidate count based on context.
+**EAGLE** 在 target 模型的隐藏状态之上训练一个小的自回归头。它用 target 模型的倒数第二层特征预测下一个 token 的 embedding。因为它在 target 模型自己的表示上工作（而不是单独模型的），它用极小的额外内存实现更高的接受率。EAGLE-2 加了一个动态 draft 树，根据上下文调整候选数量。
 
-**N-gram speculative decoding** maintains a table of n-gram continuations from the current context or a prebuilt corpus. If the draft matches what appeared before in the same conversation (repetitive patterns, code, structured output), it fires with zero neural network overhead. Acceptance rates are lower on average but the cost per speculation is essentially free.
+**N-gram 推测解码** 维护一张来自当前上下文或预建语料的 n-gram 续写表。如果 draft 匹配同一对话里之前出现过的（重复模式、代码、结构化输出），它就以零神经网络开销触发。平均接受率更低，但每次推测的成本基本免费。
 
-Speculative decoding is *mathematically exact* -- the output distribution is identical to the target model's distribution. It is not an approximation. The verification step ensures that every accepted token has exactly the probability the target model would have assigned.
+推测解码在 *数学上是精确的*——输出分布和 target 模型的分布完全相同。它不是近似。验证步骤确保每个被接受的 token 恰好有 target 模型会分配的概率。
 
-### Prefix Caching
+### Prefix 缓存
 
-Many requests share the same prefix. A chatbot system prompt. A RAG context block. A few-shot example set. Without prefix caching, every request recomputes the KV cache for these shared tokens from scratch.
+许多请求共享同一个前缀。一个聊天机器人的 system prompt。一个 RAG 上下文块。一组 few-shot 例子。没有 prefix 缓存，每个请求都从头为这些共享 token 重算 KV cache。
 
-Prefix caching stores the KV cache for common prefixes and reuses it across requests. When a new request arrives with a known prefix, the system copies (or references) the cached KV entries and only computes the KV for the unique suffix.
+Prefix 缓存为常见前缀存下 KV cache 并跨请求复用。当一个新请求带着已知前缀到来，系统拷贝（或引用）缓存的 KV 条目，只为独特的后缀计算 KV。
 
-For a 2,000-token system prompt shared across all requests, prefix caching eliminates ~400ms of prefill per request. At 100 requests/second, that saves 40 seconds of GPU compute per second -- more than one GPU's worth of work.
+对一个跨所有请求共享的 2,000-token system prompt，prefix 缓存每个请求省下约 400ms 的 prefill。在 100 请求/秒下，那是每秒省 40 秒的 GPU 计算——超过一整张 GPU 的工作量。
 
-SGLang's RadixAttention implements prefix caching with a radix tree (trie) that indexes prefixes by their token content. Any request matching a stored prefix gets its KV cache for free. The tree enables partial prefix matches -- if you share 1,500 of 2,000 prefix tokens with a cached entry, you reuse those 1,500 and recompute only 500.
+SGLang 的 RadixAttention 用一棵 radix 树（trie）实现 prefix 缓存，按 token 内容索引前缀。任何匹配已存前缀的请求都免费拿到它的 KV cache。这棵树支持部分前缀匹配——如果你和一个缓存条目共享 2,000 个前缀 token 里的 1,500 个，你就复用那 1,500 个、只重算 500 个。
 
-### Inference Engines
+### 推理引擎
 
-Three engines dominate production LLM serving:
+三个引擎主导生产级 LLM 服务：
 
-| Engine | Key innovation | Best for |
+| 引擎 | 关键创新 | 最适合 |
 |--------|---------------|----------|
-| vLLM | PagedAttention, continuous batching | General-purpose serving, highest compatibility |
-| SGLang | RadixAttention (prefix caching), structured generation | Multi-turn chatbots, constrained decoding |
-| TensorRT-LLM | NVIDIA kernel fusion, FP8 quantization | Maximum single-GPU throughput on NVIDIA hardware |
+| vLLM | PagedAttention、连续批处理 | 通用服务、最高兼容性 |
+| SGLang | RadixAttention（prefix 缓存）、结构化生成 | 多轮聊天机器人、约束解码 |
+| TensorRT-LLM | NVIDIA 核融合、FP8 量化 | NVIDIA 硬件上的最大单卡吞吐 |
 
-**vLLM** is the default starting point. It supports the widest range of models, runs on any GPU vendor (NVIDIA, AMD, Intel), and achieves strong throughput through PagedAttention + continuous batching. The OpenAI-compatible API means you can drop it in as a replacement for any OpenAI API call.
+**vLLM** 是默认起点。它支持最广的模型范围，能在任何 GPU 厂商（NVIDIA、AMD、Intel）上跑，并通过 PagedAttention + 连续批处理实现强劲吞吐。OpenAI 兼容的 API 意味着你能把它直接当任何 OpenAI API 调用的替代品塞进去。
 
-**SGLang** builds on the same foundations as vLLM but adds RadixAttention for prefix caching and a domain-specific language for structured LLM programs. If your workload involves multi-turn conversations, tool use, or constrained decoding (JSON output, regex-guided generation), SGLang often outperforms vLLM by 2-5x through prefix reuse.
+**SGLang** 建立在和 vLLM 相同的基础上，但加了 RadixAttention 做 prefix 缓存，以及一种用于结构化 LLM 程序的领域特定语言。如果你的工作负载涉及多轮对话、工具使用或约束解码（JSON 输出、正则引导生成），SGLang 通过前缀复用常常比 vLLM 快 2-5 倍。
 
-**TensorRT-LLM** compiles models into optimized NVIDIA GPU kernels. It fuses operations (attention + linear + activation in one kernel), uses FP8 on H100 GPUs, and integrates with NVIDIA Triton Inference Server for production deployment. It achieves the highest single-GPU throughput on NVIDIA hardware but requires more setup and only works on NVIDIA GPUs.
+**TensorRT-LLM** 把模型编译成优化的 NVIDIA GPU 核。它融合操作（注意力 + 线性 + 激活在一个核里）、在 H100 GPU 上用 FP8，并和 NVIDIA Triton Inference Server 集成用于生产部署。它在 NVIDIA 硬件上实现最高的单卡吞吐，但需要更多设置，且只在 NVIDIA GPU 上工作。
 
-Real-world numbers for Llama 3 70B (4xA100-80GB, BF16):
+Llama 3 70B 的真实世界数字（4 张 A100-80GB，BF16）：
 
-| Metric | vLLM | SGLang | TensorRT-LLM |
+| 指标 | vLLM | SGLang | TensorRT-LLM |
 |--------|------|--------|---------------|
-| Throughput (1 user) | ~50 TPS | ~55 TPS | ~65 TPS |
-| Throughput (100 users) | ~2,500 total TPS | ~3,200 total TPS | ~3,000 total TPS |
-| Time to first token | ~400ms | ~300ms (prefix hit) | ~350ms |
-| Max context | 128K | 128K | 128K |
+| 吞吐（1 用户） | ~50 TPS | ~55 TPS | ~65 TPS |
+| 吞吐（100 用户） | 总共 ~2,500 TPS | 总共 ~3,200 TPS | 总共 ~3,000 TPS |
+| 首 token 时间 | ~400ms | ~300ms（前缀命中） | ~350ms |
+| 最大 context | 128K | 128K | 128K |
 
-### The Ops:Byte Framework
+### Ops:Byte 框架
 
-You cannot optimize what you do not measure. The ops:byte ratio tells you whether you are compute-bound or memory-bound, which determines which optimizations matter.
+你优化不了你没测量的东西。ops:byte 比率告诉你你是计算受限还是内存受限，这决定了哪些优化重要。
 
 ```
 Compute roof: peak FLOPS of the GPU
 Memory roof:  peak bandwidth * ops:byte ratio
 ```
 
-When ops:byte is low (decode, small batches), you hit the memory bandwidth roof. Adding more compute (higher clock, more cores) does not help. You need to reduce memory reads (quantization, KV cache compression) or increase the batch size to amortize reads across more useful work.
+当 ops:byte 低（decode、小 batch），你撞到内存带宽屋顶。加更多算力（更高主频、更多核心）没用。你需要减少内存读取（量化、KV cache 压缩）或增大 batch size 把读取分摊到更多有用的工作上。
 
-When ops:byte is high (prefill, large batches), you hit the compute roof. Memory bandwidth optimization does not help. You need faster GPUs, kernel fusion, or reduced precision to squeeze more FLOPS.
+当 ops:byte 高（prefill、大 batch），你撞到计算屋顶。内存带宽优化没用。你需要更快的 GPU、核融合或更低精度来榨出更多 FLOPS。
 
-| Scenario | ops:byte | Bound | Optimize with |
+| 场景 | ops:byte | 受限于 | 用什么优化 |
 |----------|----------|-------|---------------|
-| Prefill, batch=1 | ~4,096 | Compute | Kernel fusion, FP8 |
-| Decode, batch=1 | ~1 | Memory | Quantization, KV compression |
-| Decode, batch=32 | ~32 | Memory | Larger batch, continuous batching |
-| Decode, batch=256 | ~256 | Transitioning | Both matter |
-| Decode, batch=1024 | ~1,024 | Compute | Kernel fusion, tensor parallelism |
+| Prefill，batch=1 | ~4,096 | 计算 | 核融合、FP8 |
+| Decode，batch=1 | ~1 | 内存 | 量化、KV 压缩 |
+| Decode，batch=32 | ~32 | 内存 | 更大 batch、连续批处理 |
+| Decode，batch=256 | ~256 | 过渡中 | 两者都重要 |
+| Decode，batch=1024 | ~1,024 | 计算 | 核融合、张量并行 |
 
-The crossover point on A100 is around ops:byte = 156 (312 TFLOPS / 2 TB/s). Below 156, you are memory-bound. Above 156, you are compute-bound. Continuous batching pushes decode toward this crossover by packing more tokens per iteration.
+A100 上的交叉点大约在 ops:byte = 156（312 TFLOPS / 2 TB/s）。低于 156，你内存受限。高于 156，你计算受限。连续批处理通过每次迭代塞更多 token，把 decode 推向这个交叉点。
 
-## Build It
+## 动手构建
 
-### Step 1: KV Cache from Scratch
+### 第 1 步：从零实现 KV Cache
 
-We build a multi-head KV cache that stores key and value projections per layer, per head, and demonstrates the memory growth pattern.
+我们构建一个多头 KV cache，按层、按头存 key 和 value 投影，并演示内存增长模式。
 
 ```python
 import numpy as np
@@ -289,9 +289,9 @@ class KVCache:
         return per_token * self.seq_len
 ```
 
-### Step 2: Attention with KV Cache
+### 第 2 步：带 KV Cache 的注意力
 
-A simplified multi-head attention that uses the KV cache for decode steps.
+一个简化的多头注意力，在 decode 步骤里使用 KV cache。
 
 ```python
 def scaled_dot_product_attention(query, keys, values):
@@ -336,9 +336,9 @@ class MultiHeadAttention:
         return np.matmul(attn_out, self.W_o)
 ```
 
-### Step 3: Continuous Batching Simulator
+### 第 3 步：连续批处理模拟器
 
-This simulates the scheduling difference between static and continuous batching.
+这模拟静态和连续批处理之间的调度差异。
 
 ```python
 import heapq
@@ -437,9 +437,9 @@ def batching_stats(completed):
     }
 ```
 
-### Step 4: Prefix Cache
+### 第 4 步：Prefix 缓存
 
-A trie-based prefix cache that stores KV entries for shared prefixes.
+一个基于 trie 的 prefix 缓存，为共享前缀存 KV 条目。
 
 ```python
 class TrieNode:
@@ -503,9 +503,9 @@ class PrefixCache:
         return self.hits / total if total > 0 else 0.0
 ```
 
-### Step 5: Speculative Decoding Simulator
+### 第 5 步：推测解码模拟器
 
-We simulate draft-target speculative decoding with configurable acceptance rates.
+我们用可配置的接受率模拟 draft-target 推测解码。
 
 ```python
 class DraftModel:
@@ -619,9 +619,9 @@ def compare_speculation_strategies(vocab_size=1000, num_trials=20):
     return results
 ```
 
-### Step 6: KV Cache Memory Profiler
+### 第 6 步：KV Cache 内存剖析器
 
-Compute KV cache memory requirements for real model configurations.
+为真实模型配置计算 KV cache 内存需求。
 
 ```python
 MODEL_CONFIGS = {
@@ -683,9 +683,9 @@ def memory_budget(config, gpu_memory_gb, model_dtype_bytes=2, kv_dtype_bytes=2):
     }
 ```
 
-## Use It
+## 上手使用
 
-With vLLM:
+用 vLLM：
 
 ```python
 from vllm import LLM, SamplingParams
@@ -702,7 +702,7 @@ params = SamplingParams(temperature=0.7, max_tokens=256)
 outputs = llm.generate(["Explain inference optimization in one paragraph."], params)
 ```
 
-With SGLang for prefix caching + structured output:
+用 SGLang 做 prefix 缓存 + 结构化输出：
 
 ```python
 import sglang as sgl
@@ -723,7 +723,7 @@ results = classify.run_batch([
 ])
 ```
 
-With TensorRT-LLM:
+用 TensorRT-LLM：
 
 ```python
 import tensorrt_llm
@@ -738,42 +738,42 @@ outputs = runner.generate(
 )
 ```
 
-## Ship It
+## 交付
 
-This lesson produces:
-- `outputs/skill-inference-optimization.md` -- a skill for diagnosing and optimizing LLM inference serving
+本节课产出：
+- `outputs/skill-inference-optimization.md` —— 一个用于诊断和优化 LLM 推理服务的 skill
 
-## Exercises
+## 练习
 
-1. Modify the KV cache profiler to compare FP16 vs FP8 vs INT4 KV cache quantization. For Llama 3 70B at 4K context, compute the max concurrent users for each on 4xA100-80GB. KV quantization to INT4 should roughly 4x the user capacity.
+1. 改造 KV cache 剖析器，对比 FP16 vs FP8 vs INT4 的 KV cache 量化。对 4K context 的 Llama 3 70B，在 4 张 A100-80GB 上计算每种的最大并发用户数。把 KV 量化到 INT4 应该大约把用户容量翻 4 倍。
 
-2. Extend the continuous batching simulator to track GPU utilization (fraction of batch slots filled per step). Plot utilization over time for both static and continuous batching with 50 requests whose output lengths follow a Pareto distribution (shape=1.5, scale=20). Continuous batching should maintain >80% utilization.
+2. 扩展连续批处理模拟器以跟踪 GPU 利用率（每步填满的 batch 槽位比例）。对 50 个输出长度服从帕累托分布（shape=1.5，scale=20）的请求，画出静态和连续批处理随时间的利用率。连续批处理应该维持 >80% 利用率。
 
-3. Implement a grouped-query attention (GQA) version of the KV cache where `num_kv_heads < num_query_heads`. Llama 3 70B uses 64 query heads but only 8 KV heads. Compute the memory savings vs full multi-head attention (8x reduction in KV cache size).
+3. 实现一个分组查询注意力（GQA）版的 KV cache，其中 `num_kv_heads < num_query_heads`。Llama 3 70B 用 64 个 query 头但只有 8 个 KV 头。计算相比全多头注意力的内存节省（KV cache 大小减到 1/8）。
 
-4. Build a prefix cache that uses LRU eviction. Set max_entries to 500 and generate 1,000 requests where 60% share one of 5 common prefixes. Measure hit rate and compare to unlimited cache. With good eviction, hit rate should stay above 55%.
+4. 构建一个用 LRU 淘汰的 prefix 缓存。把 max_entries 设为 500，生成 1,000 个请求，其中 60% 共享 5 个常见前缀之一。测量命中率，和无限缓存对比。淘汰策略好的话，命中率应该保持在 55% 以上。
 
-5. Extend the speculative decoding simulator to implement tree-based speculation (EAGLE-2 style). Instead of a single chain of K draft tokens, generate a tree of candidates (e.g., 2 branches at each of 3 levels = 8 leaf candidates). Compare total tokens accepted per verification round vs linear speculation.
+5. 扩展推测解码模拟器以实现基于树的推测（EAGLE-2 风格）。不是单链 K 个 draft token，而是生成一棵候选树（比如 3 层每层 2 个分支 = 8 个叶子候选）。把每轮验证接受的总 token 数和线性推测对比。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 人们怎么说 | 它实际是什么 |
 |------|----------------|----------------------|
-| Prefill | "Processing the prompt" | Computing attention over all input tokens in parallel -- compute-bound because the full matrix multiplication keeps GPU cores busy |
-| Decode | "Generating tokens" | Producing one token per forward pass, reading the full model weights each time -- memory-bound because compute finishes before the next weights arrive |
-| KV cache | "Caching attention states" | Storing the key and value projections for all previous tokens so they are not recomputed at each decode step -- trades memory for compute |
-| Continuous batching | "Dynamic batching" | Inserting new requests into the running batch as soon as any request finishes, evaluated at every decode iteration rather than waiting for the whole batch |
-| PagedAttention | "Virtual memory for KV cache" | Allocating KV cache in fixed-size pages instead of contiguous blocks, eliminating memory fragmentation and enabling copy-on-write for shared prefixes |
-| Speculative decoding | "Draft and verify" | Using a fast draft model to propose multiple tokens, then verifying them all in one target model forward pass -- mathematically exact, 2-3x speedup |
-| EAGLE | "Self-speculative decoding" | A speculative decoding variant that trains a lightweight head on the target model's own hidden states, achieving higher acceptance rates than a separate draft model |
-| Prefix caching | "Reusing system prompt KV" | Storing computed KV cache entries for common prefixes (system prompts, few-shot examples) and reusing them across requests to skip redundant prefill |
-| Ops:byte ratio | "Arithmetic intensity" | The ratio of compute operations to memory bytes read -- determines whether a workload is compute-bound (high ratio) or memory-bound (low ratio) |
-| Time to first token | "TTFT" | Latency from receiving a request to producing the first output token -- dominated by prefill time for long prompts |
+| Prefill | "处理 prompt" | 在所有输入 token 上并行计算注意力——计算受限，因为完整的矩阵乘法让 GPU 核心忙碌 |
+| Decode | "生成 token" | 每次前向传播产出一个 token，每次都读全部模型权重——内存受限，因为计算在下一批权重到来前就完成了 |
+| KV cache | "缓存注意力状态" | 存下之前所有 token 的 key 和 value 投影，这样每个 decode 步骤不用重算——用内存换计算 |
+| 连续批处理 | "动态批处理" | 只要任何请求完成就把新请求插入运行中的批次，在每个 decode 迭代评估，而不是等整批 |
+| PagedAttention | "KV cache 的虚拟内存" | 把 KV cache 分配成固定大小的页而非连续块，消除内存碎片并为共享前缀启用 copy-on-write |
+| 推测解码 | "起草并验证" | 用一个快的 draft 模型提议多个 token，然后在一次 target 模型前向传播里全部验证——数学精确，2-3 倍加速 |
+| EAGLE | "自推测解码" | 一种推测解码变体，在 target 模型自己的隐藏状态上训练一个轻量头，比单独的 draft 模型实现更高的接受率 |
+| Prefix 缓存 | "复用 system prompt 的 KV" | 为常见前缀（system prompt、few-shot 例子）存下计算好的 KV cache 条目并跨请求复用，跳过冗余 prefill |
+| Ops:byte 比率 | "算术强度" | 计算操作数与从内存读取字节数之比——决定一个工作负载是计算受限（高比率）还是内存受限（低比率） |
+| 首 token 时间 | "TTFT" | 从收到请求到产出第一个输出 token 的延迟——对长 prompt 而言由 prefill 时间主导 |
 
-## Further Reading
+## 延伸阅读
 
-- Kwon et al., "Efficient Memory Management for Large Language Model Serving with PagedAttention" (2023) -- the vLLM paper that introduced paged KV cache management, now the industry standard for inference serving
-- Leviathan et al., "Fast Inference from Transformers via Speculative Decoding" (2023) -- the foundational paper proving that draft-verify speculation produces exact target model distributions while achieving 2-3x speedup
-- Li et al., "EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty" (2024) -- achieves higher acceptance rates by training a head on the target model's own features instead of using a separate draft model
-- Zheng et al., "SGLang: Efficient Execution of Structured Language Model Programs" (2024) -- introduces RadixAttention for prefix caching and a programming model for multi-call LLM programs
-- Williams et al., "Roofline: An Insightful Visual Performance Model for Multicore Architectures" (2009) -- the original roofline paper that formalized the ops:byte framework for reasoning about compute vs memory bottlenecks
+- Kwon et al., "Efficient Memory Management for Large Language Model Serving with PagedAttention" (2023) —— 引入分页 KV cache 管理的 vLLM 论文，现已成为推理服务的行业标准
+- Leviathan et al., "Fast Inference from Transformers via Speculative Decoding" (2023) —— 证明 draft-verify 推测产出精确 target 模型分布、同时实现 2-3 倍加速的奠基性论文
+- Li et al., "EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty" (2024) —— 通过在 target 模型自己的特征上训练一个头而非用单独的 draft 模型，实现更高的接受率
+- Zheng et al., "SGLang: Efficient Execution of Structured Language Model Programs" (2024) —— 引入用于 prefix 缓存的 RadixAttention 和一种用于多次调用 LLM 程序的编程模型
+- Williams et al., "Roofline: An Insightful Visual Performance Model for Multicore Architectures" (2009) —— 原始的 roofline 论文，形式化了用于推断计算 vs 内存瓶颈的 ops:byte 框架

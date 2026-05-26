@@ -140,7 +140,7 @@ if torch.cuda.is_available():
 python phases/00-setup-and-tooling/01-dev-environment/code/verify.py
 ```
 
-## 如何使用
+## 上手使用
 
 你的环境现在已经为本课程的每一节课准备就绪。下面是各部分的用途：
 
@@ -151,7 +151,7 @@ python phases/00-setup-and-tooling/01-dev-environment/code/verify.py
 | Rust | 阶段 12、15-17（性能关键系统） | cargo |
 | Julia | 阶段 1（数学基础） | Pkg |
 
-## 交付成果
+## 交付
 
 本节课产出一个验证脚本，任何人都可以运行它来检查自己的配置。
 

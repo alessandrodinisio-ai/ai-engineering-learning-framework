@@ -1,46 +1,46 @@
-# Convolutions from Scratch
+# 从零实现卷积
 
-> A convolution is a tiny dense layer you slide across an image, sharing the same weights at every location.
+> 卷积就是一个小小的全连接层，你把它在图像上滑动，每个位置都共享同一套权重。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 3 (Deep Learning Core), Phase 4 Lesson 01 (Image Fundamentals)
-**Time:** ~75 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 阶段 3（深度学习核心）、阶段 4 第 01 课（图像基础）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Implement 2D convolution from scratch using only NumPy, including the nested-loop version and a vectorised `im2col` version
-- Compute output spatial size for any combination of input size, kernel size, padding, and stride, and justify the `(H - K + 2P) / S + 1` formula
-- Hand-design kernels (edge, blur, sharpen, Sobel) and explain why each one produces the pattern of activations it does
-- Stack convolutions into a feature extractor and connect the depth-of-the-stack to the size of the receptive field
+- 只用 NumPy 从零实现 2D 卷积，包括嵌套循环版本和向量化的 `im2col` 版本
+- 对任意输入尺寸、核大小、padding、stride 的组合，算出输出空间尺寸，并讲清 `(H - K + 2P) / S + 1` 这个公式的来由
+- 手工设计核（边缘、模糊、锐化、Sobel），解释每个核为什么会产生那样的激活模式
+- 把卷积堆成一个特征提取器，把堆叠的深度和感受野的大小联系起来
 
-## The Problem
+## 问题所在
 
-A fully connected layer on a 224x224 RGB image would need 224 * 224 * 3 = 150,528 input weights per neuron. A single hidden layer with 1,000 units is already 150 million parameters — before you have learnt anything useful. Worse, that layer has no notion that a dog in the top-left and a dog in the bottom-right are the same pattern. It treats every pixel position as independent, which is exactly wrong for images: translating a cat by three pixels should not force the network to relearn the concept.
+对一张 224x224 的 RGB 图像，一个全连接层每个神经元需要 224 * 224 * 3 = 150,528 个输入权重。光是一个 1,000 个单元的隐藏层就已经是 1.5 亿参数——而你还什么有用的东西都没学到。更糟的是，那个层根本不知道左上角的狗和右下角的狗是同一个模式。它把每个像素位置都当成独立的，这对图像来说恰恰是错的：把一只猫平移三个像素，不应该逼着网络重新学习这个概念。
 
-The two properties an image model needs are **translation equivariance** (the output shifts when the input shifts) and **parameter sharing** (the same feature detector runs everywhere). Dense layers give you neither. Convolution gives you both for free.
+图像模型需要的两个性质是**平移等变性**（输入移动时输出跟着移动）和**参数共享**（同一个特征检测器到处跑）。全连接层一个都给不了你。卷积把两个都白送给你。
 
-Convolution was not invented for deep learning. It is the same operation that powers JPEG compression, Gaussian blur in Photoshop, edge detection in industrial vision, and every audio filter ever shipped. The reason CNNs dominated ImageNet from 2012 to 2020 is that convolution is the correct prior for data where nearby values are related and the same pattern can appear anywhere.
+卷积不是为深度学习发明的。同样这个运算，撑起了 JPEG 压缩、Photoshop 里的高斯模糊、工业视觉里的边缘检测，以及历史上发布过的每一个音频滤波器。CNN 之所以从 2012 到 2020 称霸 ImageNet，是因为对于"相邻值彼此相关、同一模式可能出现在任何地方"的数据，卷积是正确的先验。
 
-## The Concept
+## 核心概念
 
-### One kernel, sliding
+### 一个核，滑动起来
 
-A 2D convolution takes a small weight matrix called the kernel (or filter), slides it across the input, and at each location computes the sum of element-wise products. That sum becomes one output pixel.
+2D 卷积拿一个叫做核（kernel，或称 filter）的小权重矩阵，在输入上滑动，每个位置计算逐元素乘积之和。这个和就是一个输出像素。
 
 ```mermaid
 flowchart LR
-    subgraph IN["Input (H x W)"]
+    subgraph IN["输入 (H x W)"]
         direction LR
-        I1["5 x 5 image"]
+        I1["5 x 5 图像"]
     end
-    subgraph K["Kernel (3 x 3)"]
-        K1["learned<br/>weights"]
+    subgraph K["核 (3 x 3)"]
+        K1["学到的<br/>权重"]
     end
-    subgraph OUT["Output (H-2 x W-2)"]
-        O1["3 x 3 map"]
+    subgraph OUT["输出 (H-2 x W-2)"]
+        O1["3 x 3 图"]
     end
-    I1 --> |"slide kernel<br/>compute dot product<br/>at each position"| O1
+    I1 --> |"滑动核<br/>在每个位置<br/>计算点积"| O1
     K1 --> O1
 
     style IN fill:#dbeafe,stroke:#2563eb
@@ -48,10 +48,10 @@ flowchart LR
     style OUT fill:#dcfce7,stroke:#16a34a
 ```
 
-A concrete 3x3 example on a 5x5 input (no padding, stride 1):
+在 5x5 输入上做 3x3 卷积的一个具体例子（无 padding，stride 1）：
 
 ```
-Input X (5 x 5):                Kernel W (3 x 3):
+输入 X (5 x 5)：               核 W (3 x 3)：
 
   1  2  0  1  2                   1  0 -1
   0  1  3  1  0                   2  0 -2
@@ -59,132 +59,132 @@ Input X (5 x 5):                Kernel W (3 x 3):
   1  0  2  1  3
   2  1  1  0  1
 
-The kernel slides across every valid 3 x 3 window. Output Y is 3 x 3:
+核在每个有效的 3 x 3 窗口上滑动。输出 Y 是 3 x 3：
 
  Y[0,0] = sum( W * X[0:3, 0:3] )
  Y[0,1] = sum( W * X[0:3, 1:4] )
  Y[0,2] = sum( W * X[0:3, 2:5] )
  Y[1,0] = sum( W * X[1:4, 0:3] )
- ... and so on
+ ... 以此类推
 ```
 
-That one formula — **shared weights, locality, sliding window** — is the entire idea. Everything else is bookkeeping.
+那一个公式——**共享权重、局部性、滑动窗口**——就是全部思想。其余都是记账。
 
-### Output size formula
+### 输出尺寸公式
 
-Given input spatial size `H`, kernel size `K`, padding `P`, stride `S`:
+给定输入空间尺寸 `H`、核大小 `K`、padding `P`、stride `S`：
 
 ```
 H_out = floor( (H - K + 2P) / S ) + 1
 ```
 
-Memorise this. You will compute it dozens of times per architecture.
+记住它。每设计一个架构，你都要算上几十遍。
 
-| Scenario | H | K | P | S | H_out |
+| 场景 | H | K | P | S | H_out |
 |----------|---|---|---|---|-------|
-| Valid conv, no padding | 32 | 3 | 0 | 1 | 30 |
-| Same conv (preserves size) | 32 | 3 | 1 | 1 | 32 |
-| Downsample by 2 | 32 | 3 | 1 | 2 | 16 |
-| Pool 2x2 | 32 | 2 | 0 | 2 | 16 |
-| Large receptive field | 32 | 7 | 3 | 2 | 16 |
+| Valid 卷积，无 padding | 32 | 3 | 0 | 1 | 30 |
+| Same 卷积（保持尺寸） | 32 | 3 | 1 | 1 | 32 |
+| 下采样 2 倍 | 32 | 3 | 1 | 2 | 16 |
+| 2x2 池化 | 32 | 2 | 0 | 2 | 16 |
+| 大感受野 | 32 | 7 | 3 | 2 | 16 |
 
-"Same padding" means pick P so that H_out == H when S == 1. For odd K, that is P = (K - 1) / 2. That is why 3x3 kernels dominate — they are the smallest odd kernel that still has a centre.
+"Same padding"意思是选一个 P，使得当 S == 1 时 H_out == H。对奇数 K，那就是 P = (K - 1) / 2。这就是 3x3 核称霸的原因——它是仍然有中心的最小奇数核。
 
 ### Padding
 
-Without padding, every convolution shrinks the feature map. Stack 20 of them and your 224x224 image becomes 184x184, which wastes compute on the border and complicates residual connections that need matching shapes.
+不加 padding，每次卷积都会让特征图缩水。堆 20 个，你的 224x224 图像就变成 184x184，这在边界上浪费算力，还让需要形状匹配的残差连接变复杂。
 
 ```
-Zero padding (P = 1) on a 5 x 5 input:
+对 5 x 5 输入做零填充 (P = 1)：
 
   0  0  0  0  0  0  0
   0  1  2  0  1  2  0
   0  0  1  3  1  0  0
-  0  2  1  0  2  1  0       Now the kernel can centre on pixel
-  0  1  0  2  1  3  0       (0, 0) and still have three rows and
-  0  2  1  1  0  1  0       three columns of values to multiply.
+  0  2  1  0  2  1  0       现在核可以中心对准像素 (0, 0)，
+  0  1  0  2  1  3  0       仍然有三行三列的值可以相乘。
+  0  2  1  1  0  1  0
   0  0  0  0  0  0  0
 ```
 
-Modes you meet in practice: `zero` (most common), `reflect` (mirror the edge, avoids hard borders in generative models), `replicate` (copy the edge), `circular` (wrap around, used in toroidal problems).
+实践中你会遇到的模式：`zero`（最常见）、`reflect`（镜像边缘，在生成模型里避免硬边界）、`replicate`（复制边缘）、`circular`（环绕，用于环面问题）。
 
 ### Stride
 
-Stride is the step size of the slide. `stride=1` is the default. `stride=2` halves the spatial dimensions and is the classic way to downsample inside a CNN without a separate pooling layer — every modern architecture (ResNet, ConvNeXt, MobileNet) uses strided convs in place of max-pool somewhere.
+stride 是滑动的步长。`stride=1` 是默认。`stride=2` 把空间维度减半，是在 CNN 内部不另设池化层就做下采样的经典办法——每个现代架构（ResNet、ConvNeXt、MobileNet）都在某处用带 stride 的卷积代替了 max-pool。
 
 ```
-Stride 1 on a 5 x 5 input, 3 x 3 kernel:
+在 5 x 5 输入上 stride 1，3 x 3 核：
 
-  starts: (0,0) (0,1) (0,2)        -> output row 0
-          (1,0) (1,1) (1,2)        -> output row 1
-          (2,0) (2,1) (2,2)        -> output row 2
+  起点: (0,0) (0,1) (0,2)        -> 输出第 0 行
+        (1,0) (1,1) (1,2)        -> 输出第 1 行
+        (2,0) (2,1) (2,2)        -> 输出第 2 行
 
-  Output: 3 x 3
+  输出: 3 x 3
 
-Stride 2 on the same input:
+同一输入上 stride 2：
 
-  starts: (0,0) (0,2)              -> output row 0
-          (2,0) (2,2)              -> output row 1
+  起点: (0,0) (0,2)              -> 输出第 0 行
+        (2,0) (2,2)              -> 输出第 1 行
 
-  Output: 2 x 2
+  输出: 2 x 2
 ```
 
-### Multiple input channels
+### 多个输入通道
 
-Real images have three channels. A 3x3 convolution on an RGB input is actually a 3x3x3 volume: one 3x3 slice per input channel. At each spatial position, you multiply and sum across all three slices and add a bias.
+真实图像有三个通道。RGB 输入上的 3x3 卷积，实际是一个 3x3x3 的体：每个输入通道一个 3x3 切片。每个空间位置上，你在全部三个切片上相乘求和，再加一个 bias。
 
 ```
-Input:   (C_in,  H,  W)        3 x 5 x 5
-Kernel:  (C_in,  K,  K)        3 x 3 x 3 (one kernel)
-Output:  (1,     H', W')       2D map
+输入:   (C_in,  H,  W)        3 x 5 x 5
+核:     (C_in,  K,  K)        3 x 3 x 3 (一个核)
+输出:   (1,     H', W')       2D 图
 
-For a layer that produces C_out output channels, you stack C_out kernels:
+要产生 C_out 个输出通道的层，你堆叠 C_out 个核：
 
-Weight:  (C_out, C_in, K, K)   e.g. 64 x 3 x 3 x 3
-Output:  (C_out, H', W')       64 x 3 x 3
+权重:   (C_out, C_in, K, K)   例如 64 x 3 x 3 x 3
+输出:   (C_out, H', W')       64 x 3 x 3
 
-Parameter count: C_out * C_in * K * K + C_out   (the + C_out is biases)
+参数量: C_out * C_in * K * K + C_out   (+ C_out 是 bias)
 ```
 
-That last line is the one you will calculate when planning a model. A 64-channel 3x3 conv on a 3-channel input has `64 * 3 * 3 * 3 + 64 = 1,792` parameters. Cheap.
+最后那行就是你规划模型时要算的。3 通道输入上的 64 通道 3x3 卷积，有 `64 * 3 * 3 * 3 + 64 = 1,792` 个参数。很便宜。
 
-### The im2col trick
+### im2col 技巧
 
-Nested loops are easy to read but slow. GPUs want big matrix multiplies. The trick: flatten every receptive-field window of the input into one column of a big matrix, flatten the kernel into a row, and the whole convolution becomes a single matmul.
+嵌套循环容易读但慢。GPU 想要大矩阵乘法。技巧是：把输入的每个感受野窗口展平成一个大矩阵的一列，把核展平成一行，整个卷积就变成一次 matmul。
 
 ```mermaid
 flowchart LR
-    X["Input<br/>(C_in, H, W)"] --> IM2COL["im2col<br/>(extract patches)"]
-    IM2COL --> COLS["Cols matrix<br/>(C_in * K * K, H_out * W_out)"]
-    W["Weight<br/>(C_out, C_in, K, K)"] --> FLAT["Flatten<br/>(C_out, C_in * K * K)"]
+    X["输入<br/>(C_in, H, W)"] --> IM2COL["im2col<br/>(抽取 patch)"]
+    IM2COL --> COLS["列矩阵<br/>(C_in * K * K, H_out * W_out)"]
+    W["权重<br/>(C_out, C_in, K, K)"] --> FLAT["展平<br/>(C_out, C_in * K * K)"]
     FLAT --> MM["matmul"]
     COLS --> MM
-    MM --> OUT["Output<br/>(C_out, H_out * W_out)<br/>reshape to (C_out, H_out, W_out)"]
+    MM --> OUT["输出<br/>(C_out, H_out * W_out)<br/>reshape 成 (C_out, H_out, W_out)"]
 
     style X fill:#dbeafe,stroke:#2563eb
     style W fill:#fef3c7,stroke:#d97706
     style OUT fill:#dcfce7,stroke:#16a34a
 ```
 
-Every production conv implementation is some variant of this plus cache-tiling tricks (direct conv, Winograd, FFT conv for large kernels). Understand im2col and you understand the core.
+每个生产级卷积实现都是这个加上缓存分块技巧的某种变体（直接卷积、Winograd、大核用 FFT 卷积）。理解了 im2col，你就理解了核心。
 
-### Receptive field
+### 感受野
 
-A single 3x3 conv looks at 9 input pixels. Stack two 3x3 convs and a neuron in the second layer looks at 5x5 input pixels. Three 3x3 convs give 7x7. In general:
+一个 3x3 卷积看 9 个输入像素。堆两个 3x3 卷积，第二层的一个神经元看 5x5 个输入像素。三个 3x3 卷积给出 7x7。一般地：
 
 ```
-RF after L stacked K x K convs (stride 1) = 1 + L * (K - 1)
+L 个堆叠的 K x K 卷积（stride 1）之后的 RF = 1 + L * (K - 1)
 
-With strides:   RF grows multiplicatively with stride along each layer.
+带 stride 时：   RF 沿每一层随 stride 成倍增长。
 ```
 
-The entire reason "3x3 all the way down" works (VGG, ResNet, ConvNeXt) is that two 3x3 convs see the same input area as one 5x5 conv but with fewer parameters and an extra non-linearity in between.
+"一路 3x3 到底"（VGG、ResNet、ConvNeXt）能成立的全部原因是：两个 3x3 卷积看到的输入面积和一个 5x5 卷积相同，但参数更少，而且中间多了一个非线性。
 
-## Build It
+## 动手构建
 
-### Step 1: Pad an array
+### 第 1 步：给数组做 padding
 
-Start with the smallest primitive: a function that pads with zeros around an H x W array.
+从最小的原语开始：一个在 H x W 数组周围补零的函数。
 
 ```python
 import numpy as np
@@ -203,11 +203,11 @@ print()
 print(pad2d(x, 1))
 ```
 
-The trailing-axes trick `x.shape[:-2]` means the same function works on `(H, W)`, `(C, H, W)`, or `(N, C, H, W)` without modification.
+尾部轴的技巧 `x.shape[:-2]` 意味着同一个函数无需改动就能作用于 `(H, W)`、`(C, H, W)` 或 `(N, C, H, W)`。
 
-### Step 2: 2D convolution with nested loops
+### 第 2 步：用嵌套循环做 2D 卷积
 
-The reference implementation — slow, but unambiguous. This is what `torch.nn.functional.conv2d` does in principle.
+参考实现——慢，但毫不含糊。这就是 `torch.nn.functional.conv2d` 在原理上做的事。
 
 ```python
 def conv2d_naive(x, w, b=None, stride=1, padding=0):
@@ -232,11 +232,11 @@ def conv2d_naive(x, w, b=None, stride=1, padding=0):
     return out
 ```
 
-Four nested loops (output channel, row, column, plus the implicit sum over C_in, kh, kw). This is the ground truth you will check every faster implementation against.
+四层嵌套循环（输出通道、行、列，加上对 C_in、kh、kw 的隐式求和）。这就是你拿来校验每个更快实现的真值。
 
-### Step 3: Verify with a hand-designed kernel
+### 第 3 步：用手工设计的核验证
 
-Build a vertical Sobel kernel, apply it to a synthetic step image, and watch the vertical edge light up.
+构造一个竖直 Sobel 核，作用到一张合成的阶跃图像上，看竖直边缘亮起来。
 
 ```python
 def synthetic_step_image():
@@ -255,11 +255,11 @@ y = conv2d_naive(x, sobel_x, padding=1)
 print(y[0].round(1))
 ```
 
-Expect large positive values on column 7 (left-to-right brightness increase) and zeros everywhere else. That single print is your sanity check that the math is right.
+第 7 列（从左到右亮度上升）应出现较大的正值，其余处处为零。那一行打印就是你检验数学是否正确的合理性检查。
 
-### Step 4: im2col
+### 第 4 步：im2col
 
-Convert every kernel-sized window in the input into a column of a matrix. For `C_in=3, K=3`, each column is 27 numbers.
+把输入里每个核大小的窗口转成矩阵的一列。对 `C_in=3, K=3`，每列是 27 个数。
 
 ```python
 def im2col(x, kh, kw, stride=1, padding=0):
@@ -280,11 +280,11 @@ def im2col(x, kh, kw, stride=1, padding=0):
     return cols, h_out, w_out
 ```
 
-It is still a Python loop, but now the heavy lifting will be a single vectorised matmul.
+它还是个 Python 循环，但现在重活会落到一次向量化的 matmul 上。
 
-### Step 5: Fast conv via im2col + matmul
+### 第 5 步：用 im2col + matmul 做快速卷积
 
-Replace the quadruple loop with one matrix multiplication.
+用一次矩阵乘法取代四层循环。
 
 ```python
 def conv2d_im2col(x, w, b=None, stride=1, padding=0):
@@ -297,7 +297,7 @@ def conv2d_im2col(x, w, b=None, stride=1, padding=0):
     return out.reshape(c_out, h_out, w_out)
 ```
 
-Correctness check: run both implementations and compare.
+正确性检查：跑两个实现并对比。
 
 ```python
 rng = np.random.default_rng(0)
@@ -311,11 +311,11 @@ y_im2col = conv2d_im2col(x, w, b, padding=1)
 print(f"max abs diff: {np.max(np.abs(y_naive - y_im2col)):.2e}")
 ```
 
-`max abs diff` should be around `1e-5` — the difference is floating-point accumulation order, not a bug.
+`max abs diff` 应在 `1e-5` 左右——差异来自浮点累加顺序，不是 bug。
 
-### Step 6: A bank of hand-designed kernels
+### 第 6 步：一组手工设计的核
 
-Five filters that show what a single conv layer can express before any training.
+五个滤波器，展示一个卷积层在任何训练之前能表达什么。
 
 ```python
 KERNELS = {
@@ -332,11 +332,11 @@ def apply_kernel(img2d, kernel):
     return conv2d_im2col(x, w, padding=1)[0]
 ```
 
-Applied to any grayscale image, blur softens, sharpen crisps up edges, Sobel-x lights up vertical edges, Sobel-y lights up horizontal edges. These are exactly the patterns that the *first* trained conv layer in AlexNet and VGG ended up learning — because a good image model needs edge and blob detectors no matter what task comes later.
+作用于任意灰度图像：blur 让它变柔，sharpen 让边缘更利落，Sobel-x 点亮竖直边缘，Sobel-y 点亮水平边缘。这些恰恰是 AlexNet 和 VGG 里*第一个*训练好的卷积层最终学到的模式——因为不管后面是什么任务，一个好的图像模型都需要边缘和斑点检测器。
 
-## Use It
+## 上手使用
 
-PyTorch's `nn.Conv2d` wraps the same operation with autograd, CUDA kernels, and cuDNN optimisation. Shape semantics are identical.
+PyTorch 的 `nn.Conv2d` 把同样的运算包了起来，配上 autograd、CUDA kernel 和 cuDNN 优化。形状语义完全一致。
 
 ```python
 import torch
@@ -354,37 +354,37 @@ print(f"\ninput  shape: {tuple(x.shape)}")
 print(f"output shape: {tuple(y.shape)}")
 ```
 
-Swap `padding=1` for `padding=0` and the output drops to 222x222. Swap `stride=1` for `stride=2` and it drops to 112x112. Same formula you memorised above.
+把 `padding=1` 换成 `padding=0`，输出降到 222x222。把 `stride=1` 换成 `stride=2`，降到 112x112。还是你上面记住的那个公式。
 
-## Ship It
+## 交付
 
-This lesson produces:
+这一课产出：
 
-- `outputs/prompt-cnn-architect.md` — a prompt that, given input size, parameter budget, and target receptive field, designs a stack of `Conv2d` layers with the right K/S/P at every step.
-- `outputs/skill-conv-shape-calculator.md` — a skill that walks a network spec layer by layer and returns the output shape, receptive field, and parameter count for every block.
+- `outputs/prompt-cnn-architect.md` —— 一个 prompt，给定输入尺寸、参数预算和目标感受野，设计出一摞 `Conv2d` 层，每一步的 K/S/P 都对。
+- `outputs/skill-conv-shape-calculator.md` —— 一个 skill，逐层遍历一个网络规格，返回每个块的输出形状、感受野和参数量。
 
-## Exercises
+## 练习
 
-1. **(Easy)** Given a 128x128 grayscale input and a stack of `[Conv3x3(s=1,p=1), Conv3x3(s=2,p=1), Conv3x3(s=1,p=1), Conv3x3(s=2,p=1)]`, compute the output spatial size and the receptive field at each layer by hand. Verify with a PyTorch `nn.Sequential` of dummy convs.
-2. **(Medium)** Extend `conv2d_naive` and `conv2d_im2col` to accept a `groups` argument. Show that `groups=C_in=C_out` reproduces a depthwise convolution and that its parameter count is `C * K * K` instead of `C * C * K * K`.
-3. **(Hard)** Implement the backward pass of `conv2d_im2col` by hand: given the gradient of the output, compute the gradient of `x` and `w`. Verify against `torch.autograd.grad` on the same inputs and weights. The trick: the gradient of im2col is `col2im`, and it has to accumulate overlapping windows.
+1. **（简单）** 给定一个 128x128 的灰度输入和一摞 `[Conv3x3(s=1,p=1), Conv3x3(s=2,p=1), Conv3x3(s=1,p=1), Conv3x3(s=2,p=1)]`，手算每一层的输出空间尺寸和感受野。用一个 PyTorch `nn.Sequential` 的占位卷积来验证。
+2. **（中等）** 扩展 `conv2d_naive` 和 `conv2d_im2col`，让它们接受一个 `groups` 参数。证明 `groups=C_in=C_out` 复现了深度可分卷积（depthwise convolution），且它的参数量是 `C * K * K` 而非 `C * C * K * K`。
+3. **（困难）** 手写 `conv2d_im2col` 的反向传播：给定输出的梯度，算出 `x` 和 `w` 的梯度。在同样的输入和权重上，用 `torch.autograd.grad` 验证。技巧：im2col 的梯度是 `col2im`，它必须把重叠的窗口累加起来。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|----------------------|
-| Convolution | "Sliding a filter" | A learnable dot product applied at every spatial location with shared weights; mathematically a cross-correlation, but everyone calls it convolution |
-| Kernel / filter | "The feature detector" | A small weight tensor of shape (C_in, K, K) whose dot product with a window of input produces one output pixel |
-| Stride | "How far you jump" | The step size between consecutive kernel placements; stride 2 halves each spatial dimension |
-| Padding | "Zeros on the edges" | Extra values added around the input so the kernel can centre on border pixels; `same` padding keeps output size equal to input size |
-| Receptive field | "How much the neuron sees" | The patch of original input that a given output activation depends on, growing with depth and stride |
-| im2col | "The GEMM trick" | Rearranging every receptive window into columns so convolution becomes one big matrix multiply — the core of every fast conv kernel |
-| Depthwise conv | "One kernel per channel" | A conv with `groups == C_in`, computing each output channel from only its matching input channel; the backbone of MobileNet and ConvNeXt |
-| Translation equivariance | "Shift in, shift out" | Property that shifting the input by k pixels shifts the output by k pixels; comes for free with shared weights |
+| 卷积 | "滑动一个滤波器" | 在每个空间位置以共享权重做的一次可学习点积；数学上是互相关，但所有人都叫它卷积 |
+| 核 / 滤波器 | "特征检测器" | 形状为 (C_in, K, K) 的小权重张量，它与一个输入窗口的点积产生一个输出像素 |
+| Stride | "你跳多远" | 相邻核位置之间的步长；stride 2 把每个空间维度减半 |
+| Padding | "边缘上的零" | 在输入周围补上的额外值，让核能中心对准边界像素；`same` padding 保持输出尺寸等于输入尺寸 |
+| 感受野 | "神经元看到多少" | 某个输出激活所依赖的那块原始输入，随深度和 stride 增长 |
+| im2col | "GEMM 技巧" | 把每个感受窗口重排成列，使卷积变成一次大矩阵乘法——每个快速卷积 kernel 的核心 |
+| 深度可分卷积 | "每通道一个核" | `groups == C_in` 的卷积，每个输出通道只从它对应的输入通道算出；MobileNet 和 ConvNeXt 的骨干 |
+| 平移等变性 | "进去移，出来也移" | 输入平移 k 个像素，输出也平移 k 个像素的性质；共享权重白送给你 |
 
-## Further Reading
+## 延伸阅读
 
-- [A guide to convolution arithmetic for deep learning (Dumoulin & Visin, 2016)](https://arxiv.org/abs/1603.07285) — the definitive diagrams of padding/stride/dilation that every course quietly copies
-- [CS231n: Convolutional Neural Networks for Visual Recognition](https://cs231n.github.io/convolutional-networks/) — the canonical lecture notes, including the original im2col explanation
-- [The Annotated ConvNet (fast.ai)](https://nbviewer.org/github/fastai/fastbook/blob/master/13_convolutions.ipynb) — a notebook that walks from manual convolution to a trained digit classifier
-- [Receptive Field Arithmetic for CNNs (Dang Ha The Hien)](https://distill.pub/2019/computing-receptive-fields/) — the paper-quality interactive explainer of receptive field calculations
+- [A guide to convolution arithmetic for deep learning (Dumoulin & Visin, 2016)](https://arxiv.org/abs/1603.07285) —— 关于 padding/stride/dilation 的权威图示，每门课都在悄悄照抄
+- [CS231n: Convolutional Neural Networks for Visual Recognition](https://cs231n.github.io/convolutional-networks/) —— 经典讲义，包含最初的 im2col 讲解
+- [The Annotated ConvNet (fast.ai)](https://nbviewer.org/github/fastai/fastbook/blob/master/13_convolutions.ipynb) —— 一个从手动卷积一路走到训练好的数字分类器的 notebook
+- [Receptive Field Arithmetic for CNNs (Dang Ha The Hien)](https://distill.pub/2019/computing-receptive-fields/) —— 论文质量的交互式讲解，讲感受野计算

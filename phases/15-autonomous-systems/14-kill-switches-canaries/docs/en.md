@@ -1,122 +1,122 @@
-# Kill Switches, Circuit Breakers, and Canary Tokens
+# 急停开关、断路器与金丝雀 token
 
-> A kill switch is a boolean held outside the agent's edit surface — a Redis key, a feature flag, a signed config — that disables the agent entirely. A circuit breaker is finer-grained: it trips on a specific pattern (five identical tool calls in a row), pauses the offending path, and escalates to a human. A canary token inherits from classical deception: a fake credential or honeypot record an agent has no legitimate reason to touch, whose access triggers an alert. eBPF-based datapaths (e.g. Cilium) can rewrite a quarantined pod's egress to a forensic honeypot at the kernel layer; published Cilium benchmarks report sub-millisecond P99 datapath latency under load (your propagation budget depends on how a policy update reaches the node, not the datapath itself). Statistical detectors (EWMA, CUSUM) that adapt to a moving baseline will quietly accept drift — layer them with hard constitutional limits that do not bend.
+> 急停开关是一个握在 agent 编辑面之外的布尔值——一个 Redis 键、一个 feature flag、一份签名配置——它把 agent 整个禁用。断路器更细粒度：它在一个特定模式（连着五次相同的工具调用）上跳闸，暂停违规的路径，并升级给人。金丝雀 token 继承自经典欺骗：一个 agent 没有正当理由去碰的假凭证或蜜罐记录，对它的访问会触发告警。基于 eBPF 的数据路径（比如 Cilium）能在内核层把一个被隔离 pod 的出站流量改写到一个取证蜜罐；已发表的 Cilium 基准报告负载下亚毫秒级的 P99 数据路径延迟（你的传播预算取决于一次策略更新如何到达节点，而不是数据路径本身）。会自适应一条移动基线的统计检测器（EWMA、CUSUM）会悄悄接受漂移——把它们跟不弯折的硬章程限制叠在一起。
 
-**Type:** Learn
-**Languages:** Python (stdlib, three-detector simulator: kill switch, circuit breaker, canary)
-**Prerequisites:** Phase 15 · 13 (Cost governors), Phase 15 · 10 (Permission modes)
-**Time:** ~60 minutes
+**类型：** Learn
+**语言：** Python（标准库，三检测器模拟器：急停开关、断路器、金丝雀）
+**前置要求：** 阶段 15 · 13（成本调控器），阶段 15 · 10（权限模式）
+**预计时间：** ~60 分钟
 
-## The Problem
+## 问题所在
 
-Cost governors (Lesson 13) bound what the agent can spend. They do not bound what the agent can do inside the budget. An agent with a $50 velocity limit can still exfiltrate a secret, publish the wrong post, or delete a resource — the expensive action is often the cheap one in tokens.
+成本调控器（第 13 课）约束 agent 能花什么。它们不约束 agent 在预算内能干什么。一个带 $50 速率限制的 agent 仍能外泄一个密钥、发布错误的帖子，或删掉一个资源——昂贵的动作往往就是 token 上便宜的那个。
 
-This lesson covers the three detectors that sit next to the cost layer:
+本课讲坐在成本层旁边的三个检测器：
 
-1. **Kill switch**: boolean off-button held outside the agent's reach.
-2. **Circuit breaker**: action-pattern detector that pauses a specific path.
-3. **Canary token**: bait that an agent with no legitimate reason to touch will reveal itself by touching.
+1. **急停开关**：握在 agent 够不着的地方的布尔关闭按钮。
+2. **断路器**：暂停某条特定路径的动作模式检测器。
+3. **金丝雀 token**：一个没有正当理由去碰的 agent 一旦碰了就暴露自己的诱饵。
 
-All three are pre-LLM engineering. Classical deception, rate-limit breakers, and feature-flag kills predate autonomous agents. What's new is the attack surface: agents read untrusted content (Lesson 11), edit their own memory, and can compose many safe-looking actions into an unsafe one. The detectors named here work because they do not trust the agent's self-report.
+三者都是前 LLM 时代的工程。经典欺骗、限速断路器和 feature-flag 关闭，都早于自主 agent。新的地方在于攻击面：agent 读取不可信内容（第 11 课）、编辑自己的记忆，还能把许多看起来安全的动作组合成一个不安全的。这里点名的检测器之所以管用，是因为它们不信任 agent 的自我汇报。
 
-## The Concept
+## 核心概念
 
-### Kill switches
+### 急停开关
 
-A kill switch is a boolean the agent reads but cannot write. Implementation choices:
+急停开关是一个 agent 能读但不能写的布尔值。实现选择：
 
-- **Feature flag in a managed service.** LaunchDarkly, Statsig, Unleash. Updates propagate in seconds.
-- **Redis key the agent polls.** Simple; requires the agent process to check on every turn.
-- **Signed config in object storage.** Agent verifies a signature on boot; rejects unsigned states.
-- **OS-level signal or container-lifecycle kill.** Docker `kill`, Kubernetes `kubectl delete pod`, systemd stop.
+- **托管服务里的 feature flag。** LaunchDarkly、Statsig、Unleash。更新在几秒内传播。
+- **agent 轮询的 Redis 键。** 简单；要求 agent 进程在每一轮检查。
+- **对象存储里的签名配置。** agent 启动时校验签名；拒绝未签名的状态。
+- **操作系统级信号或容器生命周期 kill。** Docker `kill`、Kubernetes `kubectl delete pod`、systemd stop。
 
-Properties a correct kill switch has:
+一个正确的急停开关具有的属性：
 
-- The agent cannot set it to `off`. (Lives in a system the agent's credentials do not write.)
-- It is checked on every consequential action, not just at startup.
-- When it is off, the agent does nothing externally observable, including logging to systems the agent can reach.
-- Re-enabling it is an explicit human action, not an automatic timeout.
+- agent 无法把它设成 `off`。（活在一个 agent 凭证写不动的系统里。）
+- 它在每个有后果的动作上都被检查，不只是启动时。
+- 当它关着时，agent 不做任何外部可观察的事，包括往 agent 能够到的系统里写日志。
+- 重新启用它是一个显式的人类动作，不是一个自动超时。
 
-### Circuit breakers
+### 断路器
 
-A circuit breaker pauses a specific pattern, not the whole agent. Classical shape (from the 2007 Nygard book, still current):
+断路器暂停一个特定模式，而不是整个 agent。经典形态（来自 2007 年 Nygard 的书，至今仍适用）：
 
-- **Closed**: action is allowed.
-- **Open**: action is blocked.
-- **Half-open**: after a cool-down, 1–3 probe attempts are allowed (default 1); success closes the breaker, any remaining failure re-opens it.
+- **关闭（Closed）**：动作被允许。
+- **打开（Open）**：动作被阻断。
+- **半开（Half-open）**：冷却之后，允许 1-3 次探测尝试（默认 1）；成功就让断路器关闭，任何剩余的失败就让它重新打开。
 
-Agent-relevant triggers:
+跟 agent 相关的触发器：
 
-- Five identical tool calls in a row (repetitive loop).
-- Five consecutive failures on the same tool with different inputs (systemic failure).
-- Rate of tool calls above a threshold (Lesson 13 velocity).
-- Specific tool invoked (e.g., `file.delete`) after an out-of-trust content read (Lesson 11).
+- 连着五次相同的工具调用（重复循环）。
+- 同一个工具用不同输入连续五次失败（系统性失败）。
+- 工具调用的速率高于阈值（第 13 课的速率）。
+- 在一次信任之外的内容读取（第 11 课）之后调用了某个特定工具（比如 `file.delete`）。
 
-### Canary tokens
+### 金丝雀 token
 
-Canary tokens (also called honeytokens) are inputs the agent should never touch. Access is the alarm.
+金丝雀 token（也叫 honeytoken）是 agent 永远不该碰的输入。访问即警报。
 
-Examples for agents:
+给 agent 用的例子：
 
-- A fake `AWS_SECRET_ACCESS_KEY` in the environment with no actual privilege. Exfiltration attempts are instantly attributable.
-- A fake database record flagged with a known sentinel value. Any read or update of this record fires an alert.
-- A fake file in the workspace. Reads or edits of this file are suspicious.
-- A fake memory entry injected at session start. If it appears in a later output, memory has been exfiltrated.
+- 环境里一个没有实际权限的假 `AWS_SECRET_ACCESS_KEY`。外泄尝试可以瞬间归因。
+- 一条用已知哨兵值标记的假数据库记录。对这条记录的任何读或更新都触发告警。
+- 工作区里一个假文件。对这个文件的读或编辑可疑。
+- 会话开始时注入的一条假记忆。如果它出现在后面的某个输出里，记忆就被外泄了。
 
-Canary design is specific to the workflow. A canary the agent has a legitimate reason to touch is noise.
+金丝雀的设计是针对具体工作流的。一个 agent 有正当理由去碰的金丝雀就是噪声。
 
-### Why layer statistical and hard limits
+### 为什么把统计限制和硬限制叠在一起
 
-Statistical detectors (EWMA, CUSUM, z-score on tool-call rates) adapt to a moving baseline. That is a feature for legitimate drift and a bug for adversarial drift. A patient attacker can shift the baseline slowly enough that no alarm fires.
+统计检测器（EWMA、CUSUM、工具调用速率的 z-score）自适应一条移动基线。对正当的漂移这是个特性，对对抗性的漂移这是个 bug。一个有耐心的攻击者能把基线移得足够慢，慢到没有任何警报触发。
 
-Hard constitutional limits (Lesson 17) do not bend. "Never email `secrets@`" as a constitutional rule is simpler, auditable, and not gameable by slow drift. The layering pattern: statistical detectors catch most noise, hard limits catch the attack that walked past the detector.
+硬章程限制（第 17 课）不弯折。把"永远不要给 `secrets@` 发邮件"作为一条章程规则更简单、可审计，且无法被缓慢漂移钻空子。叠加的模式是：统计检测器抓住大部分噪声，硬限制抓住那个从检测器旁边溜过去的攻击。
 
-### Quarantine via eBPF datapath redirect
+### 通过 eBPF 数据路径重定向来隔离
 
-Cilium's eBPF-based network policy can rewrite a quarantined pod's egress to a forensic honeypot at the kernel layer. Cilium's public benchmarks report sub-millisecond P99 datapath latency on TCP_RR; the wall-clock budget for *triggering* a quarantine in your cluster is dominated by how a policy update propagates from your control plane to the node (a few hundred milliseconds is realistic on Kubernetes with the operator pre-loaded; tail latency depends on cluster size and reconcile cadence). This gives you two things: the agent does not exfiltrate anything real, and the agent's behavior inside the honeypot is fully observed. Same pattern, different layer, as the canary token: the agent reveals intent by what it tries to do while contained.
+Cilium 基于 eBPF 的网络策略能在内核层把一个被隔离 pod 的出站流量改写到一个取证蜜罐。Cilium 的公开基准报告 TCP_RR 上亚毫秒级的 P99 数据路径延迟；在你的集群里*触发*一次隔离的墙钟预算，主要由一次策略更新如何从控制平面传播到节点决定（在 operator 预加载的 Kubernetes 上，几百毫秒是现实的；尾延迟取决于集群规模和 reconcile 节奏）。这给你两样东西：agent 不会外泄任何真实的东西，而 agent 在蜜罐里的行为被完全观察。跟金丝雀 token 是同一个模式、不同的层：agent 通过被遏制期间试图做什么来暴露意图。
 
-### What no detector catches
+### 没有任何检测器抓得住什么
 
-- **Semantic attacks that compose from allowed primitives.** Every individual action passes every detector; the composition is the problem. This is the Auto Mode composite failure from Lesson 10.
-- **Attacks that include the detector as part of the payload.** If an agent reads a page that says "before you act, disable the canary" and the agent has the capability, the detector is compromised. Canary tokens should be in systems the agent cannot modify.
+- **从被允许的原语组合而成的语义攻击。** 每个单独的动作都过每个检测器；问题在于组合。这是第 10 课的 Auto Mode 复合失败。
+- **把检测器本身当作载荷一部分的攻击。** 如果一个 agent 读到一个页面说"在你行动之前，禁用金丝雀"，而 agent 又有这个能力，那检测器就被攻破了。金丝雀 token 应该放在 agent 无法修改的系统里。
 
-## Use It
+## 上手使用
 
-`code/main.py` simulates a short agent trajectory through three detectors. A kill switch held in an external dict; a circuit breaker that trips on five identical tool calls; a canary file whose read triggers an alert. Feeds in a synthetic trajectory: legitimate actions, repetitive loop, canary probe, and a kill-switch-triggered scenario where the agent's actions are halted.
+`code/main.py` 模拟一条短 agent 轨迹穿过三个检测器。一个握在外部 dict 里的急停开关；一个在五次相同工具调用上跳闸的断路器；一个被读取就触发告警的金丝雀文件。喂入一条合成轨迹：正当动作、重复循环、金丝雀探测，以及一个急停开关触发的场景，其中 agent 的动作被叫停。
 
-## Ship It
+## 交付
 
-`outputs/skill-tripwire-design.md` reviews a proposed detector stack for an agent deployment and flags gaps (missing kill switch, missing canary, circuit breaker threshold too loose).
+`outputs/skill-tripwire-design.md` 审查一个 agent 部署提议的检测器栈，并标出缺口（缺急停开关、缺金丝雀、断路器阈值太松）。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Confirm the circuit breaker fires on turn 5 (fifth identical call) and the canary fires on turn 9 (fake-key read).
+1. 运行 `code/main.py`。确认断路器在第 5 轮（第五次相同调用）触发，金丝雀在第 9 轮（读假密钥）触发。
 
-2. Add a statistical detector: EWMA z-score on tool-call rate. Feed in a trajectory that drifts slowly and show the detector never fires. Now add a hard limit (no more than 50 tool calls in 10 minutes) and show the hard limit fires on the same trajectory.
+2. 加一个统计检测器：工具调用速率上的 EWMA z-score。喂入一条缓慢漂移的轨迹，展示检测器从不触发。现在加一个硬限制（10 分钟内不超过 50 次工具调用），展示硬限制在同一条轨迹上触发。
 
-3. Design a canary token set for a browser agent (Lesson 11). List at least three canaries and what each would detect.
+3. 为一个浏览器 agent（第 11 课）设计一组金丝雀 token。列出至少三个金丝雀以及每个会检测什么。
 
-4. Read the Cilium network-policy docs. Describe an egress-redirect quarantine flow concretely: which policy selector, which pod, which egress rewrite, which alert. What governs the wall-clock latency from "decide to quarantine" to "first redirected packet"?
+4. 读 Cilium 网络策略文档。具体描述一个出站重定向隔离流程：哪个策略选择器、哪个 pod、哪个出站改写、哪个告警。从"决定隔离"到"第一个被重定向的数据包"的墙钟延迟由什么决定？
 
-5. Define a re-enable procedure for a kill-switched agent. Who can re-enable? What must be documented? What must change about the agent before re-enable?
+5. 为一个被急停的 agent 定义一套重新启用流程。谁能重新启用？必须记录什么？重新启用之前 agent 必须改变什么？
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 实际指什么 |
 |---|---|---|
-| Kill switch | "Off button" | Boolean outside the agent's edit surface; checked on every consequential action |
-| Circuit breaker | "Pattern pause" | Action-specific trip on repetition, failure rate, or rate-limit |
-| Canary token | "Honeytoken" | Bait the agent has no legitimate reason to touch; access fires an alert |
-| Honeypot | "Forensic sandbox" | Redirected traffic / workspace where a quarantined agent is observed |
-| EWMA | "Moving average" | Exponentially weighted; adapts to drift (feature + bug) |
-| CUSUM | "Cumulative sum" | Detects sustained shift from baseline |
-| Hard limit | "Constitutional rule" | Does not adapt; constant regardless of history |
-| Constitutional limit | "Always-true rule" | Tied to Lesson 17's constitution; cannot be edited by the agent |
+| Kill switch（急停开关） | "关闭按钮" | agent 编辑面之外的布尔值；在每个有后果的动作上检查 |
+| Circuit breaker（断路器） | "模式暂停" | 在重复、失败率或限速上跳闸，针对特定动作 |
+| Canary token（金丝雀 token） | "honeytoken" | agent 没正当理由去碰的诱饵；访问触发告警 |
+| Honeypot（蜜罐） | "取证沙箱" | 被重定向的流量 / 工作区，在那里观察被隔离的 agent |
+| EWMA | "移动平均" | 指数加权；自适应漂移（既是特性又是 bug） |
+| CUSUM | "累积和" | 检测对基线的持续性偏移 |
+| Hard limit（硬限制） | "章程规则" | 不自适应；无论历史如何都恒定 |
+| Constitutional limit（章程限制） | "永远为真的规则" | 与第 17 课的章程绑定；agent 无法编辑 |
 
-## Further Reading
+## 延伸阅读
 
-- [Anthropic — Measuring agent autonomy in practice](https://www.anthropic.com/research/measuring-agent-autonomy) — kill-switch and circuit-breaker framing for autonomous agents.
-- [Microsoft Agent Framework — HITL and oversight](https://learn.microsoft.com/en-us/agent-framework/workflows/human-in-the-loop) — production governance patterns.
-- [OWASP LLM / Agentic Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/) — detection-and-response requirements.
-- [Cilium — Network policy and eBPF](https://docs.cilium.io/en/stable/security/network/) — pod-level egress redirect and forensic honeypot patterns.
-- [Anthropic — Claude's Constitution (January 2026)](https://www.anthropic.com/news/claudes-constitution) — hardcoded prohibitions as "constitutional limits".
+- [Anthropic — Measuring agent autonomy in practice](https://www.anthropic.com/research/measuring-agent-autonomy) —— 自主 agent 的急停开关与断路器框架。
+- [Microsoft Agent Framework — HITL and oversight](https://learn.microsoft.com/en-us/agent-framework/workflows/human-in-the-loop) —— 生产治理模式。
+- [OWASP LLM / Agentic Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/) —— 检测与响应的要求。
+- [Cilium — Network policy and eBPF](https://docs.cilium.io/en/stable/security/network/) —— pod 级出站重定向与取证蜜罐模式。
+- [Anthropic — Claude's Constitution (January 2026)](https://www.anthropic.com/news/claudes-constitution) —— 把硬编码的禁令作为"章程限制"。

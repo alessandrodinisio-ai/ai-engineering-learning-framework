@@ -1,35 +1,35 @@
-# GloVe, FastText, and Subword Embeddings
+# GloVe、FastText 与子词嵌入
 
-> Word2Vec trained one embedding per word. GloVe factorized the co-occurrence matrix. FastText embedded the pieces. BPE bridged to transformers.
+> Word2Vec 给每个词训一个 embedding。GloVe 直接分解共现矩阵。FastText 嵌入词的零件。BPE 搭起了通往 transformer 的桥。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 5 · 03 (Word2Vec from Scratch)
-**Time:** ~45 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** Phase 5 · 03（从零实现 Word2Vec）
+**预计时间：** ~45 分钟
 
-## The Problem
+## 问题所在
 
-Word2Vec left two open questions.
+Word2Vec 留下了两个悬而未决的问题。
 
-First, there was a parallel line of research that factorized the co-occurrence matrix directly (LSA, HAL) rather than doing online skip-gram updates. Was Word2Vec's iterative approach fundamentally better, or was the difference an artifact of how the two methods handled counts? **GloVe** answered that: matrix factorization with a thoughtfully chosen loss matches or beats Word2Vec, and costs less to train.
+第一，当时有一条平行的研究路线，是直接分解共现矩阵（LSA、HAL），而不是做在线的 skip-gram 更新。Word2Vec 的迭代方法是本质上更好，还是两种方法处理计数的方式不同造成的假象？**GloVe** 回答了这个问题：用一个精心挑选的损失做矩阵分解，能追平甚至打赢 Word2Vec，训练成本还更低。
 
-Second, neither method had a story for words it had never seen. `Zoomer-approved`, `dogecoin`, any proper noun coined last week, every inflected form of a rare root. **FastText** fixed this by embedding character n-grams: a word is the sum of its parts, including morphemes, so even out-of-vocabulary words get a sensible vector.
+第二，两种方法对从没见过的词都讲不出故事。`Zoomer-approved`、`dogecoin`、上周才造出来的任何专有名词、罕见词根的每一种屈折形式。**FastText** 靠嵌入字符 n-gram 修了这个：一个词是它各部分（包括词素）之和，所以哪怕是词表外的词也能得到一个合理的向量。
 
-Third, once transformers arrived, the question shifted again. Word-level vocabularies cap out around a million entries; real language is more open than that. **Byte-pair encoding (BPE)** and its relatives solved this by learning a vocabulary of frequent subword units that covers everything. Every modern tokenizer for every modern LLM is a subword tokenizer.
+第三，transformer 一来，问题又变了。词级词表上限大概一百万条，真实语言比这开放得多。**字节对编码（BPE）**及其同类解决了这个：学一个由高频子词单元组成的词表，覆盖一切。每个现代 LLM 的每个现代分词器，都是子词分词器。
 
-This lesson walks all three, then explains which to reach for when.
+这节课把三者都走一遍，再讲清楚什么时候该抓哪个。
 
-## The Concept
+## 核心概念
 
-**GloVe (Global Vectors).** Build the word-word co-occurrence matrix `X` where `X[i][j]` is how often word `j` appears in the context of word `i`. Train vectors such that `v_i · v_j + b_i + b_j ≈ log(X[i][j])`. Weight the loss so frequent pairs do not dominate. Done.
+**GloVe（Global Vectors）。** 构建词-词共现矩阵 `X`，其中 `X[i][j]` 是词 `j` 出现在词 `i` 上下文里的频次。训练向量，使 `v_i · v_j + b_i + b_j ≈ log(X[i][j])`。给损失加权，让高频对不至于主导。完事。
 
-**FastText.** A word is the sum of its character n-grams plus the word itself. `where` becomes `<wh, whe, her, ere, re>, <where>`. The word vector is the sum of those component vectors. Train as Word2Vec. Benefit: unseen words (`whereupon`) compose from known n-grams.
+**FastText。** 一个词是它字符 n-gram 之和，再加上词本身。`where` 拆成 `<wh, whe, her, ere, re>, <where>`。词向量是这些零件向量之和。像 Word2Vec 一样训练。好处：没见过的词（`whereupon`）能由已知 n-gram 拼出来。
 
-**BPE (Byte-Pair Encoding).** Start with a vocabulary of individual bytes (or characters). Count every adjacent pair in the corpus. Merge the most frequent pair into a new token. Repeat for `k` iterations. Result: a vocabulary of `k + 256` tokens where frequent sequences (`ing`, `tion`, `the`) are single tokens and rare words are broken into familiar pieces. Every sentence tokenizes into something.
+**BPE（字节对编码）。** 从单个字节（或字符）的词表开始。数语料里每一对相邻 token。把出现最频繁的那对合并成一个新 token。重复 `k` 次。结果是一个 `k + 256` 个 token 的词表，高频序列（`ing`、`tion`、`the`）是单个 token，罕见词被拆成熟悉的零件。每个句子都能分出点什么来。
 
-## Build It
+## 动手构建
 
-### GloVe: factorize the co-occurrence matrix
+### GloVe：分解共现矩阵
 
 ```python
 import numpy as np
@@ -77,9 +77,9 @@ def glove_train(vocab, pair_counts, dim=16, epochs=100, lr=0.05, x_max=100, alph
     return W + W_tilde
 ```
 
-Two moving pieces worth naming. The weighting function `f(x) = (x/x_max)^alpha` downweights very frequent pairs (like `(the, and)`) so they do not dominate the loss. The final embedding is the sum of `W` (center) and `W_tilde` (context) tables. Summing both is a published trick that tends to outperform using just one.
+两个值得点名的活动零件。加权函数 `f(x) = (x/x_max)^alpha` 给非常高频的对（比如 `(the, and)`）降权，让它们不主导损失。最终 embedding 是 `W`（中心）和 `W_tilde`（上下文）两张表之和。把两者相加是一个已发表的技巧，往往比只用其中一个表现更好。
 
-### FastText: subword-aware embeddings
+### FastText：感知子词的 embedding
 
 ```python
 def char_ngrams(word, n_min=3, n_max=6):
@@ -96,7 +96,7 @@ def char_ngrams(word, n_min=3, n_max=6):
 {'<where>', '<wh', 'whe', 'her', 'ere', 're>', '<whe', 'wher', 'here', 'ere>', '<wher', 'where', 'here>'}
 ```
 
-Each word is represented by its set of n-grams (typically 3 to 6 characters). The word embedding is the sum of its n-gram embeddings. For skip-gram training, plug this in where Word2Vec used a single vector.
+每个词由它的 n-gram 集合（通常 3 到 6 个字符）表示。词 embedding 是它各 n-gram embedding 之和。做 skip-gram 训练时，把这个塞到 Word2Vec 原本用单个向量的地方。
 
 ```python
 def fasttext_vector(word, ngram_table):
@@ -107,9 +107,9 @@ def fasttext_vector(word, ngram_table):
     return np.sum(vecs, axis=0)
 ```
 
-For an unseen word, you still get a vector as long as some of its n-grams are known. `whereupon` shares `<wh`, `her`, `ere`, and `<where` with `where`, so the two land near each other.
+对一个没见过的词，只要它的部分 n-gram 是已知的，你照样能得到向量。`whereupon` 和 `where` 共享 `<wh`、`her`、`ere`、`<where`，所以两者落得很近。
 
-### BPE: learned subword vocabulary
+### BPE：学出来的子词词表
 
 ```python
 def learn_bpe(corpus, k_merges):
@@ -168,13 +168,13 @@ def apply_bpe(word, merges):
 ['low', 'est</w>']
 ```
 
-First iteration merges the most common adjacent pair. After enough iterations, frequent substrings (`low`, `est`, `tion`) become single tokens and rare words break cleanly.
+第一轮合并最常见的相邻对。跑够多轮后，高频子串（`low`、`est`、`tion`）变成单个 token，罕见词被干净地拆开。
 
-The real GPT / BERT / T5 tokenizers learn 30k-100k merges. Result: any text tokenizes into a bounded-length sequence of known IDs, no OOV ever.
+真实的 GPT / BERT / T5 分词器会学 3 万到 10 万次合并。结果是：任何文本都分成长度有界的已知 ID 序列，永远不会有 OOV。
 
-## Use It
+## 上手使用
 
-In practice, you rarely train any of these yourself. You load pre-trained checkpoints.
+实践中你很少自己训这些，而是加载预训练 checkpoint。
 
 ```python
 import fasttext.util
@@ -184,7 +184,7 @@ print(ft.get_word_vector("whereupon").shape)
 print(ft.get_word_vector("zoomerapproved").shape)
 ```
 
-For BPE-style subword tokenization in the transformer era:
+transformer 时代的 BPE 式子词分词：
 
 ```python
 from transformers import AutoTokenizer
@@ -197,21 +197,21 @@ print(tok.tokenize("unbelievably tokenized"))
 ['un', 'bel', 'iev', 'ably', 'Ġtoken', 'ized']
 ```
 
-The `Ġ` prefix marks word boundaries (a GPT-2 convention). Every modern tokenizer is a BPE variant, WordPiece (BERT), or SentencePiece (T5, LLaMA).
+`Ġ` 前缀标记词边界（GPT-2 的约定）。每个现代分词器要么是 BPE 变体、WordPiece（BERT），要么是 SentencePiece（T5、LLaMA）。
 
-### When to pick which
+### 该选哪个
 
-| Situation | Pick |
+| 场景 | 选择 |
 |-----------|------|
-| Pretrained general-purpose word vectors, no OOV tolerance needed | GloVe 300d |
-| Pretrained general-purpose word vectors, must handle misspellings / neologisms / morphologically rich languages | FastText |
-| Anything going into a transformer (training or inference) | Whatever tokenizer the model shipped with. Never swap. |
-| Training your own language model from scratch | Train a BPE or SentencePiece tokenizer on your corpus first |
-| Production text classification with a linear model | Still TF-IDF. Lesson 02. |
+| 预训练通用词向量，不需要容忍 OOV | GloVe 300d |
+| 预训练通用词向量，必须处理拼写错误 / 新造词 / 形态丰富的语言 | FastText |
+| 任何要进 transformer 的东西（训练或推理） | 模型自带的那个分词器。永远别换。 |
+| 从零训练你自己的语言模型 | 先在你的语料上训一个 BPE 或 SentencePiece 分词器 |
+| 用线性模型做生产级文本分类 | 还是 TF-IDF。见第 02 课。 |
 
-## Ship It
+## 交付
 
-Save as `outputs/skill-embeddings-picker.md`:
+存为 `outputs/skill-embeddings-picker.md`：
 
 ```markdown
 ---
@@ -233,25 +233,25 @@ Given a task and dataset description, you output:
 Refuse to recommend training a custom tokenizer when the user is fine-tuning a pretrained LLM. Refuse to recommend word-level tokenization for any model targeting production inference. Flag non-English / multi-script corpora as needing SentencePiece with byte fallback.
 ```
 
-## Exercises
+## 练习
 
-1. **Easy.** Run `char_ngrams("playing")` and `char_ngrams("played")`. Compute the Jaccard overlap of the two n-gram sets. You should see substantial shared pieces (`pla`, `lay`, `play`), which is why FastText transfers well across morphological variants.
-2. **Medium.** Extend `learn_bpe` to track vocabulary growth. Plot tokens-per-corpus-character as a function of number of merges. You should see rapid compression at first, asymptoting near ~2-3 chars per token.
-3. **Hard.** Train a 1k-merge BPE on Shakespeare's complete works. Compare tokenization of common words vs. rare proper nouns. Measure average tokens per word before and after. Write up what surprised you.
+1. **简单。** 跑一下 `char_ngrams("playing")` 和 `char_ngrams("played")`。算这两个 n-gram 集合的 Jaccard 重叠度。你应该能看到大量共享零件（`pla`、`lay`、`play`），这正是 FastText 能在形态变体之间良好迁移的原因。
+2. **中等。** 扩展 `learn_bpe`，跟踪词表的增长。把"每语料字符的 token 数"画成"合并次数"的函数。你应该看到开头快速压缩，然后渐近到每 token 约 2-3 个字符。
+3. **困难。** 在莎士比亚全集上训练一个 1k 次合并的 BPE。对比常见词和罕见专有名词的分词结果。测一测处理前后每词的平均 token 数。把让你意外的地方写下来。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 人们怎么说 | 它实际是什么 |
 |------|-----------------|-----------------------|
-| Co-occurrence matrix | Word-word frequency table | `X[i][j]` = how often word `j` appears in a window around word `i`. |
-| Subword | Piece of a word | A character n-gram (FastText) or learned token (BPE/WordPiece/SentencePiece). |
-| BPE | Byte-pair encoding | Iterative merging of most-frequent adjacent pairs until vocabulary hits target size. |
-| OOV | Out of vocabulary | Word the model has never seen. Word2Vec/GloVe fail. FastText and BPE handle it. |
-| Byte-level BPE | BPE on raw bytes | GPT-2's scheme. Vocabulary starts with 256 bytes, so nothing is ever OOV. |
+| 共现矩阵 | 词-词频率表 | `X[i][j]` = 词 `j` 出现在词 `i` 周围窗口里的频次。 |
+| 子词（Subword） | 词的一块 | 一个字符 n-gram（FastText）或学出来的 token（BPE/WordPiece/SentencePiece）。 |
+| BPE | 字节对编码 | 迭代合并最高频的相邻对，直到词表达到目标大小。 |
+| OOV | 词表外 | 模型从没见过的词。Word2Vec/GloVe 翻车，FastText 和 BPE 能处理。 |
+| 字节级 BPE | 在原始字节上的 BPE | GPT-2 的方案。词表从 256 个字节开始，所以永远不会有 OOV。 |
 
-## Further Reading
+## 延伸阅读
 
-- [Pennington, Socher, Manning (2014). GloVe: Global Vectors for Word Representation](https://nlp.stanford.edu/pubs/glove.pdf) — the GloVe paper, seven pages, still the best derivation of the loss.
-- [Bojanowski et al. (2017). Enriching Word Vectors with Subword Information](https://arxiv.org/abs/1607.04606) — FastText.
-- [Sennrich, Haddow, Birch (2016). Neural Machine Translation of Rare Words with Subword Units](https://arxiv.org/abs/1508.07909) — the paper that introduced BPE to modern NLP.
-- [Hugging Face tokenizer summary](https://huggingface.co/docs/transformers/tokenizer_summary) — how BPE, WordPiece, and SentencePiece actually differ in practice.
+- [Pennington, Socher, Manning (2014). GloVe: Global Vectors for Word Representation](https://nlp.stanford.edu/pubs/glove.pdf) —— GloVe 论文，七页，至今仍是损失推导讲得最好的一篇。
+- [Bojanowski et al. (2017). Enriching Word Vectors with Subword Information](https://arxiv.org/abs/1607.04606) —— FastText。
+- [Sennrich, Haddow, Birch (2016). Neural Machine Translation of Rare Words with Subword Units](https://arxiv.org/abs/1508.07909) —— 把 BPE 引入现代 NLP 的那篇论文。
+- [Hugging Face tokenizer summary](https://huggingface.co/docs/transformers/tokenizer_summary) —— BPE、WordPiece、SentencePiece 在实践中究竟差在哪。

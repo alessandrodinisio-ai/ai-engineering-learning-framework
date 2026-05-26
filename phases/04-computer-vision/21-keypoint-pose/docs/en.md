@@ -1,95 +1,95 @@
-# Keypoint Detection & Pose Estimation
+# 关键点检测与姿态估计
 
-> A pose is a set of ordered keypoints. A keypoint detector is a heatmap regressor. Everything else is bookkeeping.
+> 一个姿态就是一组有序的关键点。一个关键点检测器就是一个热图回归器。其余都是记账。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 4 Lesson 06 (Detection), Phase 4 Lesson 07 (U-Net)
-**Time:** ~45 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 阶段 4 第 06 课（检测）、阶段 4 第 07 课（U-Net）
+**预计时间：** ~45 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Distinguish top-down and bottom-up pose estimation and state when each is used
-- Regress heatmaps for K keypoints with a Gaussian-per-keypoint target and extract keypoint coordinates at inference
-- Explain Part Affinity Fields (PAFs) and how bottom-up pipelines associate keypoints into instances
-- Use MediaPipe Pose or MMPose for production keypoint estimation and understand their output format
+- 区分自顶向下和自底向上的姿态估计，说出各自何时使用
+- 用"每个关键点一个高斯"的目标为 K 个关键点回归热图，在推理时提取关键点坐标
+- 解释部件亲和场（Part Affinity Fields，PAF），以及自底向上流水线如何把关键点关联成实例
+- 用 MediaPipe Pose 或 MMPose 做生产关键点估计，理解它们的输出格式
 
-## The Problem
+## 问题所在
 
-Keypoint tasks hide under many names: human pose (17 body joints), face landmarks (68 or 478 points), hand (21 points), animal pose, robotic object pose, medical anatomy landmarks. Every one of them shares the same structure: detect K discrete points on an object and output their (x, y) coordinates.
+关键点任务藏在很多名字下：人体姿态（17 个身体关节）、人脸关键点（68 或 478 个点）、手（21 个点）、动物姿态、机器人物体姿态、医学解剖标志点。每一个都共享同一种结构：检测物体上 K 个离散点并输出它们的 (x, y) 坐标。
 
-Pose estimation is the foundation of motion capture, fitness apps, sports analytics, gesture control, animation, AR try-on, and robotic grasping. The 2D case is mature; 3D pose (estimating joint positions in world coordinates from a single camera) is the current research frontier.
+姿态估计是动作捕捉、健身 app、运动分析、手势控制、动画、AR 试穿和机器人抓取的基础。2D 情形已经成熟；3D 姿态（从单相机估计世界坐标里的关节位置）是当前的研究前沿。
 
-The engineering question is scale. A single-image, single-person pose is a 20ms problem. Multi-person pose in a crowd at 30 fps is a different problem with different architectures.
+工程问题是规模。单图单人姿态是个 20ms 的问题。人群里 30 fps 的多人姿态是个不同的问题，用不同的架构。
 
-## The Concept
+## 核心概念
 
-### Top-down vs bottom-up
+### 自顶向下 vs 自底向上
 
 ```mermaid
 flowchart LR
-    subgraph TD["Top-down pipeline"]
-        A1["Detect person boxes"] --> A2["Crop each box"]
-        A2 --> A3["Per-box keypoint model<br/>(HRNet, ViTPose)"]
+    subgraph TD["自顶向下流水线"]
+        A1["检测人物框"] --> A2["裁剪每个框"]
+        A2 --> A3["逐框关键点模型<br/>(HRNet、ViTPose)"]
     end
-    subgraph BU["Bottom-up pipeline"]
-        B1["One pass over image"] --> B2["All keypoint heatmaps<br/>+ association field"]
-        B2 --> B3["Group keypoints into<br/>instances (greedy matching)"]
+    subgraph BU["自底向上流水线"]
+        B1["在图像上过一遍"] --> B2["所有关键点热图<br/>+ 关联场"]
+        B2 --> B3["把关键点分组成<br/>实例（贪心匹配）"]
     end
 
     style TD fill:#dbeafe,stroke:#2563eb
     style BU fill:#fef3c7,stroke:#d97706
 ```
 
-- **Top-down** — detect people first, then run a per-person keypoint model on each crop. Highest accuracy; scales linearly with number of people.
-- **Bottom-up** — one forward pass predicts all keypoints plus an association field; group them. Constant time regardless of crowd size.
+- **自顶向下** —— 先检测人，再在每个裁剪上跑一个逐人关键点模型。准确率最高；随人数线性缩放。
+- **自底向上** —— 一次前向预测所有关键点加一个关联场；再分组。无论人群多大都是常数时间。
 
-Top-down (HRNet, ViTPose) is the accuracy leader; bottom-up (OpenPose, HigherHRNet) is the throughput leader for crowded scenes.
+自顶向下（HRNet、ViTPose）是准确率领先者；自底向上（OpenPose、HigherHRNet）是拥挤场景的吞吐领先者。
 
-### Heatmap regression
+### 热图回归
 
-Instead of regressing `(x, y)` directly, predict an `H x W` heatmap per keypoint with a Gaussian blob centred at the true location.
+不直接回归 `(x, y)`，而是为每个关键点预测一个 `H x W` 的热图，在真实位置中心有一个高斯斑块。
 
 ```
 target[k, y, x] = exp(-((x - cx_k)^2 + (y - cy_k)^2) / (2 sigma^2))
 ```
 
-At inference, the argmax of each heatmap is the predicted keypoint location.
+推理时，每个热图的 argmax 就是预测的关键点位置。
 
-Why heatmaps work better than direct regression: the network's spatial structure (conv feature map) aligns naturally with spatial output. Gaussian targets also regularise — a small localisation error produces a small loss, not zero.
+热图为什么比直接回归更好：网络的空间结构（卷积特征图）天然对齐空间输出。高斯目标还做正则化——小的定位误差产生小的损失，而不是零。
 
-### Sub-pixel localisation
+### 亚像素定位
 
-Argmax gives integer coordinates. For sub-pixel precision, refine by fitting a parabola to the argmax and its neighbours, or use the well-known offset `(dx, dy) = 0.25 * (heatmap[y, x+1] - heatmap[y, x-1], ...)` direction.
+Argmax 给出整数坐标。要亚像素精度，就对 argmax 及其邻居拟合一条抛物线来精修，或用那个著名的偏移量 `(dx, dy) = 0.25 * (heatmap[y, x+1] - heatmap[y, x-1], ...)` 方向。
 
-### Part Affinity Fields (PAFs)
+### 部件亲和场（PAF）
 
-OpenPose's trick for bottom-up association. For each pair of connected keypoints (e.g. left shoulder to left elbow), predict a 2-channel field that encodes the unit vector pointing from one to the other. To associate a shoulder with its elbow, integrate the PAF along the line connecting candidate pairs; the pair with the highest integral is matched.
+OpenPose 用于自底向上关联的诀窍。对每一对相连的关键点（例如左肩到左肘），预测一个 2 通道场，编码从一个指向另一个的单位向量。要把一个肩膀和它的肘关联起来，沿连接候选对的直线对 PAF 做积分；积分最高的对被匹配。
 
 ```
-For each connection (limb):
-  PAF channels: 2 (unit vector x, y)
-  Line integral: sum over sample points of (PAF . line_direction)
-  Higher integral = stronger match
+对每个连接（肢体）：
+  PAF 通道: 2（单位向量 x, y）
+  线积分: 在采样点上对 (PAF . line_direction) 求和
+  积分越高 = 匹配越强
 ```
 
-Elegant and scales to arbitrary crowd sizes without per-person crops.
+优雅，且无需逐人裁剪就能扩展到任意人群规模。
 
-### COCO keypoints
+### COCO 关键点
 
-The standard body-pose dataset: 17 keypoints per person, PCK (Percentage of Correct Keypoints) and OKS (Object Keypoint Similarity) as metrics. OKS is the keypoint analogue of IoU and is what COCO mAP@OKS reports.
+标准的身体姿态数据集：每人 17 个关键点，指标用 PCK（Percentage of Correct Keypoints，正确关键点百分比）和 OKS（Object Keypoint Similarity，物体关键点相似度）。OKS 是关键点版的 IoU，也是 COCO mAP@OKS 报告的东西。
 
 ### 2D vs 3D
 
-- **2D pose** — image coordinates; solved at production quality (MediaPipe, HRNet, ViTPose).
-- **3D pose** — world / camera coordinates; still active research. Common approaches:
-  - Lift 2D predictions to 3D with a small MLP (VideoPose3D).
-  - Direct 3D regression from image (PyMAF, MHFormer).
-  - Multi-view setups (CMU Panoptic) for ground truth.
+- **2D 姿态** —— 图像坐标；已达生产质量（MediaPipe、HRNet、ViTPose）。
+- **3D 姿态** —— 世界 / 相机坐标；仍是活跃研究。常见方法：
+  - 用一个小 MLP 把 2D 预测抬升到 3D（VideoPose3D）。
+  - 从图像直接回归 3D（PyMAF、MHFormer）。
+  - 多视角设置（CMU Panoptic）拿真值。
 
-## Build It
+## 动手构建
 
-### Step 1: Gaussian heatmap target
+### 第 1 步：高斯热图目标
 
 ```python
 import numpy as np
@@ -103,11 +103,11 @@ hm = gaussian_heatmap(64, 32, 32, sigma=2.0)
 print(f"peak: {hm.max():.3f} at ({hm.argmax() % 64}, {hm.argmax() // 64})")
 ```
 
-Per-keypoint heatmaps stacked along a channel axis give the full target tensor.
+沿通道轴堆叠的逐关键点热图给出完整的目标张量。
 
-### Step 2: Tiny keypoint head
+### 第 2 步：微型关键点头
 
-A U-Net-style model that outputs K heatmap channels.
+一个输出 K 个热图通道的 U-Net 风格模型。
 
 ```python
 import torch.nn as nn
@@ -130,15 +130,15 @@ class TinyKeypointNet(nn.Module):
         return self.up2(u1)
 ```
 
-Input `(N, 3, H, W)`, output `(N, K, H, W)`. Loss is per-pixel MSE against Gaussian targets.
+输入 `(N, 3, H, W)`，输出 `(N, K, H, W)`。损失是对高斯目标的逐像素 MSE。
 
-### Step 3: Inference — extract keypoint coordinates
+### 第 3 步：推理 —— 提取关键点坐标
 
 ```python
 def heatmap_to_coords(heatmaps):
     """
     heatmaps: (N, K, H, W)
-    returns:  (N, K, 2) float coordinates in image pixels
+    返回:     (N, K, 2) 图像像素里的浮点坐标
     """
     N, K, H, W = heatmaps.shape
     hm = heatmaps.reshape(N, K, -1)
@@ -151,11 +151,11 @@ coords = heatmap_to_coords(torch.randn(2, 4, 32, 32))
 print(f"coords: {coords.shape}")  # (2, 4, 2)
 ```
 
-One line at inference. For sub-pixel refinement, interpolate around the argmax.
+推理时一行。要亚像素精修，就在 argmax 附近插值。
 
-### Step 4: Synthetic keypoint dataset
+### 第 4 步：合成关键点数据集
 
-Simple: draw four points on a white canvas and learn to predict them.
+简单：在白画布上画四个点，学着预测它们。
 
 ```python
 def make_synthetic_sample(size=64):
@@ -168,9 +168,9 @@ def make_synthetic_sample(size=64):
     return img, hms, kps
 ```
 
-Easy enough for a tiny model to learn in a minute.
+够简单，一个小模型一分钟就能学会。
 
-### Step 5: Training
+### 第 5 步：训练
 
 ```python
 model = TinyKeypointNet(num_keypoints=4)
@@ -181,48 +181,48 @@ for step in range(200):
     imgs = torch.from_numpy(np.stack([b[0] for b in batch]))
     hms = torch.from_numpy(np.stack([b[1] for b in batch]))
     pred = model(imgs)
-    # Upsample pred to full resolution
+    # 把 pred 上采样到全分辨率
     pred = F.interpolate(pred, size=hms.shape[-2:], mode="bilinear", align_corners=False)
     loss = F.mse_loss(pred, hms)
     opt.zero_grad(); loss.backward(); opt.step()
 ```
 
-## Use It
+## 上手使用
 
-- **MediaPipe Pose** — Google's production pose estimator; ships WebGL + mobile runtimes with sub-10ms latency.
-- **MMPose** (OpenMMLab) — comprehensive research codebase; every SOTA architecture with pretrained weights.
-- **YOLOv8-pose** — fastest real-time multi-person pose with a single forward pass.
-- **transformers HumanDPT / PoseAnything** — newer vision-language approaches for open-vocabulary pose (any object, any keypoint set).
+- **MediaPipe Pose** —— Google 的生产姿态估计器；提供 WebGL + 移动端运行时，延迟低于 10ms。
+- **MMPose**（OpenMMLab）—— 全面的研究代码库；每个 SOTA 架构带预训练权重。
+- **YOLOv8-pose** —— 最快的实时多人姿态，单次前向。
+- **transformers HumanDPT / PoseAnything** —— 用于开放词表姿态（任意物体、任意关键点集）的较新视觉-语言方法。
 
-## Ship It
+## 交付
 
-This lesson produces:
+这一课产出：
 
-- `outputs/prompt-pose-stack-picker.md` — a prompt that picks MediaPipe / YOLOv8-pose / HRNet / ViTPose given latency, crowd size, and 2D vs 3D need.
-- `outputs/skill-heatmap-to-coords.md` — a skill that writes the sub-pixel heatmap-to-coordinate routine used by every production pose model.
+- `outputs/prompt-pose-stack-picker.md` —— 一个 prompt，给定延迟、人群规模和 2D vs 3D 需求，挑出 MediaPipe / YOLOv8-pose / HRNet / ViTPose。
+- `outputs/skill-heatmap-to-coords.md` —— 一个 skill，写出每个生产姿态模型用的那套亚像素"热图到坐标"例程。
 
-## Exercises
+## 练习
 
-1. **(Easy)** Train the tiny keypoint model on the synthetic 4-point dataset. Report mean L2 error between predicted and true keypoints after 200 steps.
-2. **(Medium)** Add sub-pixel refinement: given the argmax position, fit a 1D parabola along x and y from the neighbouring pixels. Report the accuracy gain vs integer argmax.
-3. **(Hard)** Build a 2-person synthetic dataset where each image shows two instances of the 4-keypoint pattern. Train a bottom-up pipeline with PAFs that predict which keypoint belongs to which instance, and evaluate OKS.
+1. **（简单）** 在合成 4 点数据集上训练这个小关键点模型。报告 200 步后预测和真实关键点之间的平均 L2 误差。
+2. **（中等）** 加亚像素精修：给定 argmax 位置，从邻近像素沿 x 和 y 各拟合一条 1D 抛物线。报告相对整数 argmax 的精度提升。
+3. **（困难）** 构建一个 2 人合成数据集，每张图显示 4 关键点模式的两个实例。训练一个带 PAF 的自底向上流水线，PAF 预测哪个关键点属于哪个实例，并评估 OKS。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|----------------------|
-| Keypoint | "A landmark" | A specific ordered point on an object (joint, corner, feature) |
-| Pose | "The skeleton" | An ordered set of keypoints belonging to one instance |
-| Top-down | "Detect then pose" | Two-stage pipeline: person detector + per-crop keypoint model; highest accuracy |
-| Bottom-up | "Pose first, group later" | Single-pass all-keypoint prediction + grouping; constant time in crowd size |
-| Heatmap | "Gaussian target" | H x W tensor per keypoint with peak at the true location; the preferred regression target |
-| PAF | "Part Affinity Field" | 2-channel unit vector field encoding limb directions; used to group keypoints into instances |
-| OKS | "Keypoint IoU" | Object Keypoint Similarity; the COCO metric for pose |
-| HRNet | "High-Resolution Net" | The dominant top-down keypoint architecture; preserves high-res features throughout |
+| 关键点 | "一个标志点" | 物体上一个特定的有序点（关节、角点、特征） |
+| 姿态 | "骨架" | 属于一个实例的一组有序关键点 |
+| 自顶向下 | "先检测再姿态" | 两阶段流水线：人物检测器 + 逐裁剪关键点模型；准确率最高 |
+| 自底向上 | "先姿态后分组" | 单次预测所有关键点 + 分组；在人群规模上常数时间 |
+| 热图 | "高斯目标" | 每个关键点一个 H x W 张量，峰值在真实位置；首选的回归目标 |
+| PAF | "部件亲和场" | 编码肢体方向的 2 通道单位向量场；用于把关键点分组成实例 |
+| OKS | "关键点 IoU" | Object Keypoint Similarity；姿态的 COCO 指标 |
+| HRNet | "高分辨率网络" | 主导的自顶向下关键点架构；全程保留高分辨率特征 |
 
-## Further Reading
+## 延伸阅读
 
-- [OpenPose (Cao et al., 2017)](https://arxiv.org/abs/1812.08008) — bottom-up with PAFs; still the best writeup of the approach
-- [HRNet (Sun et al., 2019)](https://arxiv.org/abs/1902.09212) — the top-down reference architecture
-- [ViTPose (Xu et al., 2022)](https://arxiv.org/abs/2204.12484) — plain ViT as a pose backbone; current SOTA on many benchmarks
-- [MediaPipe Pose](https://developers.google.com/mediapipe/solutions/vision/pose_landmarker) — production real-time pose; the fastest deployed stack in 2026
+- [OpenPose (Cao et al., 2017)](https://arxiv.org/abs/1812.08008) —— 带 PAF 的自底向上；至今对该方法讲解最好
+- [HRNet (Sun et al., 2019)](https://arxiv.org/abs/1902.09212) —— 自顶向下的参考架构
+- [ViTPose (Xu et al., 2022)](https://arxiv.org/abs/2204.12484) —— 把朴素 ViT 当姿态骨干；在许多基准上是当前 SOTA
+- [MediaPipe Pose](https://developers.google.com/mediapipe/solutions/vision/pose_landmarker) —— 生产实时姿态；2026 年部署最快的栈

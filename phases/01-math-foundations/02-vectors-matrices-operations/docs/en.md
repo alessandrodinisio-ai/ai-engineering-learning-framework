@@ -1,60 +1,60 @@
-# Vectors, Matrices & Operations
+# 向量、矩阵与运算
 
-> Every neural network is just matrix multiplication with extra steps.
+> 每一个神经网络，无非是多绕了几道弯的矩阵乘法。
 
-**Type:** Build
-**Languages:** Python, Julia
-**Prerequisites:** Phase 1, Lesson 01 (Linear Algebra Intuition)
-**Time:** ~60 minutes
+**类型：** Build
+**语言：** Python、Julia
+**前置要求：** 阶段 1，第 01 课（线性代数直觉）
+**预计时间：** ~60 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Build a Matrix class with element-wise operations, matrix multiplication, transpose, determinant, and inverse
-- Distinguish element-wise multiplication from matrix multiplication and explain when each applies
-- Implement a single dense neural network layer (`relu(W @ x + b)`) using only the from-scratch Matrix class
-- Explain broadcasting rules and how bias addition works in neural network frameworks
+- 构建一个 Matrix 类，支持逐元素运算、矩阵乘法、转置、行列式和逆
+- 区分逐元素乘法和矩阵乘法，并讲清楚各自什么时候用
+- 只用从零写的 Matrix 类，实现一个稠密神经网络层（`relu(W @ x + b)`）
+- 解释广播规则，以及偏置加法在神经网络框架里是怎么运作的
 
-## The Problem
+## 问题所在
 
-You want to build a neural network. You read the code and see this:
+你想构建一个神经网络。读代码时看到这么一行：
 
 ```
 output = activation(weights @ input + bias)
 ```
 
-That `@` is matrix multiplication. The `weights` are a matrix. The `input` is a vector. If you do not know what those operations do, this line is magic. If you do know, it is the entire forward pass of a layer in three operations.
+那个 `@` 是矩阵乘法。`weights` 是矩阵。`input` 是向量。如果你不知道这些运算在做什么，这行就是魔法。如果你知道，它就是一层网络的完整前向传播，三个操作搞定。
 
-Every image your model processes is a matrix of pixel values. Every word embedding is a vector. Every layer of every neural network is a matrix transformation. You cannot build AI systems without being fluent in matrix operations the same way you cannot write code without understanding variables.
+模型处理的每张图都是像素值矩阵。每个词 embedding 都是向量。每个神经网络的每一层都是矩阵变换。不熟练矩阵运算就没法构建 AI 系统，就像不懂变量就没法写代码一样。
 
-This lesson builds that fluency from scratch.
+本节课从零打磨这份熟练度。
 
-## The Concept
+## 核心概念
 
-### Vectors: ordered lists of numbers
+### 向量：有序的数字列表
 
-A vector is a list of numbers with a direction and magnitude. In AI, vectors represent data points, features, or parameters.
+向量是一串带有方向和模长的数字。在 AI 里，向量表示数据点、特征或参数。
 
 ```
 v = [3, 4]        -- a 2D vector
 w = [1, 0, -2]    -- a 3D vector
 ```
 
-A 2D vector `[3, 4]` points to coordinates (3, 4) on a plane. Its length (magnitude) is 5 (the 3-4-5 triangle).
+二维向量 `[3, 4]` 指向平面上的坐标 (3, 4)。它的长度（模长）是 5（就是 3-4-5 直角三角形）。
 
-### Matrices: grids of numbers
+### 矩阵：数字的网格
 
-A matrix is a 2D grid. Rows and columns. An m x n matrix has m rows and n columns.
+矩阵是一个二维网格，有行有列。一个 m x n 的矩阵有 m 行 n 列。
 
 ```
 A = | 1  2  3 |     -- 2x3 matrix (2 rows, 3 columns)
     | 4  5  6 |
 ```
 
-In neural networks, weight matrices transform input vectors into output vectors. A layer with 784 inputs and 128 outputs uses a 128x784 weight matrix.
+在神经网络里，权重矩阵把输入向量变换成输出向量。一个输入 784、输出 128 的层，用的是一个 128x784 的权重矩阵。
 
-### Why shapes matter
+### 形状为什么重要
 
-Matrix multiplication has a strict rule: `(m x n) @ (n x p) = (m x p)`. The inner dimensions must match.
+矩阵乘法有条铁律：`(m x n) @ (n x p) = (m x p)`。内层维度必须匹配。
 
 ```
 (128 x 784) @ (784 x 1) = (128 x 1)
@@ -63,43 +63,43 @@ Matrix multiplication has a strict rule: `(m x n) @ (n x p) = (m x p)`. The inne
 Inner dimensions: 784 = 784  -- valid
 ```
 
-If you get a shape mismatch error in PyTorch, this is why.
+如果你在 PyTorch 里碰到形状不匹配的报错，原因就在这。
 
-### The operations map
+### 运算对照表
 
-| Operation | What it does | Neural network use |
+| 运算 | 它做什么 | 神经网络中的用途 |
 |-----------|-------------|-------------------|
-| Addition | Element-wise combine | Adding bias to output |
-| Scalar multiply | Scale every element | Learning rate * gradients |
-| Matrix multiply | Transform vectors | Layer forward pass |
-| Transpose | Flip rows and columns | Backpropagation |
-| Determinant | Single number summary | Checking invertibility |
-| Inverse | Undo a transformation | Solving linear systems |
-| Identity | Do-nothing matrix | Initialization, residual connections |
+| 加法 | 逐元素相加 | 给输出加偏置 |
+| 标量乘法 | 缩放每个元素 | 学习率 * 梯度 |
+| 矩阵乘法 | 变换向量 | 层的前向传播 |
+| 转置 | 翻转行和列 | 反向传播 |
+| 行列式 | 浓缩成一个数 | 检查可逆性 |
+| 逆 | 撤销一次变换 | 解线性方程组 |
+| 单位矩阵 | 什么都不做的矩阵 | 初始化、残差连接 |
 
-### Element-wise vs matrix multiplication
+### 逐元素乘法 vs 矩阵乘法
 
-This distinction trips up beginners constantly.
+这个区别经常把新手绊倒。
 
-Element-wise: multiply matching positions. Both matrices must be the same shape.
+逐元素：对应位置相乘。两个矩阵必须形状相同。
 
 ```
 | 1  2 |   | 5  6 |   | 5  12 |
 | 3  4 | * | 7  8 | = | 21 32 |
 ```
 
-Matrix multiplication: dot products of rows and columns. Inner dimensions must match.
+矩阵乘法：行与列做点积。内层维度必须匹配。
 
 ```
 | 1  2 |   | 5  6 |   | 1*5+2*7  1*6+2*8 |   | 19  22 |
 | 3  4 | @ | 7  8 | = | 3*5+4*7  3*6+4*8 | = | 43  50 |
 ```
 
-Different operations, different results, different rules.
+不同的运算，不同的结果，不同的规则。
 
-### Broadcasting
+### 广播
 
-When you add a bias vector to a matrix of outputs, the shapes do not match. Broadcasting stretches the smaller array to fit.
+当你把一个偏置向量加到一个输出矩阵上时，形状对不上。广播会把较小的数组拉伸到合适的尺寸。
 
 ```
 | 1  2  3 |   +   [10, 20, 30]
@@ -111,11 +111,11 @@ Broadcasting stretches the vector across rows:
 | 4  5  6 | + | 10  20  30 | = | 14  25  36 |
 ```
 
-Every modern framework does this automatically. Understanding it prevents confusion when shapes seem wrong but the code runs.
+每个现代框架都会自动做这件事。理解它能让你在形状看起来不对、代码却照跑不误时不犯迷糊。
 
-## Build It
+## 动手构建
 
-### Step 1: Vector class
+### 第 1 步：Vector 类
 
 ```python
 class Vector:
@@ -142,7 +142,7 @@ class Vector:
         return sum(x ** 2 for x in self.data) ** 0.5
 ```
 
-### Step 2: Matrix class with core operations
+### 第 2 步：带核心运算的 Matrix 类
 
 ```python
 class Matrix:
@@ -226,7 +226,7 @@ class Matrix:
         ])
 ```
 
-### Step 3: See it work
+### 第 3 步：跑起来看看
 
 ```python
 A = Matrix([[1, 2], [3, 4]])
@@ -242,7 +242,7 @@ I = Matrix.identity(2)
 print("A @ A^-1 =", A.matmul(A.inverse_2x2()).data)
 ```
 
-### Step 4: Connect to neural networks
+### 第 4 步：和神经网络对接
 
 ```python
 import random
@@ -266,11 +266,11 @@ print(f"Output shape: {output.shape}")
 print(f"Output: {output.data}")
 ```
 
-This is a single dense layer: `output = relu(W @ x + b)`. Every dense layer in every neural network does exactly this.
+这就是一个稠密层：`output = relu(W @ x + b)`。每个神经网络里的每个稠密层，干的就是这件事。
 
-## Use It
+## 上手使用
 
-NumPy does everything above in fewer lines and orders of magnitude faster.
+上面这些 NumPy 用更少的代码、快好几个数量级就能做到。
 
 ```python
 import numpy as np
@@ -295,9 +295,9 @@ print(f"\nNeural network layer: {weights.shape} @ {inputs.shape} = {output.shape
 print(f"Output:\n{output}")
 ```
 
-The `@` operator in Python calls `__matmul__`. NumPy implements it with optimized BLAS routines written in C and Fortran. Same math, 100x faster.
+Python 里的 `@` 运算符会调用 `__matmul__`。NumPy 用 C 和 Fortran 写的优化版 BLAS 例程来实现它。一样的数学，快 100 倍。
 
-Broadcasting in NumPy:
+NumPy 里的广播：
 
 ```python
 matrix = np.array([[1, 2, 3], [4, 5, 6]])
@@ -305,38 +305,38 @@ bias = np.array([10, 20, 30])
 print(matrix + bias)
 ```
 
-NumPy automatically broadcasts the 1D bias across both rows. This is how bias addition works in every neural network framework.
+NumPy 自动把一维的 bias 广播到两行上。每个神经网络框架里的偏置加法都是这么干的。
 
-## Ship It
+## 交付
 
-This lesson produces a prompt for teaching matrix operations through geometric intuition. See `outputs/prompt-matrix-operations.md`.
+本节课产出一个通过几何直觉来教矩阵运算的提示词。参见 `outputs/prompt-matrix-operations.md`。
 
-The Matrix class built here is the foundation for the mini neural network framework we build in Phase 3, Lesson 10.
+这里构建的 Matrix 类，是我们在阶段 3、第 10 课构建迷你神经网络框架的基础。
 
-## Exercises
+## 练习
 
-1. **Verify the inverse.** Multiply `A @ A.inverse_2x2()` and confirm you get the identity matrix. Try it with three different 2x2 matrices. What happens when the determinant is zero?
+1. **验证逆矩阵。** 计算 `A @ A.inverse_2x2()`，确认得到的是单位矩阵。换三个不同的 2x2 矩阵各试一遍。行列式为零时会发生什么？
 
-2. **Implement 3x3 inverse.** Extend the Matrix class to compute inverses for 3x3 matrices using the adjugate method. Test it against NumPy's `np.linalg.inv`.
+2. **实现 3x3 求逆。** 扩展 Matrix 类，用伴随矩阵法计算 3x3 矩阵的逆。和 NumPy 的 `np.linalg.inv` 对照测试。
 
-3. **Build a two-layer network.** Using only your Matrix class (no NumPy), create a two-layer neural network: input (3) -> hidden (4) -> output (2). Initialize random weights, run a forward pass, and verify all shapes are correct.
+3. **搭一个两层网络。** 只用你的 Matrix 类（不用 NumPy），构建一个两层神经网络：输入 (3) -> 隐藏 (4) -> 输出 (2)。随机初始化权重，跑一次前向传播，确认所有形状都正确。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 人们常说 | 它实际指什么 |
 |------|----------------|----------------------|
-| Vector | "An arrow" | An ordered list of numbers. In AI: a point in high-dimensional space. |
-| Matrix | "A table of numbers" | A linear transformation. It maps vectors from one space to another. |
-| Matrix multiply | "Just multiply the numbers" | Dot products between every row of the first matrix and every column of the second. Order matters. |
-| Transpose | "Flip it" | Swap rows and columns. Turns an m x n matrix into n x m. Critical in backpropagation. |
-| Determinant | "Some number from the matrix" | Measures how much the matrix scales area (2D) or volume (3D). Zero means the transformation crushes a dimension. |
-| Inverse | "Undo the matrix" | The matrix that reverses the transformation. Only exists when the determinant is not zero. |
-| Identity matrix | "The boring matrix" | The matrix equivalent of multiplying by 1. Used in residual connections (ResNets). |
-| Broadcasting | "Magic shape fixing" | Stretching a smaller array to match a larger one by repeating along missing dimensions. |
-| Element-wise | "Regular multiplication" | Multiply matching positions. Both arrays must have the same shape (or be broadcastable). |
+| 向量 | "一个箭头" | 一串有序的数字。在 AI 里：高维空间中的一个点。 |
+| 矩阵 | "一张数字表" | 一个线性变换。它把向量从一个空间映射到另一个空间。 |
+| 矩阵乘法 | "把数字乘一乘" | 第一个矩阵的每一行与第二个矩阵的每一列做点积。顺序很重要。 |
+| 转置 | "翻过来" | 交换行和列。把 m x n 矩阵变成 n x m。在反向传播里至关重要。 |
+| 行列式 | "矩阵里算出的某个数" | 衡量矩阵把面积（二维）或体积（三维）放大了多少。为零意味着这个变换压扁了一个维度。 |
+| 逆 | "撤销矩阵" | 逆转该变换的矩阵。只有行列式不为零时才存在。 |
+| 单位矩阵 | "无聊的矩阵" | 矩阵里相当于乘以 1 的东西。用于残差连接（ResNet）。 |
+| 广播 | "魔法形状修复" | 通过沿缺失维度重复，把较小的数组拉伸到与较大的数组匹配。 |
+| 逐元素 | "普通的乘法" | 对应位置相乘。两个数组形状必须相同（或可广播）。 |
 
-## Further Reading
+## 延伸阅读
 
-- [3Blue1Brown: Essence of Linear Algebra](https://www.3blue1brown.com/topics/linear-algebra) - visual intuition for every operation covered here
-- [NumPy documentation on broadcasting](https://numpy.org/doc/stable/user/basics.broadcasting.html) - the exact rules NumPy follows
-- [Stanford CS229 Linear Algebra Review](http://cs229.stanford.edu/section/cs229-linalg.pdf) - concise reference for ML-specific linear algebra
+- [3Blue1Brown: Essence of Linear Algebra](https://www.3blue1brown.com/topics/linear-algebra) - 为这里涉及的每个运算提供可视化直觉
+- [NumPy documentation on broadcasting](https://numpy.org/doc/stable/user/basics.broadcasting.html) - NumPy 遵循的确切规则
+- [Stanford CS229 Linear Algebra Review](http://cs229.stanford.edu/section/cs229-linalg.pdf) - ML 专用线性代数的简明参考

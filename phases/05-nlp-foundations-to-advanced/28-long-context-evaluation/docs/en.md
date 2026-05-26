@@ -1,56 +1,56 @@
-# Long-Context Evaluation — NIAH, RULER, LongBench, MRCR
+# 长上下文评估 —— NIAH、RULER、LongBench、MRCR
 
-> Gemini 3 Pro advertises 10M tokens of context. At 1M tokens, 8-needle MRCR drops to 26.3%. Advertised ≠ usable. Long-context evaluation tells you the actual capacity of the model you are shipping on.
+> Gemini 3 Pro 宣传 1000 万 token 的上下文。到 100 万 token 时，8 针 MRCR 掉到 26.3%。宣称的 ≠ 可用的。长上下文评估告诉你正在出货的那个模型的真实容量。
 
-**Type:** Learn
-**Languages:** Python
-**Prerequisites:** Phase 5 · 13 (Question Answering), Phase 5 · 23 (Chunking Strategies)
-**Time:** ~60 minutes
+**类型：** Learn
+**语言：** Python
+**前置要求：** Phase 5 · 13（问答）、Phase 5 · 23（分块策略）
+**预计时间：** ~60 分钟
 
-## The Problem
+## 问题所在
 
-You have a 200-page contract. The model claims a 1M-token context. You paste the contract in and ask: "What is the termination clause?" The model answers — but answers from the cover page because the termination clause sits at 120k tokens deep, past where the model actually attends.
+你有一份 200 页的合同。模型号称 100 万 token 的上下文。你把合同粘进去，问："What is the termination clause?"。模型答了——但答的是封面页，因为终止条款埋在 12 万 token 深处，超出了模型实际关注的范围。
 
-This is the 2026 context-capacity gap. Spec sheets say 1M or 10M. Reality says 60-70% of that is usable, and "usable" depends on the task.
+这就是 2026 年的上下文容量鸿沟。规格表说 100 万或 1000 万。现实说其中 60-70% 可用，而"可用"取决于任务。
 
-- **Retrieval (single needle in haystack):** near-perfect up to the advertised max on frontier models.
-- **Multi-hop / aggregation:** degrades sharply past ~128k on most models.
-- **Reasoning over dispersed facts:** the first task to fail.
+- **检索（haystack 里单针）：** 在前沿模型上一路到宣称上限都近乎完美。
+- **多跳 / 聚合：** 在大多数模型上超过约 128k 就急剧退化。
+- **在分散事实上推理：** 第一个翻车的任务。
 
-Long-context evaluation measures these axes. This lesson names the benchmarks, what each actually measures, and how to build a custom needle test for your domain.
+长上下文评估测量这些维度。这节课点明各个基准、每个实际测什么，以及如何为你的领域搭一个自定义针测试。
 
-## The Concept
+## 核心概念
 
-![NIAH baseline, RULER multi-task, LongBench holistic](../assets/long-context-eval.svg)
+![NIAH 基线、RULER 多任务、LongBench 整体性](../assets/long-context-eval.svg)
 
-**Needle-in-a-Haystack (NIAH, 2023).** Place a fact ("the magic word is pineapple") at a controlled depth in a long context. Ask the model to retrieve it. Sweep depth × length. The original long-context benchmark. Frontier models now saturate this; it is a necessary but not sufficient baseline.
+**大海捞针（NIAH，2023）。** 把一个事实（"the magic word is pineapple"）放在长上下文里一个受控的深度处。让模型把它检索出来。扫描深度 × 长度。最初的长上下文基准。前沿模型如今已把它刷满；它是必要但不充分的基线。
 
-**RULER (Nvidia, 2024).** 13 task types across 4 categories: retrieval (single / multi-key / multi-value), multi-hop tracing (variable tracking), aggregation (common word frequency), QA. Configurable context length (4k to 128k+). Reveals models that saturate NIAH but fail on multi-hop. In the 2024 release, only half of 17 models claiming 32k+ context maintained quality at 32k.
+**RULER（Nvidia，2024）。** 4 大类下的 13 种任务：检索（单键/多键/多值）、多跳追踪（变量跟踪）、聚合（常见词频）、QA。可配置上下文长度（4k 到 128k+）。揭示那些刷满 NIAH 却在多跳上翻车的模型。在 2024 年的发布里，号称 32k+ 上下文的 17 个模型里，只有一半在 32k 处维持住了质量。
 
-**LongBench v2 (2024).** 503 multiple-choice questions, 8k-2M word contexts, six task categories: single-doc QA, multi-doc QA, long in-context learning, long dialogue, code repo, long structured data. The production benchmark for real-world long-context behavior.
+**LongBench v2（2024）。** 503 道选择题，8k-2M 词的上下文，六个任务类别：单文档 QA、多文档 QA、长上下文学习、长对话、代码仓库、长结构化数据。真实世界长上下文行为的生产基准。
 
-**MRCR (Multi-Round Coreference Resolution).** Multi-turn coreference at scale. 8-needle, 24-needle, 100-needle variants. Exposes how many facts a model can juggle before attention degrades.
+**MRCR（多轮共指消解）。** 大规模的多轮共指。8 针、24 针、100 针变体。揭示一个模型在注意力退化之前能同时玩转多少个事实。
 
-**NoLiMa.** "Non-lexical needle." The needle and the query share no literal overlap; retrieval requires one step of semantic reasoning. Harder than NIAH.
+**NoLiMa。** "非词面的针"。针和查询没有字面重叠；检索需要一步语义推理。比 NIAH 更难。
 
-**HELMET.** Concatenates many documents, asks a question from any one. Tests selective attention.
+**HELMET。** 拼接许多文档，从任意一篇里提一个问题。测试选择性注意力。
 
-**BABILong.** Embeds bAbI reasoning chains inside irrelevant haystacks. Tests reasoning-in-a-haystack, not just retrieval.
+**BABILong。** 把 bAbI 推理链嵌进无关的 haystack 里。测试 haystack 里的推理，不只是检索。
 
-### What to actually report
+### 真正该报什么
 
-- **Advertised context window.** The spec-sheet number.
-- **Effective retrieval length.** NIAH pass at some threshold (e.g., 90%).
-- **Effective reasoning length.** Multi-hop or aggregation pass at that threshold.
-- **Degradation curve.** Accuracy vs context length, plotted per task type.
+- **宣称的上下文窗口。** 规格表上的数字。
+- **有效检索长度。** 在某个阈值（如 90%）下 NIAH 通过的长度。
+- **有效推理长度。** 在那个阈值下多跳或聚合通过的长度。
+- **退化曲线。** 准确率对上下文长度，按任务类型分别画出。
 
-Two numbers for your spec sheet: retrieval-effective and reasoning-effective. Usually the reasoning-effective is 25-50% of the advertised window.
+给你规格表的两个数：检索有效和推理有效。通常推理有效是宣称窗口的 25-50%。
 
-## Build It
+## 动手构建
 
-### Step 1: a custom NIAH for your domain
+### 第 1 步：为你的领域做一个自定义 NIAH
 
-See `code/main.py`. The skeleton:
+见 `code/main.py`。骨架：
 
 ```python
 def build_haystack(filler_text, needle, depth_ratio, total_tokens):
@@ -64,7 +64,7 @@ def build_haystack(filler_text, needle, depth_ratio, total_tokens):
     if not filler_tokens:
         raise ValueError("filler_text produced no tokens")
 
-    # Repeat filler until long enough to fill the haystack body.
+    # 重复 filler 直到长到能填满 haystack 主体。
     body_len = max(total_tokens - len(needle_tokens), 0)
     while len(filler_tokens) < body_len:
         filler_tokens = filler_tokens + filler_tokens
@@ -80,9 +80,9 @@ def score_niah(model, haystack, question, expected):
     return 1 if expected.lower() in answer.lower() else 0
 ```
 
-Sweep `depth_ratio` ∈ {0, 0.25, 0.5, 0.75, 1.0} × `total_tokens` ∈ {1k, 4k, 16k, 64k}. Plot the heatmap. That is the NIAH card for your target model.
+扫描 `depth_ratio` ∈ {0, 0.25, 0.5, 0.75, 1.0} × `total_tokens` ∈ {1k, 4k, 16k, 64k}。画热力图。那就是你目标模型的 NIAH 卡片。
 
-### Step 2: a multi-needle variant
+### 第 2 步：多针变体
 
 ```python
 def build_multi_needle(filler, needles, total_tokens):
@@ -95,18 +95,18 @@ def build_multi_needle(filler, needles, total_tokens):
     return " ".join(chunks)
 ```
 
-Questions like "What are the three magic words?" require retrieving all three. Single-needle success does not predict multi-needle success.
+像 "What are the three magic words?" 这样的问题需要把三个都检索出来。单针成功并不能预测多针成功。
 
-### Step 3: multi-hop variable tracing (RULER-style)
+### 第 3 步：多跳变量追踪（RULER 风格）
 
 ```python
 haystack = """X1 = 42. ... (filler) ... X2 = X1 + 10. ... (filler) ... X3 = X2 * 2."""
 question = "What is X3?"
 ```
 
-The answer requires chaining three assignments. Frontier models at 128k often drop to 50-70% accuracy here.
+答案需要把三个赋值串起来。前沿模型在 128k 处这里常掉到 50-70% 准确率。
 
-### Step 4: LongBench v2 on your stack
+### 第 4 步：在你的栈上跑 LongBench v2
 
 ```python
 from datasets import load_dataset
@@ -122,34 +122,34 @@ def eval_model_on_longbench(model, subset="single-doc-qa"):
     return correct / len(tasks)
 ```
 
-Report per-category accuracy. Aggregate scores hide big task-level differences.
+报告逐类别准确率。聚合分数藏住了任务级的巨大差异。
 
-## Pitfalls
+## 坑
 
-- **NIAH-only evaluation.** Passing NIAH at 1M tokens says nothing about multi-hop. Always run RULER or a custom multi-hop test.
-- **Uniform depth sampling.** Many implementations only test depth=0.5. Test depth=0, 0.25, 0.5, 0.75, 1.0 — the "lost in the middle" effect is real.
-- **Lexical overlap with filler.** If the needle shares keywords with the filler, retrieval becomes trivial. Use NoLiMa-style non-overlapping needles.
-- **Ignoring latency.** 1M-token prompts take 30-120 seconds to prefill. Measure time-to-first-token alongside accuracy.
-- **Vendor-self-reported numbers.** OpenAI, Google, Anthropic all publish their own scores. Always re-run independently on your use case.
+- **只做 NIAH 评估。** 在 100 万 token 处通过 NIAH，对多跳什么都说明不了。永远跑 RULER 或一个自定义多跳测试。
+- **均匀深度采样。** 很多实现只测 depth=0.5。测 depth=0, 0.25, 0.5, 0.75, 1.0——"中间迷失"效应是真的。
+- **和 filler 的词面重叠。** 如果针和 filler 共享关键词，检索就变得平凡。用 NoLiMa 式不重叠的针。
+- **忽略延迟。** 100 万 token 的 prompt 预填充要 30-120 秒。在准确率之外测量首 token 时间。
+- **厂商自报的数字。** OpenAI、Google、Anthropic 都发布自己的分数。永远在你的用例上独立重跑。
 
-## Use It
+## 上手使用
 
-The 2026 stack:
+2026 年的栈：
 
-| Situation | Benchmark |
+| 场景 | 基准 |
 |-----------|-----------|
-| Quick sanity check | Custom NIAH at 3 depths × 3 lengths |
-| Model selection for production | RULER (13 tasks) at your target length |
-| Real-world QA quality | LongBench v2 single-doc-QA subset |
-| Multi-hop reasoning | BABILong or custom variable-tracing |
-| Conversational / dialogue | MRCR 8-needle at your target length |
-| Model upgrade regression | Fixed in-house NIAH + RULER harness, run on every new model |
+| 快速合理性检查 | 自定义 NIAH，3 深度 × 3 长度 |
+| 生产选型 | 在你目标长度上的 RULER（13 个任务） |
+| 真实世界 QA 质量 | LongBench v2 单文档 QA 子集 |
+| 多跳推理 | BABILong 或自定义变量追踪 |
+| 对话式 | 在你目标长度上的 MRCR 8 针 |
+| 模型升级回归 | 固定的内部 NIAH + RULER 测试架，每个新模型都跑 |
 
-Rule of thumb for production: never trust a context window until you have NIAH + 1 reasoning task at your intended length.
+生产的经验法则：在你打算用的长度上没跑过 NIAH + 1 个推理任务之前，永远别信一个上下文窗口。
 
-## Ship It
+## 交付
 
-Save as `outputs/skill-long-context-eval.md`:
+存为 `outputs/skill-long-context-eval.md`：
 
 ```markdown
 ---
@@ -172,29 +172,29 @@ Given a target model, target context length, and use case, output:
 Refuse to trust a context window from the model card alone. Refuse NIAH-only evaluation for any multi-hop workload. Refuse vendor self-reported long-context scores as independent evidence.
 ```
 
-## Exercises
+## 练习
 
-1. **Easy.** Build a NIAH with 3 depths (0.25, 0.5, 0.75) × 3 lengths (1k, 4k, 16k). Run on any model. Plot pass rate as a 3×3 heatmap.
-2. **Medium.** Add a 3-needle variant. Measure retrieval of all 3 at each length. Compare to single-needle pass rate at the same length.
-3. **Hard.** Construct a variable-tracing task (X1 → X2 → X3, with 3 hops) embedded in 64k of filler. Measure accuracy across 3 frontier models. Report effective reasoning length per model.
+1. **简单。** 搭一个 NIAH，3 深度（0.25, 0.5, 0.75）× 3 长度（1k, 4k, 16k）。在任意模型上跑。把通过率画成 3×3 热力图。
+2. **中等。** 加一个 3 针变体。测量每个长度下三针全检索出来的情况。和同长度的单针通过率对比。
+3. **困难。** 构造一个变量追踪任务（X1 → X2 → X3，3 跳），嵌进 64k 的 filler 里。在 3 个前沿模型上测准确率。报告每个模型的有效推理长度。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 人们怎么说 | 它实际是什么 |
 |------|-----------------|-----------------------|
-| NIAH | Needle in haystack | Plant a fact in filler, ask the model to retrieve it. |
-| RULER | NIAH on steroids | 13 task types across retrieval / multi-hop / aggregation / QA. |
-| Effective context | The real capacity | Length at which accuracy still holds above threshold. |
-| Lost in the middle | Depth bias | Models under-attend to content in the middle of long inputs. |
-| Multi-needle | Many facts at once | Multiple plants; tests attention juggling, not retrieval alone. |
-| MRCR | Multi-round coref | 8, 24, or 100-needle coreference; exposes attention saturation. |
-| NoLiMa | Non-lexical needle | Needle and query share no literal tokens; requires reasoning. |
+| NIAH | 大海捞针 | 在 filler 里埋一个事实，让模型把它检索出来。 |
+| RULER | 打了类固醇的 NIAH | 检索 / 多跳 / 聚合 / QA 下的 13 种任务。 |
+| 有效上下文 | 真实容量 | 准确率仍维持在阈值以上的长度。 |
+| 中间迷失 | 深度偏见 | 模型对长输入中间的内容关注不足。 |
+| 多针 | 一次多个事实 | 多处埋点；测注意力玩转能力，不只是检索。 |
+| MRCR | 多轮共指 | 8、24 或 100 针共指；揭示注意力饱和。 |
+| NoLiMa | 非词面的针 | 针和查询没有字面 token 重叠；需要推理。 |
 
-## Further Reading
+## 延伸阅读
 
-- [Kamradt (2023). Needle in a Haystack analysis](https://github.com/gkamradt/LLMTest_NeedleInAHaystack) — the original NIAH repo.
-- [Hsieh et al. (2024). RULER: What's the Real Context Size of Your Long-Context LMs?](https://arxiv.org/abs/2404.06654) — the multi-task benchmark.
-- [Bai et al. (2024). LongBench v2](https://arxiv.org/abs/2412.15204) — real-world long-context eval.
-- [Modarressi et al. (2024). NoLiMa: Non-lexical needles](https://arxiv.org/abs/2404.06666) — harder needles.
-- [Kuratov et al. (2024). BABILong](https://arxiv.org/abs/2406.10149) — reasoning-in-haystack.
-- [Liu et al. (2024). Lost in the Middle: How Language Models Use Long Contexts](https://arxiv.org/abs/2307.03172) — the depth-bias paper.
+- [Kamradt (2023). Needle in a Haystack analysis](https://github.com/gkamradt/LLMTest_NeedleInAHaystack) —— 最初的 NIAH 仓库。
+- [Hsieh et al. (2024). RULER: What's the Real Context Size of Your Long-Context LMs?](https://arxiv.org/abs/2404.06654) —— 多任务基准。
+- [Bai et al. (2024). LongBench v2](https://arxiv.org/abs/2412.15204) —— 真实世界长上下文评估。
+- [Modarressi et al. (2024). NoLiMa: Non-lexical needles](https://arxiv.org/abs/2404.06666) —— 更难的针。
+- [Kuratov et al. (2024). BABILong](https://arxiv.org/abs/2406.10149) —— haystack 里的推理。
+- [Liu et al. (2024). Lost in the Middle: How Language Models Use Long Contexts](https://arxiv.org/abs/2307.03172) —— 深度偏见论文。

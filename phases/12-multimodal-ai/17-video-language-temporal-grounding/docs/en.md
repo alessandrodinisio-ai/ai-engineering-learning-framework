@@ -1,146 +1,146 @@
-# Video-Language Models: Temporal Tokens and Grounding
+# 视频-语言模型：时间 token 与 grounding
 
-> Video is not a stack of photos. A 5-second clip has causal ordering, action verbs, and event timing that an image model cannot represent. Video-LLaMA (Zhang et al., June 2023) shipped the first open video-LLM with audio-visual grounding. VideoChat and Video-LLaVA scaled the pattern. By 2025 Qwen2.5-VL's TMRoPE closed the gap with frontier proprietary models. Each system solved temporal tokens differently — Q-former per clip, concat-pool per frame, TMRoPE per token. This lesson reads the patterns, builds a uniform-vs-dynamic frame sampler, and evaluates on temporal grounding tasks.
+> 视频不是一摞照片。一段 5 秒的片段有因果顺序、动作动词和事件时序，是图像模型表示不了的。Video-LLaMA（Zhang 等人，2023 年 6 月）出货了第一个带视听 grounding 的开放视频 LLM。VideoChat 和 Video-LLaVA 放大了这个模式。到 2025 年，Qwen2.5-VL 的 TMRoPE 缩小了与前沿专有模型的差距。每个系统解决时间 token 的方式都不同——每片段一个 Q-former、每帧 concat-pool、每 token 一次 TMRoPE。本节课通读这些模式，搭一个均匀 vs 动态帧采样器，并在时间 grounding 任务上评测。
 
-**Type:** Build
-**Languages:** Python (stdlib, frame sampler + temporal-grounding evaluator)
-**Prerequisites:** Phase 12 · 08 (LLaVA-OneVision)
-**Time:** ~180 minutes
+**类型：** Build
+**语言：** Python（标准库，帧采样器 + 时间 grounding 评测器）
+**前置要求：** Phase 12 · 08（LLaVA-OneVision）
+**预计时间：** ~180 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Explain why temporal positional encoding changes video VLM performance independently of the vision encoder.
-- Compare uniform, dynamic-FPS, and event-driven frame sampling on tokens-per-second vs grounding accuracy.
-- Describe Q-former-per-clip (Video-LLaMA) vs pooled-per-frame (Video-LLaVA) vs M-RoPE-per-token (Qwen2.5-VL) designs.
-- Name the four video benchmarks: VideoMME, TempCompass, EgoSchema, Video-MMMU.
+- 解释为什么时间位置编码独立于视觉编码器改变视频 VLM 的性能。
+- 在每秒 token 数 vs grounding 准确率上把均匀、动态 FPS、事件驱动三种帧采样作比较。
+- 描述每片段一个 Q-former（Video-LLaMA）vs 每帧池化（Video-LLaVA）vs 每 token 一次 M-RoPE（Qwen2.5-VL）的设计。
+- 说出四个视频基准：VideoMME、TempCompass、EgoSchema、Video-MMMU。
 
-## The Problem
+## 问题所在
 
-A 1-minute video at 30 FPS is 1800 frames. At 196 visual tokens per frame (ViT-B at 224), that is 352k tokens — larger than any 2024-era LLM context.
+一段 1 分钟、30 FPS 的视频是 1800 帧。每帧 196 个视觉 token（224 下的 ViT-B）算，就是 35.2 万个 token——比任何 2024 年时代的 LLM 上下文都大。
 
-Three reduction strategies exist:
+存在三种缩减策略：
 
-1. Subsample frames (1-8 FPS depending on content).
-2. Pool each frame's patch tokens aggressively (3x3 or 4x4 bilinear pool).
-3. Compress via a Q-former that takes a 16-frame clip and outputs 64 tokens.
+1. 帧下采样（按内容 1-8 FPS）。
+2. 激进地池化每帧的 patch token（3x3 或 4x4 双线性池化）。
+3. 用一个 Q-former 压缩，它吃一段 16 帧片段、吐 64 个 token。
 
-Each trade-off is different. Subsampling loses temporal detail. Pooling loses spatial detail. Q-former loses both a little but saves tokens.
+每种取舍都不同。下采样丢时间细节。池化丢空间细节。Q-former 两者各丢一点但省 token。
 
-Temporal position encoding is the other axis: how does the model know frame 5 came before frame 6? Options include simple 1D temporal RoPE (Video-LLaMA), learned temporal embeddings (Video-LLaVA), and TMRoPE (Qwen2.5-VL, full 3D).
+时间位置编码是另一条轴：模型怎么知道第 5 帧在第 6 帧之前？选项包括简单的一维时间 RoPE（Video-LLaMA）、学出来的时间嵌入（Video-LLaVA），以及 TMRoPE（Qwen2.5-VL，完整 3D）。
 
-## The Concept
+## 核心概念
 
-### Video-LLaMA: Q-former per clip + audio branch
+### Video-LLaMA：每片段一个 Q-former + 音频分支
 
-Video-LLaMA (2023) was the first open video-LLM. Architecture:
+Video-LLaMA（2023）是第一个开放视频 LLM。架构：
 
-- 16-frame clips at 2 FPS (so 8 seconds).
-- Per-frame ViT features -> Video Q-former that cross-attends over all 16 frames -> 32 learned queries -> LLM.
-- Parallel audio branch: waveform -> ImageBind audio encoder -> Audio Q-former -> 32 queries -> LLM.
+- 2 FPS 下的 16 帧片段（即 8 秒）。
+- 逐帧 ViT 特征 -> 视频 Q-former，它交叉关注全部 16 帧 -> 32 个学出的 query -> LLM。
+- 并行音频分支：波形 -> ImageBind 音频编码器 -> 音频 Q-former -> 32 个 query -> LLM。
 
-Strength: audio-visual joint reasoning. Weakness: fixed clip length, no arbitrary time grounding.
+强项：视听联合推理。弱项：片段长度固定，无任意时间 grounding。
 
-### VideoChat and Video-LLaVA
+### VideoChat 与 Video-LLaVA
 
-VideoChat kept the Video-LLaMA idea but dropped audio and simplified. Video-LLaVA (Lin et al., 2023) trained a single visual encoder on both images and video frames ("alignment before projection"), giving a unified representation. Both are frozen-CLIP-encoder + MLP + LLM.
+VideoChat 保留 Video-LLaMA 的想法但去掉了音频并简化。Video-LLaVA（Lin 等人，2023）在图像和视频帧上训了单个视觉编码器（"投影前对齐"），给出统一表示。两者都是冻结 CLIP 编码器 + MLP + LLM。
 
-Neither handles long video. Both are 8-16 frame systems.
+两者都不处理长视频。都是 8-16 帧系统。
 
-### Qwen2.5-VL and TMRoPE
+### Qwen2.5-VL 与 TMRoPE
 
-Qwen2.5-VL introduced TMRoPE — Temporal-Modality Rotary Position Embedding. Each patch token carries an (t, h, w) position where t is the actual timestamp (not frame index).
+Qwen2.5-VL 引入了 TMRoPE——时间-模态旋转位置嵌入。每个 patch token 携带一个 (t, h, w) 位置，其中 t 是真实时间戳（不是帧索引）。
 
-Key differences from simple temporal embedding:
+与简单时间嵌入的关键区别：
 
-- Absolute time, not index. The model sees "at 4.2 seconds" not "at frame 15."
-- Per-token rotation, not per-clip. Each visual token rotates independently by its timestamp.
-- Compatible with dynamic FPS. If you sample at 2 FPS here and 4 FPS there, TMRoPE handles the uneven spacing natively.
+- 绝对时间，不是索引。模型看到"在 4.2 秒"，而非"在第 15 帧"。
+- 每 token 旋转，不是每片段。每个视觉 token 按它的时间戳独立旋转。
+- 与动态 FPS 兼容。如果你这里按 2 FPS、那里按 4 FPS 采样，TMRoPE 原生处理这种不均匀间距。
 
-TMRoPE enables "at what second does the cat jump?" queries. The model can output "at 4.2 seconds." Video-LLaMA could only say "early in the clip."
+TMRoPE 让"猫在第几秒跳起来？"这类查询成为可能。模型能输出"在 4.2 秒"。Video-LLaMA 只能说"片段早段"。
 
-### Frame sampling strategies
+### 帧采样策略
 
-Uniform: sample N frames evenly over duration. Simple, loses motion peaks.
+均匀：在时长上均匀采 N 帧。简单，丢掉运动峰值。
 
-Dynamic FPS: sample adaptively based on motion intensity. Optical flow or frame differencing picks high-motion segments for denser sampling. Qwen2.5-VL trains on this.
+动态 FPS：基于运动强度自适应采样。光流或帧差分挑出高运动段做更密集采样。Qwen2.5-VL 在这上面训练。
 
-Event-driven: run a lightweight detector, sample more where action happens. Used by VideoAgent.
+事件驱动：跑一个轻量检测器，在有动作的地方多采。VideoAgent 用这个。
 
-Keyframe + context: sample at shot boundaries + a few adjacent frames. Used for cinematic content.
+关键帧 + 上下文：在镜头边界 + 邻近几帧采样。用于影视内容。
 
-### Pooling per frame
+### 每帧池化
 
-At 1 FPS and 576 tokens per frame, a 5-minute clip is 172,800 tokens. Doable with Qwen2.5-VL-72B's 128k context but expensive.
+在 1 FPS、每帧 576 token 下，一段 5 分钟片段是 172,800 个 token。用 Qwen2.5-VL-72B 的 128k 上下文能做，但贵。
 
-3x3 bilinear pool reduces to 64 tokens per frame -> 19,200 tokens for 5 minutes. Sweet spot for most tasks.
+3x3 双线性池化减到每帧 64 token -> 5 分钟 19,200 个 token。大多数任务的甜点区。
 
-Pool more aggressively (6x6 -> 16 tokens per frame) for agent workflows where spatial detail matters less.
+对空间细节没那么要紧的 agent 工作流，池化更激进（6x6 -> 每帧 16 token）。
 
-### The four video benchmarks
+### 四个视频基准
 
-- VideoMME: comprehensive video understanding, short + medium + long.
-- TempCompass: fine-grained temporal reasoning, "before" / "after" questions.
-- EgoSchema: long-horizon first-person video.
-- Video-MMMU: multimodal multi-discipline video questions.
+- VideoMME：综合视频理解，短 + 中 + 长。
+- TempCompass：细粒度时间推理，"之前"/"之后"类问题。
+- EgoSchema：长时程第一人称视频。
+- Video-MMMU：多模态多学科视频问题。
 
-A full video-VLM evaluation hits all four. They stress different axes — TempCompass is all about ordering, EgoSchema is about 3+ minute reasoning, VideoMME spans durations.
+一次完整的视频 VLM 评测会全打到这四个。它们各压不同的轴——TempCompass 全是关于排序，EgoSchema 关于 3 分钟以上推理，VideoMME 横跨时长。
 
-### Grounding output formats
+### grounding 输出格式
 
-Output formats for temporal grounding:
+时间 grounding 的输出格式：
 
-- Free text: "The cat jumps around the 4-second mark." Easy to parse but imprecise.
-- Structured JSON: `{"event": "jump", "start": 4.1, "end": 4.3}`. Qwen2.5-VL trains this.
-- Token-based: special `<time>4.1</time>` tokens interleaved with the answer. Qwen2.5-VL's internal format.
+- 自由文本："猫在大约 4 秒处跳起。"易解析但不精确。
+- 结构化 JSON：`{"event": "jump", "start": 4.1, "end": 4.3}`。Qwen2.5-VL 训这个。
+- 基于 token：与答案交错的特殊 `<time>4.1</time>` token。Qwen2.5-VL 的内部格式。
 
-Token-based is most accurate for downstream use. Qwen2.5-VL's JSON output format parses directly.
+基于 token 的对下游使用最准。Qwen2.5-VL 的 JSON 输出格式可直接解析。
 
-### 2026 best practice
+### 2026 年最佳实践
 
-For video VLMs in 2026:
+2026 年的视频 VLM：
 
-- Encoder: SigLIP 2 with M-RoPE or TMRoPE (Qwen2.5-VL).
-- Frame sampling: dynamic FPS (1-4 depending on motion) with max-frame cap.
-- Per-frame pooling: 3x3 bilinear.
-- Output: structured JSON with time + event fields.
-- Benchmarks: VideoMME + TempCompass for general; EgoSchema for long-horizon.
+- 编码器：带 M-RoPE 或 TMRoPE 的 SigLIP 2（Qwen2.5-VL）。
+- 帧采样：动态 FPS（按运动 1-4）配最大帧上限。
+- 每帧池化：3x3 双线性。
+- 输出：带 time + event 字段的结构化 JSON。
+- 基准：通用用 VideoMME + TempCompass；长时程用 EgoSchema。
 
-## Use It
+## 上手使用
 
-`code/main.py` includes:
+`code/main.py` 包含：
 
-- Uniform and dynamic-FPS frame samplers.
-- A toy temporal-grounding evaluator: given a "ground truth" event at time T and a model output, score accuracy with tolerance.
-- A comparison across Video-LLaMA (16 frames, Q-former), Video-LLaVA (8 frames, MLP), Qwen2.5-VL (dynamic FPS + TMRoPE).
+- 均匀和动态 FPS 帧采样器。
+- 一个玩具时间 grounding 评测器：给定时间 T 处的"真值"事件和一个模型输出，带容差地为准确率打分。
+- 一份横跨 Video-LLaMA（16 帧，Q-former）、Video-LLaVA（8 帧，MLP）、Qwen2.5-VL（动态 FPS + TMRoPE）的对比。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-video-vlm-frame-planner.md`. Given a video task (monitoring, action recognition, temporal grounding, summarization), it picks the frame sampler, pooling factor, output format, and expected accuracy tier.
+本节课产出 `outputs/skill-video-vlm-frame-planner.md`。给定一个视频任务（监控、动作识别、时间 grounding、摘要），它挑出帧采样器、池化倍数、输出格式和预期准确率档。
 
-## Exercises
+## 练习
 
-1. For a 3-minute cooking demo, pick uniform vs dynamic FPS. Justify with a token count.
+1. 对一段 3 分钟烹饪演示，在均匀 vs 动态 FPS 之间挑选。用一个 token 数来辩护。
 
-2. TMRoPE adds what specifically that a simple temporal embedding table cannot do?
+2. TMRoPE 具体加入了什么是简单时间嵌入表做不到的？
 
-3. Write a JSON schema for temporal grounding that a VLM can learn to emit. Include error cases.
+3. 写一个 VLM 能学会吐出的时间 grounding JSON schema。包含错误情形。
 
-4. Read Video-LLaVA's Section 3 on "Alignment Before Projection." Why is this better than training separate image and video encoders?
+4. 读 Video-LLaVA 第 3 节关于"投影前对齐"的内容。为什么这比训分开的图像和视频编码器更好？
 
-5. Given the VideoMME leaderboard, what is the gap between the top open model and the top proprietary model as of 2026? How much of that gap is attributable to temporal encoding vs base LLM scale?
+5. 给定 VideoMME 排行榜，截至 2026 年顶级开放模型与顶级专有模型的差距有多大？这差距里有多少能归因于时间编码 vs 基座 LLM 规模？
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家怎么说 | 它实际指什么 |
 |------|-----------------|------------------------|
-| Temporal grounding | "Time-localized answers" | VLM outputs a specific timestamp range for when an event happens |
-| TMRoPE | "Time-Multimodal RoPE" | 3D rotary position with absolute timestamps, used by Qwen2.5-VL |
-| Dynamic FPS | "Motion-aware sampling" | Sample more frames in high-motion segments, fewer in static ones |
-| Frame pooling | "Spatial compress per frame" | Reduce patches per frame with bilinear interpolation before the LLM |
-| Video Q-former | "Clip compressor" | Cross-attention bottleneck mapping N frames to K learned queries |
-| VideoMME | "Video bench" | Comprehensive short/medium/long video benchmark, 2500+ samples |
+| 时间 grounding | "时间定位的答案" | VLM 为某事件何时发生输出一个具体的时间戳范围 |
+| TMRoPE | "时间-多模态 RoPE" | 带绝对时间戳的 3D 旋转位置，Qwen2.5-VL 所用 |
+| 动态 FPS | "运动感知采样" | 在高运动段多采帧，在静态段少采 |
+| 帧池化 | "每帧空间压缩" | 在进 LLM 前用双线性插值减少每帧 patch |
+| 视频 Q-former | "片段压缩器" | 把 N 帧映射到 K 个学出 query 的交叉注意力瓶颈 |
+| VideoMME | "视频基准" | 综合短/中/长视频基准，2500+ 样本 |
 
-## Further Reading
+## 延伸阅读
 
 - [Zhang et al. — Video-LLaMA (arXiv:2306.02858)](https://arxiv.org/abs/2306.02858)
 - [Li et al. — VideoChat (arXiv:2305.06355)](https://arxiv.org/abs/2305.06355)

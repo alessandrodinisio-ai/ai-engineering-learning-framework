@@ -1,51 +1,51 @@
-# Transfusion: Autoregressive Text + Diffusion Image in One Transformer
+# Transfusion：一个 transformer 里的自回归文本 + 扩散图像
 
-> Chameleon and Emu3 bet everything on discrete tokens. They work, but the quantization bottleneck is visible — the image quality plateaus below continuous-space diffusion models. Transfusion (Meta, Zhou et al., August 2024) takes the opposite bet: keep images continuous, drop the VQ-VAE entirely, and train one transformer with two losses. Text tokens get next-token-prediction. Image patches get a flow-matching / diffusion loss. Both objectives optimize the same weights. The architecture underlying Stable Diffusion 3 (MMDiT) is a close cousin. This lesson reads the Transfusion thesis, builds a toy two-loss trainer, and traces the attention mask that lets one transformer do both jobs.
+> Chameleon 和 Emu3 把全部赌注押在离散 token 上。它们能work，但量化瓶颈是看得见的——图像质量在连续空间扩散模型之下平台化。Transfusion（Meta，Zhou 等人，2024 年 8 月）下了反方向的赌注：让图像保持连续，彻底扔掉 VQ-VAE，用两个损失训一个 transformer。文本 token 走下一 token 预测。图像 patch 走 flow-matching / 扩散损失。两个目标优化同一套权重。Stable Diffusion 3 底层的架构（MMDiT）是它的近亲。本节课通读 Transfusion 论点，搭一个玩具级双损失训练器，并追踪那个让一个 transformer 同时干两份活的注意力掩码。
 
-**Type:** Build
-**Languages:** Python (stdlib, two-loss trainer on MNIST-scale toy)
-**Prerequisites:** Phase 12 · 11 (Chameleon), Phase 8 (Generative AI)
-**Time:** ~180 minutes
+**类型：** Build
+**语言：** Python（标准库，MNIST 规模玩具上的双损失训练器）
+**前置要求：** Phase 12 · 11（Chameleon）、Phase 8（生成式 AI）
+**预计时间：** ~180 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Wire a transformer that runs two losses (NTP on text tokens, diffusion MSE on image patches) on one backbone.
-- Explain why bidirectional attention across image patches plus causal attention over text tokens is the right mask choice.
-- Compare Transfusion-style (continuous images, diffusion loss) to Chameleon-style (discrete images, NTP) on compute, quality, and code complexity.
-- Name MMDiT's contribution: modality-specific weights at each block, joint attention at the residual stream.
+- 接好一个 transformer，在一个骨干上跑两个损失（文本 token 上的 NTP、图像 patch 上的扩散 MSE）。
+- 解释为什么跨图像 patch 的双向注意力加上跨文本 token 的因果注意力是正确的掩码选择。
+- 在算力、质量和代码复杂度上把 Transfusion 式（连续图像，扩散损失）与 Chameleon 式（离散图像，NTP）作比较。
+- 说出 MMDiT 的贡献：每个块的模态专属权重、残差流上的联合注意力。
 
-## The Problem
+## 问题所在
 
-The discrete vs continuous image tokens debate is older than LLMs. Continuous representations (raw pixels, VAE latents) preserve detail. Discrete tokens (VQ indices) fit the transformer's native vocabulary but lose detail at the quantization step.
+离散 vs 连续图像 token 之争比 LLM 还老。连续表示（原始像素、VAE 潜变量）保留细节。离散 token（VQ 索引）契合 transformer 的原生词表，但在量化那一步丢失细节。
 
-Chameleon / Emu3 went discrete: one loss, one architecture, but image fidelity capped by tokenizer quality.
+Chameleon / Emu3 走了离散：一个损失、一个架构，但图像保真度被分词器质量封顶。
 
-Diffusion models went continuous: exceptional image quality, but a separate model from the LLM, complex noise-schedule engineering, and no clean integration with text generation.
+扩散模型走了连续：图像质量出众，但它是个独立于 LLM 的模型，需要复杂的噪声调度工程，且无法与文本生成干净集成。
 
-Transfusion asks: can we have both? Keep images continuous, still train one model, use two losses stitched into one gradient step.
+Transfusion 问：我们能两者兼得吗？让图像保持连续，仍然训一个模型，用两个缝进同一个梯度步的损失。
 
-## The Concept
+## 核心概念
 
-### The two-loss architecture
+### 双损失架构
 
-A single decoder-only transformer processes a sequence that contains:
+单个纯解码器 transformer 处理一条包含以下内容的序列：
 
-- Text tokens (discrete, from BPE vocab).
-- Image patches (continuous, 16x16 pixel blocks projected into hidden dim via linear embedding — same as a ViT encoder's input).
-- `<image>` and `</image>` tags marking where continuous patches live.
+- 文本 token（离散，来自 BPE 词表）。
+- 图像 patch（连续，16x16 像素块经线性嵌入投影到隐藏维度——与 ViT 编码器的输入相同）。
+- 标记连续 patch 所在位置的 `<image>` 和 `</image>` 标签。
 
-Forward pass runs once. The loss picks one of two heads per token:
+前向跑一次。损失为每个 token 挑两个头之一：
 
-- For text tokens: standard cross-entropy on the vocab-logits head.
-- For image patches: diffusion loss on continuous patches — predict the noise that was added to each patch.
+- 对文本 token：词表 logit 头上的标准交叉熵。
+- 对图像 patch：连续 patch 上的扩散损失——预测加到每个 patch 上的噪声。
 
-The gradient flows through the shared transformer body. Both losses improve the shared weights simultaneously.
+梯度流过共享的 transformer 主体。两个损失同时改进共享权重。
 
-### Attention mask: causal text + bidirectional image
+### 注意力掩码：因果文本 + 双向图像
 
-Text tokens must be causal — you cannot let a text token attend to future text, or teacher forcing breaks. Image patches, however, represent one snapshot; they should attend to each other bidirectionally within the same image block.
+文本 token 必须是因果的——你不能让一个文本 token 关注未来的文本，否则 teacher forcing 就坏了。而图像 patch 代表一个快照；它们应该在同一个图像块内部彼此双向关注。
 
-The mask:
+掩码：
 
 ```
 M[i, j] = 1 if:
@@ -55,90 +55,90 @@ M[i, j] = 1 if:
   OR (i is image and j is text and j < i_image_start)   # image attends to preceding text
 ```
 
-Implemented as a block-triangular mask at training and inference.
+训练和推理时都实现为一个块三角掩码。
 
-### Diffusion loss inside the transformer
+### transformer 内部的扩散损失
 
-The diffusion loss is standard: add noise to an image patch, ask the model to predict the noise (or the clean patch, equivalently). Transfusion's version uses flow matching — predict the velocity field from noisy to clean.
+扩散损失是标准的：给一个图像 patch 加噪，让模型预测噪声（或等价地预测干净 patch）。Transfusion 的版本用 flow matching——预测从含噪到干净的速度场。
 
-During training:
-1. For each image patch x0, sample a random timestep t.
-2. Sample noise ε, compute xt = (1-t) * x0 + t * ε (linear interpolation for flow matching).
-3. The transformer predicts v_theta(xt, t); loss = MSE(v_theta(xt, t), ε - x0).
-4. Backprop alongside text NTP losses from the same sequence.
+训练时：
+1. 对每个图像 patch x0，采一个随机时间步 t。
+2. 采噪声 ε，算 xt = (1-t) * x0 + t * ε（flow matching 的线性插值）。
+3. transformer 预测 v_theta(xt, t)；损失 = MSE(v_theta(xt, t), ε - x0)。
+4. 与来自同一序列的文本 NTP 损失一起反向传播。
 
-At inference, generation is:
-- Text tokens: standard autoregressive sampling.
-- Image patches: diffusion sampling loop (10-30 steps typical) conditioned on the prior text tokens.
+推理时，生成是：
+- 文本 token：标准自回归采样。
+- 图像 patch：以先前文本 token 为条件的扩散采样循环（典型 10-30 步）。
 
-### MMDiT: Stable Diffusion 3's variant
+### MMDiT：Stable Diffusion 3 的变体
 
-Stable Diffusion 3 (Esser et al., March 2024) shipped MMDiT (Multimodal Diffusion Transformer) around the same time as Transfusion. The architectures are siblings.
+Stable Diffusion 3（Esser 等人，2024 年 3 月）出货的 MMDiT（多模态扩散 transformer）与 Transfusion 大约同期。这两个架构是兄弟。
 
-MMDiT's key differences:
+MMDiT 的关键区别：
 
-- Modality-specific weights per block. Each transformer block has separate Q, K, V, and MLP weights for text tokens vs image patches. Attention is joint (cross-modality); everything else is modality-specific.
-- Rectified flow training. A specific flow-matching variant with known sampling and simpler math than DDPM.
-- Scale. MMDiT is the backbone for SD3 (2B and 8B param variants). Transfusion's paper scales to 7B.
+- 每个块的模态专属权重。每个 transformer 块为文本 token 和图像 patch 分别有独立的 Q、K、V 和 MLP 权重。注意力是联合的（跨模态）；其余一切都是模态专属的。
+- rectified flow 训练。一个特定的 flow-matching 变体，采样已知且数学比 DDPM 更简单。
+- 规模。MMDiT 是 SD3（2B 和 8B 参数变体）的骨干。Transfusion 论文扩展到 7B。
 
-Both converge on the same core idea: one transformer runs NTP on text and diffusion on continuous image representations.
+两者收敛到同一个核心想法：一个 transformer 在文本上跑 NTP、在连续图像表示上跑扩散。
 
-### Why this beats Chameleon-style
+### 为什么这胜过 Chameleon 式
 
-The quality gap between continuous-diffusion and discrete-NTP on image generation is measurable. Transfusion paper reports:
+连续扩散和离散 NTP 在图像生成上的质量差距是可测的。Transfusion 论文报告：
 
-- At 7B params, beats a same-size Chameleon-style model on FID by 3-5 points.
-- No tokenizer training required — the image encoder is simpler (Linear projection to hidden, same as a ViT's input layer).
-- Inference can parallelize image patch denoising, unlike autoregressive image tokens.
+- 7B 参数下，在 FID 上比同规模 Chameleon 式模型高 3-5 分。
+- 不需要训练分词器——图像编码器更简单（线性投影到隐藏维度，与 ViT 的输入层相同）。
+- 推理能并行化图像 patch 去噪，不像自回归图像 token。
 
-Downside: Transfusion is a dual-loss model, making training dynamics trickier. Loss weights need tuning. Schedule mismatch between NTP and diffusion can cause one head to dominate.
+缺点：Transfusion 是个双损失模型，训练动态更棘手。损失权重需要调。NTP 和扩散之间的调度不匹配会让一个头主导。
 
-### What sits downstream
+### 下游有什么
 
-Janus-Pro (Lesson 12.15) refines Transfusion's idea by decoupling the vision encoder for understanding and generation — SigLIP for one, VQ for the other — while sharing the transformer body. Show-o (Lesson 12.14) swaps diffusion for discrete-diffusion (masked prediction). The unified-generation family branches rapidly after Transfusion.
+Janus-Pro（第 12.15 课）通过把理解和生成的视觉编码器解耦——一个用 SigLIP、一个用 VQ——同时共享 transformer 主体，精炼了 Transfusion 的想法。Show-o（第 12.14 课）把扩散换成离散扩散（掩码预测）。统一生成家族在 Transfusion 之后迅速分叉。
 
-2026 production VLMs that emit images — Gemini 3 Pro, GPT-5, Claude Opus 4.7's image generation path — almost certainly use some descendant of this family. Details are proprietary.
+2026 年那些能吐图像的生产 VLM——Gemini 3 Pro、GPT-5、Claude Opus 4.7 的图像生成路径——几乎肯定用了这个家族的某个后代。细节是专有的。
 
-## Use It
+## 上手使用
 
-`code/main.py` builds a toy Transfusion on a tiny MNIST-like problem:
+`code/main.py` 在一个微型 MNIST 式问题上搭了一个玩具 Transfusion：
 
-- Text captions are short integer sequences describing a digit (0-9).
-- Images are 4x4 grids of bytes.
-- A pair of shared-weight linear projections acts as the transformer stand-in; NTP loss on text, MSE loss on noisy patches.
-- Training loop alternates the two losses, attention mask is explicit.
-- Generation produces a text caption and a 4x4 image in one forward pass.
+- 文本 caption 是描述一个数字（0-9）的短整数序列。
+- 图像是 4x4 的字节网格。
+- 一对共享权重的线性投影充当 transformer 替身；文本上 NTP 损失，含噪 patch 上 MSE 损失。
+- 训练循环交替这两个损失，注意力掩码是显式的。
+- 生成在一次前向里产出一个文本 caption 和一张 4x4 图。
 
-The transformer is a toy. The two-loss plumbing, attention mask construction, and inference loop are the real artifacts.
+transformer 是玩具。双损失管路、注意力掩码构建和推理循环才是真正的产物。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-two-loss-trainer-designer.md`. Given a new multimodal training task (text + image, text + audio, text + video), it designs the two-loss schedule (loss weights, mask shape, shared vs modality-specific blocks) and flags implementation risks.
+本节课产出 `outputs/skill-two-loss-trainer-designer.md`。给定一个新的多模态训练任务（文本 + 图像、文本 + 音频、文本 + 视频），它设计双损失调度（损失权重、掩码形状、共享 vs 模态专属块）并标记实现风险。
 
-## Exercises
+## 练习
 
-1. A Transfusion-style model trains 70% text tokens and 30% image patches. The image diffusion loss is ~10x the text NTP loss in magnitude. What loss weights balance them?
+1. 一个 Transfusion 式模型训 70% 文本 token 和 30% 图像 patch。图像扩散损失在量级上约是文本 NTP 损失的 10 倍。什么样的损失权重能平衡它们？
 
-2. Implement the block-triangular mask for a sequence: `[T, T, <image>, P, P, P, P, </image>, T]`. Mark each entry 0 or 1.
+2. 为序列 `[T, T, <image>, P, P, P, P, </image>, T]` 实现块三角掩码。把每个项标为 0 或 1。
 
-3. MMDiT has modality-specific QKV weights. What parameter count overhead does this add vs Transfusion's fully-shared transformer? At 7B params, is it worth it?
+3. MMDiT 有模态专属的 QKV 权重。相对 Transfusion 完全共享的 transformer，这增加了多少参数量开销？在 7B 参数下，值得吗？
 
-4. Generation: given a text prompt, the model runs NTP for 50 tokens, then hits `<image>`, then runs diffusion on 256 patches over 20 denoise steps. How many forward passes total?
+4. 生成：给定一个文本 prompt，模型先跑 50 个 token 的 NTP，然后撞上 `<image>`，再对 256 个 patch 跑 20 个去噪步的扩散。总共多少次前向？
 
-5. Read SD3 paper Section 3. Describe rectified flow and why it converges in fewer inference steps than DDPM.
+5. 读 SD3 论文第 3 节。描述 rectified flow，以及它为什么比 DDPM 用更少的推理步收敛。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家怎么说 | 它实际指什么 |
 |------|-----------------|------------------------|
-| Two-loss training | "NTP + diffusion" | A single transformer optimizes both cross-entropy on text tokens and MSE on continuous image patches in the same gradient step |
-| Flow matching | "Rectified flow" | Diffusion variant that predicts a velocity field from noise to clean data; simpler math than DDPM |
-| MMDiT | "Multimodal DiT" | Stable Diffusion 3's architecture: joint attention, modality-specific MLPs and norms |
-| Block-triangular mask | "Causal text + bidirectional image" | Attention mask that is causal across text but bidirectional within image regions |
-| Continuous image representation | "No VQ" | Image patches as real-valued vectors, not integer codebook indices |
-| Velocity prediction | "v-parameterization" | Network output is the velocity field between noise and data, not the noise itself |
+| 双损失训练 | "NTP + 扩散" | 单个 transformer 在同一个梯度步里同时优化文本 token 上的交叉熵和连续图像 patch 上的 MSE |
+| flow matching | "rectified flow" | 预测从噪声到干净数据速度场的扩散变体；数学比 DDPM 简单 |
+| MMDiT | "多模态 DiT" | Stable Diffusion 3 的架构：联合注意力、模态专属 MLP 和 norm |
+| 块三角掩码 | "因果文本 + 双向图像" | 跨文本因果但在图像区域内部双向的注意力掩码 |
+| 连续图像表示 | "无 VQ" | 图像 patch 作为实值向量，而非整数码本索引 |
+| 速度预测 | "v 参数化" | 网络输出是噪声与数据之间的速度场，而非噪声本身 |
 
-## Further Reading
+## 延伸阅读
 
 - [Zhou et al. — Transfusion (arXiv:2408.11039)](https://arxiv.org/abs/2408.11039)
 - [Esser et al. — Stable Diffusion 3 / MMDiT (arXiv:2403.03206)](https://arxiv.org/abs/2403.03206)

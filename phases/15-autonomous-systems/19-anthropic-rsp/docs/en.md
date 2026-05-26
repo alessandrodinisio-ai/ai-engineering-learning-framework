@@ -1,101 +1,101 @@
-# Anthropic Responsible Scaling Policy v3.0
+# Anthropic 负责任扩展政策 v3.0
 
-> RSP v3.0 went into effect February 24, 2026, replacing the 2023 policy. Two-tier mitigation: what Anthropic will do unilaterally vs what is framed as an industry-wide recommendation (including RAND SL-4 security standards). Adds Frontier Safety Roadmaps and Risk Reports as standing documents rather than one-off deliverables. Drops the 2023 pause commitment. Introduces the AI R&D-4 threshold: once crossed, Anthropic must publish an affirmative case identifying misalignment risks and mitigations. Claude Opus 4.6 does not cross it. Anthropic states in the v3.0 announcement that "confidently ruling this out is becoming difficult." SaferAI rated the 2023 RSP at 2.2; they downgraded v3.0 to 1.9, putting Anthropic in the "weak" RSP category alongside OpenAI and DeepMind. Qualitative thresholds replaced the 2023 quantitative commitments; removing the pause clause is the sharpest regression.
+> RSP v3.0 于 2026 年 2 月 24 日生效，取代了 2023 年的政策。两层缓解：Anthropic 会单方面去做的事 vs 被定位为全行业建议的事（包含 RAND SL-4 安全标准）。把前沿安全路线图（Frontier Safety Roadmap）和风险报告（Risk Report）加为常设文档，而非一次性交付物。删掉了 2023 年的暂停承诺。引入了 AI R&D-4 阈值：一旦越过，Anthropic 必须发表一份正面论证（affirmative case），指明失准风险与缓解措施。Claude Opus 4.6 没越过它。Anthropic 在 v3.0 公告里说"有把握地排除这一点正变得困难"。SaferAI 给 2023 年的 RSP 评了 2.2 分；他们把 v3.0 下调到 1.9，把 Anthropic 跟 OpenAI 和 DeepMind 一起放进了"弱"这一档 RSP。定性阈值取代了 2023 年的定量承诺；移除暂停条款是最尖锐的回退。
 
-**Type:** Learn
-**Languages:** Python (stdlib, RSP threshold decision engine)
-**Prerequisites:** Phase 15 · 06 (AAR), Phase 15 · 07 (RSI)
-**Time:** ~45 minutes
+**类型：** Learn
+**语言：** Python（标准库，RSP 阈值决策引擎）
+**前置要求：** 阶段 15 · 06（AAR），阶段 15 · 07（RSI）
+**预计时间：** ~45 分钟
 
-## The Problem
+## 问题所在
 
-Frontier labs publish scaling policies that are partly technical documents, partly governance documents, and partly signals to regulators. RSP v3.0 is the current Anthropic document. Reading it closely matters not because compliance with it is binding (it is not), but because the framing shapes how a lab conceives of catastrophic risk and how they communicate trade-offs to the public.
+前沿实验室发布的扩展政策，一部分是技术文档，一部分是治理文档，一部分是发给监管方的信号。RSP v3.0 是 Anthropic 当前的文档。细读它要紧，不是因为遵守它有约束力（并没有），而是因为这套框架塑造了一个实验室如何构想灾难性风险、以及如何向公众沟通取舍。
 
-The v3.0 vs v2.0 diff is the useful unit. What got added: Frontier Safety Roadmaps, Risk Reports, the AI R&D-4 threshold. What got removed: the 2023 pause commitment. What got reframed: a two-tier mitigation schedule split between Anthropic-unilateral and industry-recommendation. External review — SaferAI — downgraded the score from 2.2 (v2) to 1.9 (v3.0). This is how a scaling policy can get less rigorous while looking more polished.
+v3.0 对比 v2.0 的 diff 是有用的单位。加了什么：前沿安全路线图、风险报告、AI R&D-4 阈值。删了什么：2023 年的暂停承诺。重新定位了什么：一张分成 Anthropic 单方面 和 行业建议 两层的缓解时间表。外部评审——SaferAI——把分数从 2.2（v2）下调到 1.9（v3.0）。一个扩展政策就是这样能在看起来更精致的同时变得更不严谨。
 
-## The Concept
+## 核心概念
 
-### The two-tier mitigation schedule
+### 两层缓解时间表
 
-- **Anthropic unilateral actions**: what Anthropic will do regardless of what other labs do. Training stops above a threshold, specific security measures, specific deployment gates.
-- **Industry-wide recommendations**: what Anthropic thinks the industry should do collectively. Includes RAND SL-4 security standards. These are not commitments on Anthropic's side; they are policy advocacy.
+- **Anthropic 单方面行动**：无论其他实验室怎么做，Anthropic 都会做的事。超过某个阈值就停训、特定的安全措施、特定的部署门。
+- **全行业建议**：Anthropic 认为整个行业应该集体去做的事。包含 RAND SL-4 安全标准。这些不是 Anthropic 一方的承诺；它们是 Anthropic 的政策倡导。
 
-The two-tier structure was not in v2. It means that a reader needs to look at which column each commitment lives in. A security measure in the "industry-wide recommendation" column is not Anthropic's promise; it is Anthropic's hope.
+两层结构在 v2 里没有。它意味着读者需要看每条承诺活在哪一列。落在"全行业建议"列里的一项安全措施不是 Anthropic 的承诺；它是 Anthropic 的期望。
 
-### The AI R&D-4 threshold
+### AI R&D-4 阈值
 
-This is the capability level RSP v3.0 names as the important next threshold. Specifically: a model that could automate a substantial fraction of AI research at competitive cost. Once Anthropic believes a model crosses it, they must publish an affirmative case identifying misalignment risks and mitigations before continued scaling.
+这是 RSP v3.0 点名为重要的下一个阈值的能力等级。具体来说：一个能以有竞争力的成本自动化相当大一部分 AI 研究的模型。一旦 Anthropic 相信某个模型越过了它，他们就必须在继续扩展之前发表一份正面论证，指明失准风险与缓解措施。
 
-Claude Opus 4.6 does not cross it per the v3.0 announcement. The document adds: "confidently ruling this out is becoming difficult." That phrasing matters; it concedes that the threshold is close enough to be a live concern, not a speculative limit.
+按 v3.0 公告，Claude Opus 4.6 没越过它。文档补了一句："有把握地排除这一点正变得困难。"这个措辞要紧；它承认这个阈值已经近到成了一个现实关切，而不是一个空想的极限。
 
-Lesson 6 (Automated Alignment Research) and Lesson 7 (Recursive Self-Improvement) feed directly into this threshold. Automated alignment researchers crossing research-quality bars is evidence that the AI R&D-4 threshold is approaching.
+第 6 课（自动化对齐研究）和第 7 课（递归自我改进）直接喂进这个阈值。自主对齐研究员越过研究质量门槛，就是 AI R&D-4 阈值正在逼近的证据。
 
-### Frontier Safety Roadmaps and Risk Reports
+### 前沿安全路线图与风险报告
 
-v3.0 elevates two artifact types to standing documents:
+v3.0 把两类产物提升为常设文档：
 
-- **Frontier Safety Roadmap**: forward-looking document describing planned safety work, capability expectations, and mitigation research.
-- **Risk Report**: retrospective document on specific models after release, describing observed capability and residual risk.
+- **前沿安全路线图（Frontier Safety Roadmap）**：前瞻性文档，描述计划中的安全工作、能力预期和缓解研究。
+- **风险报告（Risk Report）**：回顾性文档，针对发布后的特定模型，描述观察到的能力和残余风险。
 
-Both are public. Both are updated on a declared cadence. The utility is: reader can track how what Anthropic said they would do in a Roadmap compares to what they report in a Risk Report.
+两者都是公开的。两者都按一个声明的节奏更新。用处是：读者能跟踪 Anthropic 在一份路线图里说要做什么，跟他们在一份风险报告里报告的相比如何。
 
-### Removing the pause clause
+### 移除暂停条款
 
-The 2023 RSP included an explicit pause commitment: if a model crossed specific capability thresholds, training would pause until mitigations were in place. v3.0 replaces the explicit pause with a softer formulation (publish an affirmative case, proceed if mitigations are adequate). SaferAI and other analysts called this out directly as the strongest regression in the new document.
+2023 年的 RSP 含有一条显式的暂停承诺：如果一个模型越过特定能力阈值，训练就暂停，直到缓解措施就位。v3.0 用一个更软的表述（发表一份正面论证，如果缓解措施足够就继续）取代了这条显式暂停。SaferAI 和其他分析者都直接把这点出来，称它是新文档里最强的回退。
 
-The policy argument for the change: quantitative thresholds in 2023 turned out to be unreachable by 2026-era capability benchmarks because the benchmarks themselves were re-scaled. The counter-argument: a pause clause in a scaling policy is a commitment device; removing it removes the credibility of the policy.
+支持这一改动的政策论证是：2023 年的定量阈值结果发现按 2026 时代的能力基准无法触及，因为基准本身被重新标度了。反驳是：扩展政策里的一条暂停条款是一个承诺装置；移除它就移除了这个政策的可信度。
 
-### SaferAI's downgrade
+### SaferAI 的下调
 
-SaferAI is an independent organization that rates RSP-style documents. Their public rating: 2023 Anthropic RSP scored 2.2 (out of a scale where 4.0 is the best current RSP and 1.0 is nominal). v3.0 scored 1.9. This moved Anthropic from "moderate" to "weak," joining OpenAI and DeepMind in the weak category.
+SaferAI 是一个给 RSP 风格文档评级的独立组织。他们的公开评级：2023 年 Anthropic RSP 得 2.2 分（在一个 4.0 是当前最佳 RSP、1.0 是名义底线的标度上）。v3.0 得 1.9 分。这把 Anthropic 从"中等"挪到了"弱"，跟 OpenAI 和 DeepMind 一起进了弱这一档。
 
-The downgrade factors per SaferAI:
-- Qualitative thresholds replaced quantitative ones.
-- Pause commitment removed.
-- AI R&D-4 threshold mitigations are described as "affirmative case" rather than specific measures.
-- Review mechanisms depend on Anthropic's Safety Advisory Group, with limited independent oversight.
+按 SaferAI 的说法，下调的因素：
+- 定性阈值取代了定量阈值。
+- 暂停承诺被移除。
+- AI R&D-4 阈值的缓解被描述为"正面论证"而非具体措施。
+- 评审机制依赖 Anthropic 的安全顾问组（Safety Advisory Group），独立监督有限。
 
-### What this lesson is not
+### 本课不是什么
 
-This is not a lesson in compliance. RSP v3.0 is not a regulation; nothing forces Anthropic to follow it. The lesson is in reading the document with the specificity and skepticism it deserves. Scaling policies are the primary public signal frontier labs emit about catastrophic-risk posture. Reading them well is a practical skill for anyone whose work depends on frontier capabilities.
+这不是一节关于合规的课。RSP v3.0 不是一项法规；没有任何东西强迫 Anthropic 遵守它。本课在于以它应得的具体度和怀疑去读这份文档。扩展政策是前沿实验室就灾难性风险姿态发出的首要公开信号。把它们读好，对任何工作依赖前沿能力的人都是一项实用技能。
 
-## Use It
+## 上手使用
 
-`code/main.py` implements a small decision engine that mirrors the RSP threshold-evaluation shape: given a candidate model and a set of capability measurements, return whether the AI R&D-4 threshold is crossed, the required affirmative-case sections, and whether deployment can proceed. It's intentionally simple; the point is to make the document's logic explicit.
+`code/main.py` 实现一个小决策引擎，镜像 RSP 阈值评估的形态：给定一个候选模型和一组能力测量，返回 AI R&D-4 阈值是否被越过、所需的正面论证章节，以及部署能否继续。它故意做得简单；要点是把这份文档的逻辑显式化。
 
-## Ship It
+## 交付
 
-`outputs/skill-scaling-policy-review.md` reviews a scaling policy (Anthropic, OpenAI, DeepMind, or internal) against the v3.0 reference: two-tier structure, thresholds, pause commitments, independent review.
+`outputs/skill-scaling-policy-review.md` 拿一份扩展政策（Anthropic、OpenAI、DeepMind 或内部的）对照 v3.0 参照来审查：两层结构、阈值、暂停承诺、独立评审。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Feed in three synthetic models at different capability levels. Confirm the threshold evaluator behaves as expected and produces the right affirmative-case template.
+1. 运行 `code/main.py`。喂入三个不同能力等级的合成模型。确认阈值评估器表现符合预期，并产出正确的正面论证模板。
 
-2. Read RSP v3.0 in full (32 pages). Identify every commitment that lives in the "industry-wide recommendation" tier. Which of those commitments would have been "Anthropic unilateral" in v2?
+2. 完整读 RSP v3.0（32 页）。指出活在"全行业建议"层里的每一条承诺。这些承诺里有哪些在 v2 里本来会是"Anthropic 单方面"的？
 
-3. Read SaferAI's RSP grading methodology. Reproduce their 1.9 score for v3.0 by applying their rubric to the document. Which rubric row drove the downgrade most?
+3. 读 SaferAI 的 RSP 评级方法学。把他们的评分细则套到这份文档上，复现他们给 v3.0 的 1.9 分。哪一行细则最主导了这次下调？
 
-4. The 2023 pause commitment was removed. Propose a replacement commitment that preserves the credibility of the policy while acknowledging the 2026 benchmark-rescaling problem.
+4. 2023 年的暂停承诺被移除了。提出一条替代承诺，既保住政策的可信度，又承认 2026 年的基准重新标度问题。
 
-5. Compare RSP v3.0 to OpenAI Preparedness Framework v2 (Lesson 20). Pick one area where v3.0 is stronger. Pick one area where the Preparedness Framework is stronger.
+5. 把 RSP v3.0 跟 OpenAI Preparedness Framework v2（第 20 课）对比。挑一个 v3.0 更强的领域。挑一个 Preparedness Framework 更强的领域。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 实际指什么 |
 |---|---|---|
-| RSP | "Anthropic's scaling policy" | Responsible Scaling Policy; v3.0 effective Feb 24, 2026 |
-| AI R&D-4 | "Research-automation threshold" | Capability to automate substantial AI research at competitive cost |
-| Affirmative case | "Safety justification" | Published argument that risks are identified and mitigations adequate |
-| Frontier Safety Roadmap | "Forward plan" | Standing document on planned safety work and expected capabilities |
-| Risk Report | "Retrospective on a model" | Standing document on observed capability and residual risk after release |
-| Two-tier mitigation | "Unilateral vs industry" | Anthropic commitments vs industry recommendations, separated |
-| Pause commitment | "2023 clause" | Explicit promise to pause training; removed in v3.0 |
-| SaferAI rating | "Independent RSP grade" | Third-party rubric; v3.0 scored 1.9 (v2 was 2.2) |
+| RSP | "Anthropic 的扩展政策" | 负责任扩展政策；v3.0 于 2026 年 2 月 24 日生效 |
+| AI R&D-4 | "研究自动化阈值" | 以有竞争力的成本自动化相当大一部分 AI 研究的能力 |
+| Affirmative case（正面论证） | "安全论证" | 发表的论证，主张风险已被指明、缓解措施足够 |
+| Frontier Safety Roadmap（前沿安全路线图） | "前瞻计划" | 关于计划中安全工作和预期能力的常设文档 |
+| Risk Report（风险报告） | "对某模型的回顾" | 关于发布后观察到的能力和残余风险的常设文档 |
+| Two-tier mitigation（两层缓解） | "单方面 vs 行业" | Anthropic 承诺 vs 行业建议，分开 |
+| Pause commitment（暂停承诺） | "2023 年的条款" | 暂停训练的显式承诺；在 v3.0 里被移除 |
+| SaferAI rating（SaferAI 评级） | "独立 RSP 评分" | 第三方细则；v3.0 得 1.9（v2 是 2.2） |
 
-## Further Reading
+## 延伸阅读
 
-- [Anthropic — Responsible Scaling Policy v3.0](https://anthropic.com/responsible-scaling-policy/rsp-v3-0) — the full 32-page policy.
-- [Anthropic — RSP v3.0 announcement](https://www.anthropic.com/news/responsible-scaling-policy-v3) — summary of changes from v2.
-- [Anthropic — Frontier Safety Roadmap](https://www.anthropic.com/research/frontier-safety) — standing document linked from RSP v3.0.
-- [Anthropic — Risk Report: Claude Opus 4.6](https://www.anthropic.com/research/risk-report-claude-opus-4-6) — retrospective on the current frontier model.
-- [Anthropic — Measuring agent autonomy in practice](https://www.anthropic.com/research/measuring-agent-autonomy) — connects AI R&D-4 to measured autonomy.
+- [Anthropic — Responsible Scaling Policy v3.0](https://anthropic.com/responsible-scaling-policy/rsp-v3-0) —— 完整的 32 页政策。
+- [Anthropic — RSP v3.0 announcement](https://www.anthropic.com/news/responsible-scaling-policy-v3) —— 相对 v2 的改动摘要。
+- [Anthropic — Frontier Safety Roadmap](https://www.anthropic.com/research/frontier-safety) —— RSP v3.0 链接的常设文档。
+- [Anthropic — Risk Report: Claude Opus 4.6](https://www.anthropic.com/research/risk-report-claude-opus-4-6) —— 对当前前沿模型的回顾。
+- [Anthropic — Measuring agent autonomy in practice](https://www.anthropic.com/research/measuring-agent-autonomy) —— 把 AI R&D-4 跟实测的自主性联系起来。

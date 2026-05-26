@@ -1,79 +1,79 @@
-# MCP Fundamentals — Primitives, Lifecycle, JSON-RPC Base
+# MCP 基础——基元、生命周期、JSON-RPC 底座
 
-> Every integration before MCP was a one-off. The Model Context Protocol, first shipped by Anthropic in November 2024 and now stewarded by the Linux Foundation's Agentic AI Foundation, standardizes discovery and invocation so any client can speak to any server. The 2025-11-25 spec names six primitives (three server, three client), a three-phase lifecycle, and a JSON-RPC 2.0 wire format. Learn those and the rest of the MCP chapter of this phase becomes reading.
+> MCP 之前的每一次集成都是一次性的。Model Context Protocol 由 Anthropic 在 2024 年 11 月首次发布，如今由 Linux Foundation 的 Agentic AI Foundation 托管，它把发现和调用标准化，让任何 client 都能跟任何 server 对话。2025-11-25 规范点名了六个基元（三个 server、三个 client）、一套三阶段生命周期，和一种 JSON-RPC 2.0 线上格式。学会这些，本阶段 MCP 章节余下的内容就成了顺手翻翻的读物。
 
-**Type:** Learn
-**Languages:** Python (stdlib, JSON-RPC parser)
-**Prerequisites:** Phase 13 · 01 through 05 (the tool interface and function calling)
-**Time:** ~45 minutes
+**类型：** Learn
+**语言：** Python（标准库，JSON-RPC 解析器）
+**前置要求：** 阶段 13 · 01 到 05（工具接口与 function calling）
+**预计时间：** ~45 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Name all six MCP primitives (tools, resources, prompts on the server; roots, sampling, elicitation on the client) and give one use case each.
-- Walk through the three-phase lifecycle (initialize, operation, shutdown) and state who sends which message at each phase.
-- Parse and emit JSON-RPC 2.0 request, response, and notification envelopes.
-- Explain what capability negotiation at `initialize` is and what breaks without it.
+- 点名全部六个 MCP 基元（server 端的 tools、resources、prompts；client 端的 roots、sampling、elicitation），各给一个用例。
+- 走一遍三阶段生命周期（initialize、operation、shutdown），说清每个阶段谁发哪条消息。
+- 解析并发射 JSON-RPC 2.0 的 request、response、notification 外壳。
+- 解释 `initialize` 时的能力协商是什么，以及没有它会崩掉什么。
 
-## The Problem
+## 问题所在
 
-Before MCP, every tool-using agent had its own protocol. Cursor had an MCP-shaped but incompatible tool system. Claude Desktop shipped with a different one. VS Code's Copilot extension had a third. A team that built a "Postgres query" tool wrote the same tool three times, each to a different host's API. Reusing it required copying code.
+MCP 之前，每个用工具的 agent 都有自己的协议。Cursor 有一套 MCP 形状但不兼容的工具系统。Claude Desktop 出厂带着另一套。VS Code 的 Copilot 扩展又是第三套。一个做了"Postgres 查询"工具的团队，把同一个工具写了三遍，每遍对接一个不同宿主的 API。复用它得靠拷代码。
 
-The result was a Cambrian explosion of one-off integrations and a ceiling on ecosystem velocity.
+结果是一次性集成的寒武纪大爆发，以及生态速度的天花板。
 
-MCP fixes this by standardizing the wire format. A single MCP server works in every MCP client: Claude Desktop, ChatGPT, Cursor, VS Code, Gemini, Goose, Zed, Windsurf, 300+ clients by April 2026. 110M monthly SDK downloads. 10,000+ public servers. The Linux Foundation took stewardship in December 2025 under the new Agentic AI Foundation.
+MCP 靠标准化线上格式修掉这个。单个 MCP server 在每个 MCP client 里都能用：Claude Desktop、ChatGPT、Cursor、VS Code、Gemini、Goose、Zed、Windsurf——到 2026 年 4 月有 300+ 个 client。每月 1.1 亿次 SDK 下载。1 万+ 个公开 server。Linux Foundation 在 2025 年 12 月以新成立的 Agentic AI Foundation 接管了托管。
 
-The spec revision used in this phase is **2025-11-25**. It adds async Tasks (SEP-1686), URL-mode elicitation (SEP-1036), sampling with tools (SEP-1577), incremental scope consent (SEP-835), and OAuth 2.1 resource-indicator semantics. Phase 13 · 09 through 16 cover those extensions. This lesson stops at the base.
+本阶段用的规范修订版是 **2025-11-25**。它加上了异步 Tasks（SEP-1686）、URL 模式 elicitation（SEP-1036）、带工具的 sampling（SEP-1577）、增量 scope 同意（SEP-835），以及 OAuth 2.1 resource-indicator 语义。阶段 13 · 09 到 16 讲这些扩展。本课停在底座。
 
-## The Concept
+## 核心概念
 
-### Three server primitives
+### 三个 server 基元
 
-1. **Tools.** Callable actions. Same four-step loop from Phase 13 · 01.
-2. **Resources.** Exposed data. Read-only content addressable by URI: `file:///path`, `db://query/...`, custom schemes.
-3. **Prompts.** Reusable templates. Slash-commands in the host UI; server supplies the template, client fills arguments.
+1. **Tools。** 可调用的动作。和阶段 13 · 01 一样的四步循环。
+2. **Resources。** 暴露的数据。只读、可按 URI 寻址的内容：`file:///path`、`db://query/...`、自定义 scheme。
+3. **Prompts。** 可复用的模板。宿主 UI 里的 slash-command；server 提供模板，client 填参数。
 
-### Three client primitives
+### 三个 client 基元
 
-4. **Roots.** The set of URIs the server is allowed to touch. Client declares them; server respects them.
-5. **Sampling.** Server requests the client's model to perform a completion. Enables server-hosted agent loops without server-side API keys.
-6. **Elicitation.** Server asks the client's user for structured input mid-flight. Forms or URLs (SEP-1036).
+4. **Roots。** server 被允许触及的 URI 集合。client 声明它们；server 尊重它们。
+5. **Sampling。** server 请求 client 的模型执行一次补全。让 server 托管的 agent 循环无需 server 端 API key 就能跑。
+6. **Elicitation。** server 在中途向 client 的用户要结构化输入。表单或 URL（SEP-1036）。
 
-Every capability in MCP belongs to exactly one of these six. Phase 13 · 10 through 14 cover each in depth.
+MCP 里每个能力都恰好属于这六个之一。阶段 13 · 10 到 14 逐个深入。
 
-### Wire format: JSON-RPC 2.0
+### 线上格式：JSON-RPC 2.0
 
-Every message is a JSON object with these fields:
+每条消息都是一个带这些字段的 JSON 对象：
 
-- Requests: `{jsonrpc: "2.0", id, method, params}`.
-- Responses: `{jsonrpc: "2.0", id, result | error}`.
-- Notifications: `{jsonrpc: "2.0", method, params}` — no `id`, no response expected.
+- Request：`{jsonrpc: "2.0", id, method, params}`。
+- Response：`{jsonrpc: "2.0", id, result | error}`。
+- Notification：`{jsonrpc: "2.0", method, params}`——没有 `id`，不期待响应。
 
-The base spec has ~15 methods, grouped by primitive. The important ones:
+底座规范有约 15 个方法，按基元分组。重要的那些：
 
-- `initialize` / `initialized` (handshake)
-- `tools/list`, `tools/call`
-- `resources/list`, `resources/read`, `resources/subscribe`
-- `prompts/list`, `prompts/get`
-- `sampling/createMessage` (server-to-client)
-- `notifications/tools/list_changed`, `notifications/resources/updated`, `notifications/progress`
+- `initialize` / `initialized`（握手）
+- `tools/list`、`tools/call`
+- `resources/list`、`resources/read`、`resources/subscribe`
+- `prompts/list`、`prompts/get`
+- `sampling/createMessage`（server 到 client）
+- `notifications/tools/list_changed`、`notifications/resources/updated`、`notifications/progress`
 
-### Three-phase lifecycle
+### 三阶段生命周期
 
-**Phase 1: initialize.**
+**阶段 1：initialize。**
 
-Client sends `initialize` with its `capabilities` and `clientInfo`. Server responds with its own `capabilities`, `serverInfo`, and the spec version it speaks. Client sends `notifications/initialized` when it has digested the response. From here on, either side can send requests per the negotiated capabilities.
+client 发 `initialize`，带上它的 `capabilities` 和 `clientInfo`。server 用自己的 `capabilities`、`serverInfo`，以及它所说的规范版本来响应。client 消化完响应后发 `notifications/initialized`。从此往后，任一方都能按协商好的能力发请求。
 
-**Phase 2: operation.**
+**阶段 2：operation。**
 
-Bidirectional. Client calls `tools/list` to discover, then `tools/call` to invoke. Server may send `sampling/createMessage` if it declared that capability. Server may send `notifications/tools/list_changed` when its tool set mutates. Client may send `notifications/roots/list_changed` when the user changes root scope.
+双向。client 调 `tools/list` 来发现，再调 `tools/call` 来调用。如果 server 声明了那个能力，它可以发 `sampling/createMessage`。server 的工具集发生变更时，它可以发 `notifications/tools/list_changed`。用户改动 root scope 时，client 可以发 `notifications/roots/list_changed`。
 
-**Phase 3: shutdown.**
+**阶段 3：shutdown。**
 
-Either side closes the transport. No structured shutdown method in MCP; the transport (stdio or Streamable HTTP, Phase 13 · 09) carries the end-of-connection signal.
+任一方关闭传输。MCP 里没有结构化的 shutdown 方法；由传输（stdio 或 Streamable HTTP，阶段 13 · 09）携带连接结束信号。
 
-### Capability negotiation
+### 能力协商
 
-`capabilities` in the `initialize` handshake is the contract. Example from a server:
+`initialize` 握手里的 `capabilities` 是那份契约。一个 server 的例子：
 
 ```json
 {
@@ -83,7 +83,7 @@ Either side closes the transport. No structured shutdown method in MCP; the tran
 }
 ```
 
-The server declares it can emit `tools/list_changed` notifications and supports `resources/subscribe`. The client agrees by declaring its own:
+server 声明它能发 `tools/list_changed` notification，并支持 `resources/subscribe`。client 靠声明自己的来同意：
 
 ```json
 {
@@ -93,70 +93,70 @@ The server declares it can emit `tools/list_changed` notifications and supports 
 }
 ```
 
-If the client does not declare `sampling`, the server must not call `sampling/createMessage`. Symmetric: if the server does not declare `resources.subscribe`, the client must not try to subscribe.
+如果 client 不声明 `sampling`，server 就不得调用 `sampling/createMessage`。对称地：如果 server 不声明 `resources.subscribe`，client 就不得试图订阅。
 
-This is what prevents ecosystem drift. A client that does not support sampling is still a valid MCP client; a server that does not call `sampling` is still a valid MCP server. They just do not use that feature together.
+这正是防止生态漂移的东西。一个不支持 sampling 的 client 仍是合法的 MCP client；一个不调 `sampling` 的 server 仍是合法的 MCP server。它们只是不一起用那个特性。
 
-### Structured content and error shapes
+### 结构化内容与错误形状
 
-`tools/call` returns a `content` array of typed blocks: `text`, `image`, `resource`. Phase 13 · 14 adds MCP Apps (`ui://` interactive UI) to that list.
+`tools/call` 返回一个由定型 block 组成的 `content` 数组：`text`、`image`、`resource`。阶段 13 · 14 给这份清单加上 MCP Apps（`ui://` 交互式 UI）。
 
-Errors use JSON-RPC error codes. The spec-defined additions: `-32002` "Resource not found", `-32603` "Internal error", plus MCP-specific error data as `error.data`.
+错误用 JSON-RPC 错误码。规范定义的新增项：`-32002` "Resource not found"、`-32603` "Internal error"，外加作为 `error.data` 的 MCP 特定错误数据。
 
-### Client capabilities vs tool call details
+### client 能力 vs 工具调用细节
 
-A common confusion: `capabilities.tools` is whether the client supports tool-list-changed notifications. Whether the client WILL call specific tools is a runtime choice driven by its model, not a capability flag. The capability flag is the spec-level contract. The model's choice is orthogonal.
+一个常见混淆：`capabilities.tools` 是说 client 是否支持 tool-list-changed notification。client 会不会调用某些特定工具，是一个由它的模型驱动的运行时选择，不是一个能力标志。能力标志是规范层面的契约。模型的选择与之正交。
 
-### Why JSON-RPC and not REST?
+### 为什么用 JSON-RPC 而不是 REST？
 
-JSON-RPC 2.0 (2010) is a lightweight bidirectional protocol. REST is client-initiated. MCP needed server-initiated messages (sampling, notifications), so JSON-RPC with its symmetric request/response shape was a natural fit. JSON-RPC also composes cleanly over stdio and WebSocket/Streamable HTTP without re-inventing HTTP's request shape.
+JSON-RPC 2.0（2010）是一个轻量的双向协议。REST 是 client 发起的。MCP 需要 server 发起的消息（sampling、notification），所以带对称 request/response 形状的 JSON-RPC 是自然的契合。JSON-RPC 还能干净地组合在 stdio 和 WebSocket/Streamable HTTP 之上，不必重新发明 HTTP 的请求形状。
 
-## Use It
+## 上手使用
 
-`code/main.py` ships a minimal JSON-RPC 2.0 parser and emitter, then walks the `initialize` → `tools/list` → `tools/call` → `shutdown` sequence by hand, printing every message. No real transport; just the message shapes. Compare to the spec linked in Further Reading to verify each envelope.
+`code/main.py` 交付一个极简 JSON-RPC 2.0 解析器和发射器，然后手动走一遍 `initialize` → `tools/list` → `tools/call` → `shutdown` 序列，打印每条消息。没有真实传输；只有消息形状。和延伸阅读里链接的规范对照，逐个核实每个外壳。
 
-What to look at:
+要看什么：
 
-- `initialize` declares capabilities both ways; the response has `serverInfo` and `protocolVersion: "2025-11-25"`.
-- `tools/list` returns a `tools` array; each entry has `name`, `description`, `inputSchema`.
-- `tools/call` uses `params.name` and `params.arguments`.
-- The response `content` is an array of `{type, text}` blocks.
+- `initialize` 双向声明能力；响应里有 `serverInfo` 和 `protocolVersion: "2025-11-25"`。
+- `tools/list` 返回一个 `tools` 数组；每个条目有 `name`、`description`、`inputSchema`。
+- `tools/call` 用 `params.name` 和 `params.arguments`。
+- 响应的 `content` 是一个 `{type, text}` block 数组。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-mcp-handshake-tracer.md`. Given a pcap-style transcript of an MCP client-server interaction, the skill annotates each message with which primitive, which lifecycle phase, and which capability it depends on.
+本课产出 `outputs/skill-mcp-handshake-tracer.md`。给定一份 pcap 风格的 MCP client-server 交互记录，这个 skill 给每条消息标注它属于哪个基元、哪个生命周期阶段，以及它依赖哪个能力。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Identify the line where capability negotiation happens and describe what would change if the server did not declare `tools.listChanged`.
+1. 跑 `code/main.py`。找出能力协商发生的那一行，描述如果 server 不声明 `tools.listChanged` 会有什么变化。
 
-2. Extend the parser to handle `notifications/progress`. The message shape: `{method: "notifications/progress", params: {progressToken, progress, total}}`. Emit it while a long-running `tools/call` is in progress and confirm the client handler would display a progress bar.
+2. 扩展解析器以处理 `notifications/progress`。消息形状：`{method: "notifications/progress", params: {progressToken, progress, total}}`。在一个长跑的 `tools/call` 进行时发它，确认 client 处理器会显示一个进度条。
 
-3. Read the MCP 2025-11-25 spec top to bottom — the whole document is about 80 pages. Identify the one capability flag most servers do NOT need. Hint: it relates to resource subscription.
+3. 从头到尾读 MCP 2025-11-25 规范——整份文档约 80 页。找出大多数 server 都不需要的那个能力标志。提示：它跟 resource 订阅有关。
 
-4. Sketch on paper the primitive a hypothetical "cron job" feature would belong to. (Hint: the server wants the client to invoke it at a scheduled time. None of the six primitives fit today.) MCP's 2026 roadmap has a draft SEP for this.
+4. 在纸上勾画一个假想的"cron job"特性会属于哪个基元。（提示：server 想让 client 在某个排定的时间调用它。今天六个基元里没一个契合。）MCP 的 2026 路线图有一份草案 SEP 在做这个。
 
-5. Parse one session log from an open MCP server on GitHub. Count request vs response vs notification messages. Compute what fraction of traffic is lifecycle vs operation.
+5. 解析 GitHub 上某个开源 MCP server 的一份会话日志。数 request vs response vs notification 消息。算一算流量里生命周期 vs operation 的占比各是多少。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| MCP | "Model Context Protocol" | Open protocol for model-to-tool discovery and invocation |
-| Server primitive | "What a server exposes" | tools (actions), resources (data), prompts (templates) |
-| Client primitive | "What a client lets servers use" | roots (scope), sampling (LLM callbacks), elicitation (user input) |
-| JSON-RPC 2.0 | "The wire format" | Symmetric request/response/notification envelopes |
-| `initialize` handshake | "Capability negotiation" | First message pair; servers and clients declare features they support |
-| `tools/list` | "Discovery" | Client asks server for its current tool set |
-| `tools/call` | "Invocation" | Client asks server to execute a tool with arguments |
-| `notifications/*_changed` | "Mutation events" | Server tells client that its primitive list has changed |
-| Content block | "Typed result" | `{type: "text" | "image" | "resource" | "ui_resource"}` in tool result |
-| SEP | "Spec Evolution Proposal" | Named draft proposal (e.g. SEP-1686 for async Tasks) |
+| MCP | "Model Context Protocol" | 用于模型到工具发现与调用的开放协议 |
+| Server primitive | "server 暴露什么" | tools（动作）、resources（数据）、prompts（模板） |
+| Client primitive | "client 让 server 用什么" | roots（scope）、sampling（LLM 回调）、elicitation（用户输入） |
+| JSON-RPC 2.0 | "线上格式" | 对称的 request/response/notification 外壳 |
+| `initialize` handshake | "能力协商" | 第一对消息；server 和 client 声明各自支持的特性 |
+| `tools/list` | "发现" | client 向 server 要它当前的工具集 |
+| `tools/call` | "调用" | client 要求 server 带参数执行一个工具 |
+| `notifications/*_changed` | "变更事件" | server 告诉 client 它的基元清单变了 |
+| Content block | "定型结果" | 工具结果里的 `{type: "text" | "image" | "resource" | "ui_resource"}` |
+| SEP | "Spec Evolution Proposal" | 具名的草案提案（如异步 Tasks 的 SEP-1686） |
 
-## Further Reading
+## 延伸阅读
 
-- [Model Context Protocol — Specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25) — the canonical spec document
-- [Model Context Protocol — Architecture concepts](https://modelcontextprotocol.io/docs/concepts/architecture) — the six-primitive mental model
-- [Anthropic — Introducing the Model Context Protocol](https://www.anthropic.com/news/model-context-protocol) — November 2024 launch post
-- [MCP blog — First MCP anniversary](https://blog.modelcontextprotocol.io/posts/2025-11-25-first-mcp-anniversary/) — one-year retrospective and the 2025-11-25 spec changes
-- [WorkOS — MCP 2025-11-25 spec update](https://workos.com/blog/mcp-2025-11-25-spec-update) — summary of SEP-1686, 1036, 1577, 835, and 1724
+- [Model Context Protocol — Specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25) — 权威规范文档
+- [Model Context Protocol — Architecture concepts](https://modelcontextprotocol.io/docs/concepts/architecture) — 六基元心智模型
+- [Anthropic — Introducing the Model Context Protocol](https://www.anthropic.com/news/model-context-protocol) — 2024 年 11 月发布博文
+- [MCP blog — First MCP anniversary](https://blog.modelcontextprotocol.io/posts/2025-11-25-first-mcp-anniversary/) — 一周年回顾与 2025-11-25 规范变更
+- [WorkOS — MCP 2025-11-25 spec update](https://workos.com/blog/mcp-2025-11-25-spec-update) — SEP-1686、1036、1577、835、1724 的摘要

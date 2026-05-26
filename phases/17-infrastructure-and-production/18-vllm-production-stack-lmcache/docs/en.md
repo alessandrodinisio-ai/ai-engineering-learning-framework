@@ -1,120 +1,120 @@
-# vLLM Production Stack with LMCache KV Offloading
+# 带 LMCache KV Offloading 的 vLLM Production Stack
 
-> vLLM's production-stack is the reference Kubernetes deployment — router, engines, and observability wired together. LMCache is the KV-offloading layer that extracts KV cache out of GPU memory and reuses it across queries and engines (CPU DRAM, then disk/Ceph). The vLLM 0.11.0 KV Offloading Connector (January 2026) makes this asynchronous and pluggable via the Connector API (v0.9.0+). Offload latency is not user-facing. LMCache is valuable even without shared prefixes — when a GPU runs out of KV slots, preempted requests can be restored from CPU instead of recomputing prefill. Published benchmarks on 16x H100 (80GB HBM) across 4 a3-highgpu-4g: when KV cache exceeds HBM, both native CPU offload and LMCache substantially improve throughput; at low KV footprint, all configs match baseline with small overhead.
+> vLLM 的 production-stack 是参考的 Kubernetes 部署 —— 路由器、引擎和可观测性接在一起。LMCache 是 KV-offloading 层，把 KV cache 从 GPU 内存里抽出来，跨查询和引擎复用（CPU DRAM，然后磁盘/Ceph）。vLLM 0.11.0 的 KV Offloading Connector（2026 年 1 月）经由 Connector API（v0.9.0+）让这件事异步、可插拔。Offload 延迟对用户不可见。即使没有共享前缀 LMCache 也有价值 —— 当一块 GPU 的 KV 槽用尽时，被抢占的请求可以从 CPU 恢复，而不必重算 prefill。在 16 块 H100（80GB HBM）、横跨 4 个 a3-highgpu-4g 上的已发布基准：当 KV cache 超过 HBM 时，原生 CPU offload 和 LMCache 都显著提升吞吐；在低 KV 占用时，所有配置都与基线持平，开销很小。
 
-**Type:** Learn
-**Languages:** Python (stdlib, toy KV-spill simulator)
-**Prerequisites:** Phase 17 · 04 (vLLM Serving Internals), Phase 17 · 06 (SGLang/RadixAttention)
-**Time:** ~60 minutes
+**类型：** Learn
+**语言：** Python（标准库，一个玩具级 KV 溢出模拟器）
+**前置要求：** 阶段 17 · 04（vLLM 服务内部机制）、阶段 17 · 06（SGLang/RadixAttention）
+**预计时间：** ~60 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Diagram the vLLM production-stack layers: router, engines, KV offload, observability.
-- Explain the KV Offloading Connector API (v0.9.0+) and how the 0.11.0 asynchronous path hides offload latency.
-- Quantify when LMCache CPU-DRAM helps (KV > HBM) vs adds overhead (KV small enough to fit HBM).
-- Pick between native vLLM CPU offload and LMCache connector given deployment constraints.
+- 画出 vLLM production-stack 各层：路由器、引擎、KV offload、可观测性。
+- 解释 KV Offloading Connector API（v0.9.0+），以及 0.11.0 的异步路径如何隐藏 offload 延迟。
+- 量化 LMCache CPU-DRAM 何时有帮助（KV > HBM）vs 何时增加开销（KV 小到能装进 HBM）。
+- 在给定部署约束下，在原生 vLLM CPU offload 和 LMCache connector 之间挑选。
 
-## The Problem
+## 问题所在
 
-Your vLLM serving shows GPUs at 100% HBM with preemption events whenever concurrency climbs. Requests get evicted, requeued, and you re-prefill the same 2K-token prompt four times in a minute. GPU compute is spent on redundant prefills; goodput is well below raw throughput.
+你的 vLLM 服务显示 GPU 的 HBM 在 100%，并且并发一爬升就出现抢占事件。请求被驱逐、重新入队，你在一分钟里把同一个 2K token prompt 重 prefill 了四次。GPU 算力花在了冗余的 prefill 上；goodput 远低于裸吞吐。
 
-Adding more GPUs costs linearly. Adding more HBM is not possible. But CPU DRAM is cheap — one socket has 512 GB+ at latency orders of magnitude worse than HBM but fine for "temporarily warm" KV cache.
+加更多 GPU 是线性成本。加更多 HBM 不可能。但 CPU DRAM 便宜 —— 一个插槽有 512 GB+，延迟比 HBM 差好几个数量级，但对"暂时温热"的 KV cache 来说够用。
 
-LMCache extracts KV cache to CPU DRAM so preempted requests recover fast, and repeated prefixes across engines share cache without each engine re-prefilling.
+LMCache 把 KV cache 抽到 CPU DRAM，让被抢占的请求快速恢复，并让跨引擎重复的前缀共享缓存，不必每个引擎都重 prefill。
 
-## The Concept
+## 核心概念
 
 ### vLLM production-stack
 
-`github.com/vllm-project/production-stack` is the reference Kubernetes deployment:
+`github.com/vllm-project/production-stack` 是参考的 Kubernetes 部署：
 
-- **Router** — cache-aware (Phase 17 · 11). Consumes KV events.
-- **Engines** — vLLM workers. One per GPU or per TP/PP group.
-- **KV cache offload** — LMCache deployment or native connector.
-- **Observability** — Prometheus scrape, Grafana dashboards, OTel traces.
-- **Control plane** — service discovery, config, rolling updates.
+- **路由器** —— 缓存感知（阶段 17 · 11）。消费 KV 事件。
+- **引擎** —— vLLM worker。每块 GPU 一个，或每个 TP/PP 组一个。
+- **KV cache offload** —— LMCache 部署或原生 connector。
+- **可观测性** —— Prometheus 抓取、Grafana 仪表盘、OTel trace。
+- **控制面** —— 服务发现、配置、滚动更新。
 
-Shipped as Helm chart + operator.
+以 Helm chart + operator 形式发布。
 
-### The KV Offloading Connector API (v0.9.0+)
+### KV Offloading Connector API（v0.9.0+）
 
-vLLM 0.9.0 introduced a Connector API for pluggable KV cache backends. Your engine offloads blocks to the connector; connector stores them (RAM, disk, object storage, LMCache). Request needs a block, connector loads it back.
+vLLM 0.9.0 引入了一个 Connector API，用于可插拔的 KV cache 后端。你的引擎把 block offload 到 connector；connector 把它们存起来（RAM、磁盘、对象存储、LMCache）。请求需要一个 block 时，connector 把它加载回来。
 
-vLLM 0.11.0 (January 2026) adds an asynchronous offload path — offload can happen in the background so the engine does not block on it in the common case. End-to-end latency and throughput still depend on workload shape, KV cache hit rate, and system pressure; vLLM's own notes call out that custom-kernel offload can degrade throughput at low hit rates and that async scheduling has known interaction issues with speculative decoding.
+vLLM 0.11.0（2026 年 1 月）加了一条异步 offload 路径 —— offload 可以在后台发生，于是引擎在常见情况下不会因此阻塞。端到端延迟和吞吐仍取决于工作负载形态、KV cache 命中率和系统压力；vLLM 自己的说明指出，在低命中率时定制 kernel offload 可能降低吞吐，且异步调度与 speculative decoding 有已知的相互作用问题。
 
-### Native CPU offload vs LMCache
+### 原生 CPU offload vs LMCache
 
-**Native vLLM CPU offload**: engine-local. Stores KV blocks in host RAM. Fast to implement, zero network hop. Does not cross engines.
+**原生 vLLM CPU offload**：引擎本地。把 KV block 存在主机 RAM。实现快、零网络跳。不跨引擎。
 
-**LMCache connector**: cluster-scale. Stores blocks in a shared LMCache server (CPU DRAM + Ceph/S3 tier). Blocks are accessible to any engine. 16x H100 benchmarks published.
+**LMCache connector**：集群规模。把 block 存在一个共享的 LMCache 服务里（CPU DRAM + Ceph/S3 层）。block 对任何引擎都可访问。已发布 16 块 H100 的基准。
 
-Pick native when a single engine has HBM pressure. Pick LMCache when multiple engines share prefixes (RAG with common system prompts, multi-tenant with shared templates).
+单个引擎有 HBM 压力时挑原生。多个引擎共享前缀时挑 LMCache（带共同系统 prompt 的 RAG、带共享模板的多租户）。
 
-### Benchmark behavior
+### 基准行为
 
-The 16x H100 (80 GB HBM) spread across 4 a3-highgpu-4g test:
+16 块 H100（80 GB HBM）横跨 4 个 a3-highgpu-4g 的测试：
 
-- Low KV footprint (short prompts, low concurrency): all configs match baseline, LMCache adds ~3-5% overhead.
-- Moderate footprint: LMCache starts to help on prefix reuse across engines.
-- KV exceeds HBM: native CPU offload and LMCache both improve throughput substantially; LMCache larger gain because cross-engine sharing.
+- 低 KV 占用（短 prompt、低并发）：所有配置都与基线持平，LMCache 加约 3-5% 开销。
+- 中等占用：LMCache 开始在跨引擎前缀复用上有帮助。
+- KV 超过 HBM：原生 CPU offload 和 LMCache 都显著提升吞吐；LMCache 增益更大，因为有跨引擎共享。
 
-### When LMCache is decisive
+### LMCache 何时是决定性的
 
-- Multi-tenant serving where system prompts are shared across tenants.
-- RAG where document chunks repeat across queries.
-- Fine-tuned variants (LoRA) on the same base where base-model KV reuse cuts redundant work.
-- Preemption-heavy workloads: restore from CPU cheaper than re-prefill.
+- 系统 prompt 跨租户共享的多租户服务。
+- 文档片段跨查询重复的 RAG。
+- 同一基座上的微调变体（LoRA），基座模型的 KV 复用减少冗余工作。
+- 抢占重的工作负载：从 CPU 恢复比重 prefill 便宜。
 
-### When NOT to enable
+### 何时别启用
 
-- Small HBM pressure — you pay overhead without benefit.
-- Short contexts (<1K tokens) — transfer time > re-prefill.
-- Single-tenant single-prompt workload — no reuse to capture.
+- HBM 压力小 —— 你付了开销却没收益。
+- 短上下文（<1K token）—— 传输时间 > 重 prefill。
+- 单租户单 prompt 工作负载 —— 没有可捕获的复用。
 
-### Integration with disaggregated serving
+### 与分离式服务集成
 
-Phase 17 · 17 disaggregated serving + LMCache compounds: KV transfers from prefill pool to decode pool land in LMCache if not used; subsequent queries pull from LMCache. Phase 17 · 11 cache-aware router can route to the engine whose local OR LMCache-shared cache matches.
+阶段 17 · 17 的分离式服务 + LMCache 相互叠加：从 prefill 池传到 decode 池的 KV 如果没用上就落进 LMCache；后续查询从 LMCache 拉取。阶段 17 · 11 的缓存感知路由器可以路由到本地缓存或 LMCache 共享缓存匹配的那个引擎。
 
-### Numbers you should remember
+### 你该记住的数字
 
-- vLLM 0.9.0: Connector API shipped.
-- vLLM 0.11.0 (Jan 2026): asynchronous offload path; end-to-end latency impact depends on workload, KV hit rate, and system pressure (not an absolute guarantee).
-- 16x H100 benchmark: LMCache helps when KV footprint exceeds HBM.
-- Small HBM pressure: 3-5% overhead without benefit.
+- vLLM 0.9.0：Connector API 发布。
+- vLLM 0.11.0（2026 年 1 月）：异步 offload 路径；端到端延迟影响取决于工作负载、KV 命中率和系统压力（不是绝对保证）。
+- 16 块 H100 基准：KV 占用超过 HBM 时 LMCache 有帮助。
+- HBM 压力小：3-5% 开销而无收益。
 
-## Use It
+## 上手使用
 
-`code/main.py` simulates a preemption-heavy workload with and without LMCache. Reports re-prefills avoided, throughput gain, and the break-even HBM utilization.
+`code/main.py` 模拟一个带和不带 LMCache 的抢占重工作负载。报告避免的重 prefill 次数、吞吐增益和盈亏平衡的 HBM 利用率。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-vllm-stack-decider.md`. Given workload shape and vLLM deployment, decides native vs LMCache vs neither.
+这一课产出 `outputs/skill-vllm-stack-decider.md`。给定工作负载形态和 vLLM 部署，决定 原生 vs LMCache vs 都不要。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. At what HBM utilization does LMCache start paying?
-2. A tenant shares a 6K-token system prompt across 200 queries/hour. Compute expected LMCache savings per tenant.
-3. The LMCache server is a single point of failure. Design the HA strategy (replicas, fallback to native).
-4. LMCache stores to Ceph on spinning disk. For a 4K-token KV at 70B FP8 (500 MB), what's the read time vs re-prefill?
-5. Argue whether the vLLM 0.11.0 asynchronous path is "free" — where does the overhead hide?
+1. 跑 `code/main.py`。HBM 利用率到多少时 LMCache 开始划算？
+2. 一个租户在每小时 200 次查询间共享一个 6K token 系统 prompt。算每租户预期的 LMCache 节省。
+3. LMCache 服务是个单点故障。设计高可用策略（副本、回退到原生）。
+4. LMCache 存到机械盘上的 Ceph。对 70B FP8 上一个 4K token 的 KV（500 MB），读取时间 vs 重 prefill 是多少？
+5. 论证 vLLM 0.11.0 的异步路径是否"免费" —— 开销藏在哪？
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| Production-stack | "the reference deployment" | vLLM's Kubernetes Helm chart + operator |
-| Connector API | "KV backend interface" | vLLM 0.9.0+ pluggable KV store interface |
-| Native CPU offload | "engine-local spill" | Store KV in host RAM of same engine |
-| LMCache | "cluster KV cache" | Cross-engine KV cache server on CPU DRAM + disk |
-| 0.11.0 async | "non-blocking offload" | Offload hidden behind engine stream |
-| Preemption | "evict to make room" | KV cache shuffle when HBM full |
-| Prefix reuse | "same system prompt" | Multiple queries share beginning; cache hit |
-| Ceph tier | "disk tier" | Durable storage below DRAM in the cache hierarchy |
+| Production-stack | "参考部署" | vLLM 的 Kubernetes Helm chart + operator |
+| Connector API | "KV 后端接口" | vLLM 0.9.0+ 的可插拔 KV 存储接口 |
+| 原生 CPU offload | "引擎本地溢出" | 把 KV 存在同引擎的主机 RAM |
+| LMCache | "集群 KV cache" | CPU DRAM + 磁盘上的跨引擎 KV cache 服务 |
+| 0.11.0 异步 | "非阻塞 offload" | offload 藏在引擎流后面 |
+| 抢占 | "驱逐腾地方" | HBM 满时的 KV cache 倒腾 |
+| 前缀复用 | "相同系统 prompt" | 多个查询共享开头；缓存命中 |
+| Ceph 层 | "磁盘层" | 缓存层级里 DRAM 之下的持久化存储 |
 
-## Further Reading
+## 延伸阅读
 
 - [vLLM Blog — KV Offloading Connector (Jan 2026)](https://blog.vllm.ai/2026/01/08/kv-offloading-connector.html)
-- [vLLM Production Stack GitHub](https://github.com/vllm-project/production-stack) — Helm chart + operator.
+- [vLLM Production Stack GitHub](https://github.com/vllm-project/production-stack) —— Helm chart + operator。
 - [LMCache for Enterprise-Scale LLM Inference (arXiv:2510.09665)](https://arxiv.org/html/2510.09665v2)
-- [LMCache GitHub](https://github.com/LMCache/LMCache) — Connector implementation.
-- [vLLM 0.11.0 release notes](https://github.com/vllm-project/vllm/releases) — asynchronous path details.
+- [LMCache GitHub](https://github.com/LMCache/LMCache) —— Connector 实现。
+- [vLLM 0.11.0 release notes](https://github.com/vllm-project/vllm/releases) —— 异步路径细节。

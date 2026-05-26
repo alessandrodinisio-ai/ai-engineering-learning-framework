@@ -1,56 +1,56 @@
-# Speech Recognition (ASR) — CTC, RNN-T, Attention
+# 语音识别（ASR）—— CTC、RNN-T、注意力
 
-> Speech recognition is audio classification at every timestep, glued together by a sequence model that knows English and silence. CTC, RNN-T, and attention are the three ways to do it. Pick one and understand why.
+> 语音识别就是在每个时间步做音频分类，再用一个懂英语、懂静音的序列模型把它们粘到一起。CTC、RNN-T 和注意力是三种做法。挑一个，搞懂它为什么这么做。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 6 · 02 (Spectrograms & Mel), Phase 5 · 08 (CNNs & RNNs for Text), Phase 5 · 10 (Attention)
-**Time:** ~45 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 阶段 6 · 02（频谱图与梅尔）、阶段 5 · 08（用于文本的 CNN 与 RNN）、阶段 5 · 10（注意力）
+**预计时间：** ~45 分钟
 
-## The Problem
+## 问题所在
 
-You have a 10-second 16 kHz clip. You want a string: "turn on the kitchen lights". The challenge is structural: audio frames do not align one-to-one with characters. The word "okay" might take 200 ms or 1200 ms. Silence punctuates the utterance. Some phonemes are longer than others. The number of output tokens is not known in advance.
+你有一段 10 秒、16 kHz 的音频。你想要一个字符串："turn on the kitchen lights"。难点在结构上：音频帧和字符并不是一一对齐的。"okay" 这个词可能耗时 200 ms，也可能 1200 ms。静音穿插在话语之间。有些音素比别的长。输出 token 的数量事先并不知道。
 
-Three formulations solve this:
+三种建模方式解决了这个问题：
 
-1. **CTC (Connectionist Temporal Classification).** Emit per-frame token probabilities including a special *blank*. Collapse repeats and blanks at decode time. Non-autoregressive, fast. Used by wav2vec 2.0, MMS.
-2. **RNN-T (Recurrent Neural Network Transducer).** Joint network predicts next token given encoder frame and previous tokens. Streamable. Used by Google's on-device ASR, NVIDIA Parakeet.
-3. **Attention encoder-decoder.** Encoder compresses audio to hidden states, decoder cross-attends to generate tokens autoregressively. Used by Whisper, SeamlessM4T.
+1. **CTC（连接时序分类，Connectionist Temporal Classification）。** 逐帧输出 token 概率，其中包含一个特殊的*空白（blank）*。解码时把重复和空白折叠掉。非自回归，快。wav2vec 2.0、MMS 用的就是它。
+2. **RNN-T（循环神经网络转换器，Recurrent Neural Network Transducer）。** 联合网络根据编码器帧和之前的 token 预测下一个 token。可流式。Google 的端侧 ASR、NVIDIA Parakeet 用的是它。
+3. **注意力编码器-解码器。** 编码器把音频压成隐状态，解码器交叉注意力地自回归生成 token。Whisper、SeamlessM4T 用的是它。
 
-In 2026, SOTA WER on LibriSpeech test-clean is 1.4% (Parakeet-TDT-1.1B, NVIDIA) and 1.58% (Whisper-Large-v3-turbo). The differences are tiny; the deployment differences are huge.
+2026 年，LibriSpeech test-clean 上的 SOTA WER 是 1.4%（Parakeet-TDT-1.1B，NVIDIA）和 1.58%（Whisper-Large-v3-turbo）。差距极小；部署上的差异却很大。
 
-## The Concept
+## 核心概念
 
-![Three ASR formulations: CTC, RNN-T, attention-encoder-decoder](../assets/asr-formulations.svg)
+![三种 ASR 建模方式：CTC、RNN-T、注意力编码器-解码器](../assets/asr-formulations.svg)
 
-**CTC intuition.** Let the encoder output `T` frame-level distributions over `V+1` tokens (V chars + blank). For a target string `y` of length `U < T`, any frame alignment that collapses to `y` counts. CTC loss sums over all such alignments. Inference: per-frame argmax, collapse repeats, remove blanks.
+**CTC 直觉。** 让编码器输出 `T` 个帧级分布，每个是 `V+1` 个 token（V 个字符 + 空白）上的分布。对长度 `U < T` 的目标字符串 `y`，任何能折叠成 `y` 的帧对齐都算数。CTC 损失对所有这类对齐求和。推理时：逐帧 argmax，折叠重复，去掉空白。
 
-Advantages: non-autoregressive, streamable, zero lookahead. Drawback: *conditional independence assumption* — each frame prediction is independent of the others, so there is no internal language model. Fix with an external LM via beam search or shallow fusion.
+优点：非自回归、可流式、零前瞻。缺点：*条件独立假设*——每帧预测彼此独立，所以没有内部语言模型。通过束搜索或浅层融合外接一个 LM 来补救。
 
-**RNN-T intuition.** Adds a *predictor* network that embeds the token history and a *joiner* that combines predictor state with encoder frame into a joint distribution over `V+1` (the `+1` is a null / no-emit). Explicitly models the conditional dependence CTC ignored. Streamable because each step conditions only on past frames and past tokens.
+**RNN-T 直觉。** 加了一个*预测器（predictor）*网络嵌入 token 历史，再加一个*合并器（joiner）*把预测器状态和编码器帧合并成 `V+1`（这个 `+1` 是空 / 不输出）上的联合分布。显式建模了 CTC 忽略的条件依赖。可流式，因为每一步只依赖过去的帧和过去的 token。
 
-Advantages: streamable + internal LM. Drawback: training is more complex and memory-hungry (3D loss lattice); RNN-T loss kernels are a whole library category on their own.
+优点：可流式 + 内部 LM。缺点：训练更复杂、更吃内存（三维损失格点）；RNN-T 损失核函数本身就是一整类库。
 
-**Attention encoder-decoder.** Encoder (6-32 transformer layers) over log-mel frames. Decoder (6-32 transformer layers) cross-attends to encoder outputs to generate tokens autoregressively. No alignment constraint — attention can look anywhere in the audio. Non-streamable unless you restrict attention (chunked Whisper-Streaming, 2024).
+**注意力编码器-解码器。** 编码器（6-32 层 transformer）作用在对数梅尔帧上。解码器（6-32 层 transformer）交叉注意力地关注编码器输出，自回归生成 token。没有对齐约束——注意力可以看音频里的任何地方。除非你限制注意力（分块的 Whisper-Streaming，2024），否则不可流式。
 
-Advantages: highest quality on offline ASR, easy to train with standard seq2seq tooling. Drawback: autoregressive latency is proportional to output length; cannot stream without engineering.
+优点：离线 ASR 上质量最高，用标准 seq2seq 工具就好训。缺点：自回归延迟与输出长度成正比；不做工程就没法流式。
 
-### WER: the one number
+### WER：那个唯一的数字
 
-**Word Error Rate** = `(S + D + I) / N`, where S=substitutions, D=deletions, I=insertions, N=reference word count. Matches Levenshtein edit distance at the word level. Lower is better. A WER above 20% is generally unusable; below 5% is human-parity for read speech. 2026 numbers on standard benchmarks:
+**词错误率（Word Error Rate）** = `(S + D + I) / N`，其中 S=替换，D=删除，I=插入，N=参考文本词数。等于词级别的莱文斯坦编辑距离。越低越好。WER 高于 20% 通常没法用；低于 5% 在朗读语音上达到人类水平。标准基准上的 2026 年数字：
 
-| Model | LibriSpeech test-clean | LibriSpeech test-other | Size |
+| 模型 | LibriSpeech test-clean | LibriSpeech test-other | 规模 |
 |-------|------------------------|------------------------|------|
-| Parakeet-TDT-1.1B | 1.40% | 2.78% | 1.1B params |
-| Whisper-Large-v3-turbo | 1.58% | 3.03% | 809M |
-| Canary-1B Flash | 1.48% | 2.87% | 1B |
-| Seamless M4T v2 | 1.7% | 3.5% | 2.3B |
+| Parakeet-TDT-1.1B | 1.40% | 2.78% | 11 亿参数 |
+| Whisper-Large-v3-turbo | 1.58% | 3.03% | 8.09 亿 |
+| Canary-1B Flash | 1.48% | 2.87% | 10 亿 |
+| Seamless M4T v2 | 1.7% | 3.5% | 23 亿 |
 
-All these are encoder-decoder or RNN-T based. Pure CTC systems (wav2vec 2.0) sit around 1.8–2.1% on test-clean.
+这些全是基于编码器-解码器或 RNN-T 的。纯 CTC 系统（wav2vec 2.0）在 test-clean 上大约在 1.8–2.1%。
 
-## Build It
+## 动手构建
 
-### Step 1: greedy CTC decode
+### 第 1 步：贪心 CTC 解码
 
 ```python
 def ctc_greedy(frame_logits, blank=0, vocab=None):
@@ -65,9 +65,9 @@ def ctc_greedy(frame_logits, blank=0, vocab=None):
     return "".join(vocab[i] for i in out) if vocab else out
 ```
 
-Two rules: collapse consecutive repeats, drop blanks. Example: `a a _ _ a b b _ c` → `a a b c`.
+两条规则：折叠连续重复，丢掉空白。例子：`a a _ _ a b b _ c` → `a a b c`。
 
-### Step 2: beam-search CTC
+### 第 2 步：束搜索 CTC
 
 ```python
 def ctc_beam(frame_logits, beam=8, blank=0):
@@ -85,9 +85,9 @@ def ctc_beam(frame_logits, beam=8, blank=0):
     return beams[0][0]
 ```
 
-Production uses prefix tree beam search with LM fusion; this is the conceptual skeleton.
+生产环境用带 LM 融合的前缀树束搜索；这里是概念骨架。
 
-### Step 3: WER
+### 第 3 步：WER
 
 ```python
 def wer(ref, hyp):
@@ -108,7 +108,7 @@ def wer(ref, hyp):
     return dp[len(r)][len(h)] / max(1, len(r))
 ```
 
-### Step 4: inference against Whisper
+### 第 4 步：拿 Whisper 做推理
 
 ```python
 import whisper
@@ -117,9 +117,9 @@ result = model.transcribe("clip.wav")
 print(result["text"])
 ```
 
-One-liner for the strongest general ASR in 2026. Runs on a 24 GB GPU at ~20× realtime.
+一行调用 2026 年最强的通用 ASR。在一张 24 GB GPU 上以约 20 倍实时速度运行。
 
-### Step 5: streaming with Parakeet or wav2vec 2.0
+### 第 5 步：用 Parakeet 或 wav2vec 2.0 做流式
 
 ```python
 from transformers import pipeline
@@ -128,54 +128,54 @@ for chunk in streaming_audio():
     print(asr(chunk, return_timestamps=True))
 ```
 
-Streaming ASR needs chunked encoder attention and carryover state; use a library that supports it (NeMo for Parakeet, `transformers` pipeline with `chunk_length_s`).
+流式 ASR 需要分块的编码器注意力和状态延续；用一个支持它的库（Parakeet 用 NeMo，或带 `chunk_length_s` 的 `transformers` pipeline）。
 
-## Use It
+## 上手使用
 
-The 2026 stack:
+2026 年的工具栈：
 
-| Situation | Pick |
+| 情形 | 选 |
 |-----------|------|
-| English, offline, max quality | Whisper-large-v3-turbo |
-| Multilingual, robust | SeamlessM4T v2 |
-| Streaming, low latency | Parakeet-TDT-1.1B or Riva |
-| Edge, mobile, <500 ms latency | Whisper-Tiny quantized or Moonshine (2024) |
-| Long-form | Whisper with VAD-based chunking (WhisperX) |
-| Domain-specific (medical, legal) | Fine-tune wav2vec 2.0 + domain LM fusion |
+| 英语、离线、追求最高质量 | Whisper-large-v3-turbo |
+| 多语种、鲁棒 | SeamlessM4T v2 |
+| 流式、低延迟 | Parakeet-TDT-1.1B 或 Riva |
+| 边缘端、移动端、延迟 <500 ms | 量化的 Whisper-Tiny 或 Moonshine（2024） |
+| 长音频 | 带 VAD 分块的 Whisper（WhisperX） |
+| 领域专用（医疗、法律） | 微调 wav2vec 2.0 + 领域 LM 融合 |
 
-## Pitfalls that still ship in 2026
+## 2026 年仍在上线的坑
 
-- **No VAD.** Running Whisper on silence produces hallucinations ("Thanks for watching!"). Always gate with VAD.
-- **Character vs word vs subword WER.** Report word-level WER *after* normalization (lowercase, punctuation stripped).
-- **Language ID drift.** Whisper's auto LID mis-routes noisy clips to Japanese or Welsh; force `language="en"` when you know.
-- **Long clips without chunking.** Whisper has a 30-second window. Use `chunk_length_s=30, stride=5` for anything longer.
+- **没有 VAD。** 在静音上跑 Whisper 会产生幻觉（"Thanks for watching!"）。永远用 VAD 把门。
+- **字符级 vs 词级 vs 子词级 WER。** 报告 WER 要在归一化*之后*按词级来算（小写化、去标点）。
+- **语种识别漂移。** Whisper 的自动 LID 会把嘈杂音频误路由到日语或威尔士语；你知道语种时就强制 `language="en"`。
+- **长音频不分块。** Whisper 有一个 30 秒的窗口。超过这个长度就用 `chunk_length_s=30, stride=5`。
 
-## Ship It
+## 交付
 
-Save as `outputs/skill-asr-picker.md`. Pick model, decoding strategy, chunking, and LM fusion for a given deployment target.
+存为 `outputs/skill-asr-picker.md`。针对给定的部署目标，挑选模型、解码策略、分块方式和 LM 融合。
 
-## Exercises
+## 练习
 
-1. **Easy.** Run `code/main.py`. It greedily decodes a hand-crafted CTC output and computes WER against a reference.
-2. **Medium.** Implement the prefix-tree beam search in Step 2 properly (account for the blank merge rule). Compare with greedy on a 10-example synthetic dataset.
-3. **Hard.** Use `whisper-large-v3-turbo` on [LibriSpeech test-clean](https://www.openslr.org/12). Compute WER on the first 100 utterances. Compare with published numbers.
+1. **简单。** 跑 `code/main.py`。它贪心解码一段手工构造的 CTC 输出，并对参考文本算 WER。
+2. **中等。** 把第 2 步的前缀树束搜索正确实现出来（处理好空白合并规则）。在一个 10 例的合成数据集上和贪心做对比。
+3. **困难。** 在 [LibriSpeech test-clean](https://www.openslr.org/12) 上用 `whisper-large-v3-turbo`。算出前 100 条语音的 WER。和公布的数字对比。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际指什么 |
 |------|-----------------|-----------------------|
-| CTC | The blank-token loss | Marginal over all frame-to-token alignments; non-AR. |
-| RNN-T | The streaming loss | CTC + next-token predictor; handles word-order. |
-| Attention enc-dec | Whisper-style | Encoder + cross-attending decoder; best offline quality. |
-| WER | The number you report | `(S+D+I)/N` at word level. |
-| Blank | The emptiness | Special token in CTC signalling "no emission this frame". |
-| LM fusion | External language model | Add weighted LM log-probs during beam search. |
-| VAD | The silence gate | Voice activity detector; trims non-speech. |
+| CTC | 那个带空白 token 的损失 | 对所有帧到 token 的对齐做边缘化；非自回归。 |
+| RNN-T | 那个流式损失 | CTC + 下一 token 预测器；能处理词序。 |
+| 注意力编-解 | Whisper 风格 | 编码器 + 交叉注意力解码器；离线质量最佳。 |
+| WER | 你要报告的那个数 | 词级别的 `(S+D+I)/N`。 |
+| 空白（Blank） | 那个「空」 | CTC 里表示「这一帧不输出」的特殊 token。 |
+| LM 融合 | 外部语言模型 | 束搜索时加上加权的 LM 对数概率。 |
+| VAD | 那道静音门 | 语音活动检测器；裁掉非语音段。 |
 
-## Further Reading
+## 延伸阅读
 
-- [Graves et al. (2006). Connectionist Temporal Classification](https://www.cs.toronto.edu/~graves/icml_2006.pdf) — the CTC paper.
-- [Graves (2012). Sequence Transduction with RNNs](https://arxiv.org/abs/1211.3711) — the RNN-T paper.
-- [Radford et al. / OpenAI (2022). Whisper: Robust Speech Recognition via Large-Scale Weak Supervision](https://arxiv.org/abs/2212.04356) — the 2022 canonical paper; v3-turbo extension in 2024.
-- [NVIDIA NeMo — Parakeet-TDT card](https://huggingface.co/nvidia/parakeet-tdt-1.1b) — 2026 Open ASR Leaderboard leader.
-- [Hugging Face — Open ASR Leaderboard](https://huggingface.co/spaces/hf-audio/open_asr_leaderboard) — live benchmark across 25+ models.
+- [Graves et al. (2006). Connectionist Temporal Classification](https://www.cs.toronto.edu/~graves/icml_2006.pdf) —— CTC 那篇论文。
+- [Graves (2012). Sequence Transduction with RNNs](https://arxiv.org/abs/1211.3711) —— RNN-T 那篇论文。
+- [Radford et al. / OpenAI (2022). Whisper: Robust Speech Recognition via Large-Scale Weak Supervision](https://arxiv.org/abs/2212.04356) —— 2022 年的经典论文；v3-turbo 是 2024 年的扩展。
+- [NVIDIA NeMo — Parakeet-TDT card](https://huggingface.co/nvidia/parakeet-tdt-1.1b) —— 2026 年 Open ASR 排行榜的领跑者。
+- [Hugging Face — Open ASR Leaderboard](https://huggingface.co/spaces/hf-audio/open_asr_leaderboard) —— 横跨 25+ 模型的实时基准。

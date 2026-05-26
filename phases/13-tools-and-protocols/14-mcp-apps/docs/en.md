@@ -1,32 +1,32 @@
-# MCP Apps — Interactive UI Resources via `ui://`
+# MCP Apps——经由 `ui://` 的交互式 UI 资源
 
-> Text-only tool output caps what agents can show. MCP Apps (SEP-1724, official January 26, 2026) let a tool return sandboxed interactive HTML rendered inline in Claude Desktop, ChatGPT, Cursor, Goose, and VS Code. Dashboards, forms, maps, 3D scenes, all through one extension. This lesson walks the `ui://` resource scheme, the `text/html;profile=mcp-app` MIME, the iframe-sandbox postMessage protocol, and the security surface that comes with letting a server render HTML.
+> 纯文本工具输出给 agent 能展示的东西封了顶。MCP Apps（SEP-1724，2026 年 1 月 26 日正式）让一个工具返回沙箱化的交互式 HTML，内联渲染在 Claude Desktop、ChatGPT、Cursor、Goose 和 VS Code 里。仪表盘、表单、地图、3D 场景，全经由一个扩展。本课走一遍 `ui://` 资源 scheme、`text/html;profile=mcp-app` MIME、iframe 沙箱的 postMessage 协议，以及让 server 渲染 HTML 所附带的安全表面。
 
-**Type:** Build
-**Languages:** Python (stdlib, UI resource emitter), HTML (sample app)
-**Prerequisites:** Phase 13 · 07 (MCP server), Phase 13 · 10 (resources)
-**Time:** ~75 minutes
+**类型：** Build
+**语言：** Python（标准库，UI 资源发射器）、HTML（示例 app）
+**前置要求：** 阶段 13 · 07（MCP server）、阶段 13 · 10（resources）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Return a `ui://` resource from a tool call and set the correct MIME and metadata.
-- Declare a tool's associated UI with `_meta.ui.resourceUri`, `_meta.ui.csp`, and `_meta.ui.permissions`.
-- Implement the iframe sandbox postMessage JSON-RPC for UI-to-host communication.
-- Apply CSP and permissions-policy defaults that defend against UI-originated attacks.
+- 从一个工具调用返回一个 `ui://` 资源，并设正确的 MIME 和元数据。
+- 用 `_meta.ui.resourceUri`、`_meta.ui.csp` 和 `_meta.ui.permissions` 声明一个工具关联的 UI。
+- 为 UI 到宿主的通信实现 iframe 沙箱的 postMessage JSON-RPC。
+- 应用 CSP 和 permissions-policy 默认值，抵御 UI 发起的攻击。
 
-## The Problem
+## 问题所在
 
-A 2025-era `visualize_timeline` tool can return "Here are 14 notes organized chronologically: ...". That is a paragraph. Users actually want the interactive timeline. Before MCP Apps, the options were: client-specific widget APIs (Claude artifacts, OpenAI Custom GPT HTML), or no UI at all.
+一个 2025 年代的 `visualize_timeline` 工具能返回"这是按时间顺序组织的 14 条笔记：……"。那是一段话。用户真正想要的是那个交互式时间线。在 MCP Apps 之前，选项是：client 特定的 widget API（Claude artifacts、OpenAI Custom GPT HTML），或者根本没 UI。
 
-MCP Apps (SEP-1724, shipped January 26, 2026) standardize the contract. A tool result contains a `resource` whose URI is `ui://...` and whose MIME is `text/html;profile=mcp-app`. The host renders it in a sandboxed iframe with a limited CSP and no network access unless explicitly granted. The UI inside the iframe posts messages to the host via a tiny postMessage JSON-RPC dialect.
+MCP Apps（SEP-1724，2026 年 1 月 26 日发布）把契约标准化了。一个工具结果含一个 `resource`，其 URI 是 `ui://...`，其 MIME 是 `text/html;profile=mcp-app`。宿主把它渲染在一个沙箱化的 iframe 里，配一个受限的 CSP，除非显式授予否则无网络访问。iframe 里的 UI 经由一个微型 postMessage JSON-RPC 方言向宿主发消息。
 
-Every compatible client (Claude Desktop, ChatGPT, Goose, VS Code) renders the same `ui://` resource the same way. One server, one HTML bundle, universal UI.
+每个兼容的 client（Claude Desktop、ChatGPT、Goose、VS Code）都以同样的方式渲染同一个 `ui://` 资源。一个 server、一个 HTML 包、通用的 UI。
 
-## The Concept
+## 核心概念
 
-### The `ui://` resource scheme
+### `ui://` 资源 scheme
 
-A tool returns:
+一个工具返回：
 
 ```json
 {
@@ -48,7 +48,7 @@ A tool returns:
 }
 ```
 
-The host then calls `resources/read` on the `ui://notes/timeline` URI and gets back:
+宿主随后对 `ui://notes/timeline` URI 调 `resources/read`，拿回：
 
 ```json
 {
@@ -60,23 +60,23 @@ The host then calls `resources/read` on the `ui://notes/timeline` URI and gets b
 }
 ```
 
-### Iframe sandbox
+### iframe 沙箱
 
-The host renders the HTML inside a sandboxed `<iframe>` with:
+宿主把 HTML 渲染在一个沙箱化的 `<iframe>` 里，配：
 
-- `sandbox="allow-scripts allow-same-origin"` (or stricter per server declaration)
-- Server-declared CSP applied via response headers.
-- No cookies, no localStorage from the host's origin.
-- Network access limited to `connectSrc` in CSP.
+- `sandbox="allow-scripts allow-same-origin"`（或按 server 声明更严）
+- server 声明的 CSP 经由响应头应用。
+- 没有 cookie，没有来自宿主源的 localStorage。
+- 网络访问限于 CSP 里的 `connectSrc`。
 
-### postMessage protocol
+### postMessage 协议
 
-The iframe communicates with the host via `window.postMessage`. A tiny JSON-RPC 2.0 dialect:
+iframe 经由 `window.postMessage` 与宿主通信。一个微型 JSON-RPC 2.0 方言：
 
-Always pin `targetOrigin` to the peer's exact origin, and on the receiving side validate `event.origin` against an allowlist before processing any payload. Never use `"*"` for either side of this channel — the body carries tool calls and resource reads.
+始终把 `targetOrigin` 钉到对端的确切源，并在接收侧处理任何载荷前，按白名单校验 `event.origin`。这个通道两侧都绝不要用 `"*"`——body 里携带的是工具调用和资源读取。
 
 ```js
-// iframe to host  (pin to host origin)
+// iframe 到宿主  (钉到宿主源)
 window.parent.postMessage({
   jsonrpc: "2.0",
   id: 1,
@@ -84,129 +84,129 @@ window.parent.postMessage({
   params: { name: "notes_update", arguments: { id: "note-14", title: "..." } }
 }, "https://host.example.com");
 
-// host to iframe  (pin to iframe origin)
+// 宿主到 iframe  (钉到 iframe 源)
 iframe.contentWindow.postMessage({
   jsonrpc: "2.0",
   id: 1,
   result: { content: [...] }
 }, "https://iframe.example.com");
 
-// receiver on both sides
+// 两侧的接收方
 window.addEventListener("message", (event) => {
   if (event.origin !== "https://expected-peer.example.com") return;
-  // safe to process event.data
+  // 可以安全处理 event.data
 });
 ```
 
-Available host-side methods the UI can call:
+UI 可调用的宿主侧方法：
 
-- `host.callTool(name, arguments)` — invokes a server tool.
-- `host.readResource(uri)` — reads an MCP resource.
-- `host.getPrompt(name, arguments)` — fetches a prompt template.
-- `host.close()` — dismisses the UI.
+- `host.callTool(name, arguments)`——调用一个 server 工具。
+- `host.readResource(uri)`——读一个 MCP resource。
+- `host.getPrompt(name, arguments)`——取一个 prompt 模板。
+- `host.close()`——关闭这个 UI。
 
-Every call still goes through the MCP protocol and inherits the server's permissions.
+每个调用仍走 MCP 协议，并继承 server 的权限。
 
-### Permissions
+### 权限
 
-The `_meta.ui.permissions` list requests extra capabilities:
+`_meta.ui.permissions` 列表请求额外能力：
 
-- `camera` — access the user's camera (used for scan-a-document UIs).
-- `microphone` — voice input.
-- `geolocation` — location.
-- `network:*` — wider network access than `connectSrc` alone allows.
+- `camera`——访问用户的摄像头（用于扫描文档的 UI）。
+- `microphone`——语音输入。
+- `geolocation`——位置。
+- `network:*`——比单靠 `connectSrc` 更宽的网络访问。
 
-Each permission is a prompt the user sees before the UI renders.
+每个权限都是用户在 UI 渲染前看到的一个提示。
 
-### Security risks
+### 安全风险
 
-HTML in an iframe is still HTML. New attack surface:
+iframe 里的 HTML 仍是 HTML。新的攻击表面：
 
-- **Prompt-injection via UI.** A malicious server UI can show text that looks like a system message and tricks the user. Host rendering should visibly distinguish server UI from host UI.
-- **Exfiltration via `connectSrc`.** If CSP permits `connect-src: *`, the UI can send data anywhere. Default should be strict.
-- **Clickjacking.** The UI overlays host chrome. Hosts must prevent z-index manipulation and enforce opacity rules.
-- **Steal focus.** UI takes keyboard focus and captures the next message. Hosts must intercept.
+- **经由 UI 的 prompt 注入。** 一个恶意 server UI 能展示看起来像 system 消息的文本来骗用户。宿主渲染应当显眼地把 server UI 和宿主 UI 区分开。
+- **经由 `connectSrc` 的外泄。** 如果 CSP 允许 `connect-src: *`，UI 能把数据发往任何地方。默认应该严格。
+- **点击劫持。** UI 覆盖在宿主 chrome 上。宿主必须防住 z-index 操纵并强制不透明度规则。
+- **抢焦点。** UI 拿走键盘焦点并捕获下一条消息。宿主必须拦截。
 
-Phase 13 · 15 covers these in depth as part of MCP security; this lesson introduces them.
+阶段 13 · 15 作为 MCP 安全的一部分深入讲这些；本课只是引入它们。
 
-### `ui/initialize` handshake
+### `ui/initialize` 握手
 
-After the iframe loads, it sends `ui/initialize` over postMessage:
+iframe 加载后，它经由 postMessage 发 `ui/initialize`：
 
 ```json
 {"jsonrpc": "2.0", "id": 0, "method": "ui/initialize",
  "params": {"theme": "dark", "locale": "en-US", "sessionId": "..."}}
 ```
 
-Host responds with capabilities and a session token. The UI uses the session token on every subsequent host call.
+宿主用能力和一个会话 token 响应。UI 在随后每个宿主调用上用那个会话 token。
 
-### AppRenderer / AppFrame SDK primitives
+### AppRenderer / AppFrame SDK 基元
 
-The ext-apps SDK exposes two convenience primitives:
+ext-apps SDK 暴露两个便利基元：
 
-- `AppRenderer` (server side) — wraps a React / Vue / Solid component and emits a `ui://` resource with the right MIME and metadata.
-- `AppFrame` (client side) — receives the resource, mounts the iframe, and mediates postMessage.
+- `AppRenderer`（server 侧）——包一个 React / Vue / Solid 组件，发出一个带正确 MIME 和元数据的 `ui://` 资源。
+- `AppFrame`（client 侧）——接收资源，挂载 iframe，并居中调停 postMessage。
 
-You can use these or hand-roll the HTML and JSON-RPC.
+你可以用这些，也可以手搓 HTML 和 JSON-RPC。
 
-### Ecosystem status
+### 生态状态
 
-MCP Apps shipped January 26, 2026. Client support as of April 2026:
+MCP Apps 于 2026 年 1 月 26 日发布。截至 2026 年 4 月的 client 支持：
 
-- **Claude Desktop.** Full support since January 2026.
-- **ChatGPT.** Full support via the Apps SDK (same underlying MCP Apps protocol).
-- **Cursor.** Beta; enable via settings.
-- **VS Code.** Insider builds only.
-- **Goose.** Full support.
-- **Zed, Windsurf.** Roadmapped.
+- **Claude Desktop。** 自 2026 年 1 月起完全支持。
+- **ChatGPT。** 经由 Apps SDK 完全支持（同一底层 MCP Apps 协议）。
+- **Cursor。** Beta；经设置启用。
+- **VS Code。** 仅 Insider 构建。
+- **Goose。** 完全支持。
+- **Zed、Windsurf。** 已列入路线图。
 
-Servers in production: dashboards, map visualizations, data tables, chart builders, sandbox IDE previews.
+生产里的 server：仪表盘、地图可视化、数据表、图表构建器、沙箱 IDE 预览。
 
-## Use It
+## 上手使用
 
-`code/main.py` extends the notes server with a `visualize_timeline` tool that returns a `ui://notes/timeline` resource, plus a handler for `resources/read` on that URI which returns a small but complete HTML bundle with an SVG timeline. The HTML is stdlib-templated — no build system. postMessage is sketched in JS comments since stdlib cannot drive a browser.
+`code/main.py` 在 notes server 上扩展出一个 `visualize_timeline` 工具，返回一个 `ui://notes/timeline` 资源，外加一个对该 URI 的 `resources/read` 处理器，它返回一个小而完整、带 SVG 时间线的 HTML 包。HTML 用标准库模板化——没有构建系统。postMessage 在 JS 注释里勾画，因为标准库驱动不了浏览器。
 
-What to look at:
+要看什么：
 
-- `_meta.ui` on the tool response carries resourceUri, CSP, permissions.
-- The HTML renders without network access; all data is inlined.
-- JS calls `host.callTool` via `window.parent.postMessage` (documented but inert in this stdlib demo).
+- 工具响应上的 `_meta.ui` 携带 resourceUri、CSP、permissions。
+- HTML 无网络访问就渲染；所有数据都内联了。
+- JS 经由 `window.parent.postMessage` 调 `host.callTool`（有文档但在这个标准库 demo 里是惰性的）。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-mcp-apps-spec.md`. Given a tool that would benefit from an interactive UI, the skill produces the full MCP Apps contract: `ui://` URI, CSP, permissions, postMessage entrypoints, and a security checklist.
+本课产出 `outputs/skill-mcp-apps-spec.md`。给定一个会受益于交互式 UI 的工具，这个 skill 产出完整的 MCP Apps 契约：`ui://` URI、CSP、permissions、postMessage 入口点，以及一份安全清单。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py` and inspect the HTML emitted. Open the HTML directly in a browser; verify the SVG renders. Then sketch the postMessage contract the UI would use to call `host.callTool("notes_update", ...)`.
+1. 跑 `code/main.py`，检视发出的 HTML。直接在浏览器里打开这个 HTML；验证 SVG 渲染。然后勾画 UI 用来调 `host.callTool("notes_update", ...)` 的 postMessage 契约。
 
-2. Tighten the CSP: remove `'unsafe-inline'` and use a nonce-based script policy. What changes in the HTML generation code?
+2. 收紧 CSP：移除 `'unsafe-inline'`，用一个基于 nonce 的脚本策略。HTML 生成代码里有什么变化？
 
-3. Add a second UI resource `ui://notes/editor` with a form for editing a note in place. When the user submits, the iframe calls `host.callTool("notes_update", ...)`.
+3. 加第二个 UI 资源 `ui://notes/editor`，带一个就地编辑笔记的表单。用户提交时，iframe 调 `host.callTool("notes_update", ...)`。
 
-4. Audit the UI's attack surface. Where could a malicious server inject content? What does the iframe sandbox defend against and what does it not?
+4. 审计这个 UI 的攻击表面。恶意 server 可能在哪儿注入内容？iframe 沙箱防住什么，不防什么？
 
-5. Read the SEP-1724 spec and identify one capability in the MCP Apps SDK that this toy implementation does not use. (Hint: component-level state sync.)
+5. 读 SEP-1724 规范，找出 MCP Apps SDK 里一个这个玩具实现没用上的能力。（提示：组件级状态同步。）
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| MCP Apps | "Interactive UI resources" | SEP-1724 extension shipped 2026-01-26 |
-| `ui://` | "App URI scheme" | Resource scheme for UI bundles |
-| `text/html;profile=mcp-app` | "The MIME" | Content-type for MCP App HTML |
-| Iframe sandbox | "Render container" | Browser sandboxing of the UI with CSP and permissions |
-| postMessage JSON-RPC | "UI-to-host wire" | Tiny JSON-RPC-over-postMessage dialect for host calls |
-| `_meta.ui` | "Tool-UI binding" | Metadata linking a tool result to a UI resource |
-| CSP | "Content-Security-Policy" | Declares allowed sources for scripts, network, styles |
-| AppRenderer | "Server SDK primitive" | Converts a framework component into a `ui://` resource |
-| AppFrame | "Client SDK primitive" | Iframe mount helper that mediates postMessage |
-| `ui/initialize` | "Handshake" | First postMessage from UI to host |
+| MCP Apps | "交互式 UI 资源" | 2026-01-26 发布的 SEP-1724 扩展 |
+| `ui://` | "App URI scheme" | UI 包的资源 scheme |
+| `text/html;profile=mcp-app` | "那个 MIME" | MCP App HTML 的 content-type |
+| Iframe sandbox | "渲染容器" | 浏览器对 UI 的沙箱化，配 CSP 和权限 |
+| postMessage JSON-RPC | "UI 到宿主的线" | 用于宿主调用的微型 JSON-RPC-over-postMessage 方言 |
+| `_meta.ui` | "工具-UI 绑定" | 把一个工具结果链接到一个 UI 资源的元数据 |
+| CSP | "Content-Security-Policy" | 声明脚本、网络、样式的允许来源 |
+| AppRenderer | "server SDK 基元" | 把一个框架组件转成一个 `ui://` 资源 |
+| AppFrame | "client SDK 基元" | 居中调停 postMessage 的 iframe 挂载助手 |
+| `ui/initialize` | "握手" | UI 到宿主的第一条 postMessage |
 
-## Further Reading
+## 延伸阅读
 
-- [MCP ext-apps — GitHub](https://github.com/modelcontextprotocol/ext-apps) — reference implementation and SDK
-- [MCP Apps specification 2026-01-26](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx) — formal spec document
-- [MCP — Apps extension overview](https://modelcontextprotocol.io/extensions/apps/overview) — high-level documentation
-- [MCP blog — MCP Apps launch](https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/) — January 2026 launch post
-- [MCP Apps API reference](https://apps.extensions.modelcontextprotocol.io/api/) — JSDoc-style SDK reference
+- [MCP ext-apps — GitHub](https://github.com/modelcontextprotocol/ext-apps) — 参考实现与 SDK
+- [MCP Apps specification 2026-01-26](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx) — 正式规范文档
+- [MCP — Apps extension overview](https://modelcontextprotocol.io/extensions/apps/overview) — 高层文档
+- [MCP blog — MCP Apps launch](https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/) — 2026 年 1 月发布博文
+- [MCP Apps API reference](https://apps.extensions.modelcontextprotocol.io/api/) — JSDoc 风格 SDK 参考

@@ -1,36 +1,36 @@
-# Video Understanding — Temporal Modeling
+# 视频理解 —— 时序建模
 
-> A video is a sequence of images plus the physics that connects them. Every video model either treats time as an extra axis (3D conv), a sequence to attend over (transformer), or a feature to extract once and pool (2D+pool).
+> 一段视频是一串图像，加上把它们连起来的物理。每个视频模型要么把时间当成一个额外的轴（3D 卷积）、一个可注意的序列（transformer），要么当成一个提取一次再池化的特征（2D+池化）。
 
-**Type:** Learn + Build
-**Languages:** Python
-**Prerequisites:** Phase 4 Lesson 03 (CNNs), Phase 4 Lesson 04 (Image Classification)
-**Time:** ~45 minutes
+**类型：** Learn + Build
+**语言：** Python
+**前置要求：** 阶段 4 第 03 课（CNN）、阶段 4 第 04 课（图像分类）
+**预计时间：** ~45 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Distinguish the three main video-modelling approaches (2D+pool, 3D conv, spatio-temporal transformer) and predict their cost and accuracy trade-offs
-- Implement frame sampling, temporal pooling, and a 2D+pool baseline classifier in PyTorch
-- Explain why I3D's "inflated" 3D kernels transfer well from ImageNet weights and what a factorised (2+1)D conv does differently
-- Read the standard action-recognition datasets and metrics: Kinetics-400/600, UCF101, Something-Something V2; top-1 accuracy at the clip and video level
+- 区分三种主要的视频建模方法（2D+池化、3D 卷积、时空 transformer），预测它们的成本和准确率权衡
+- 用 PyTorch 实现帧采样、时序池化，以及一个 2D+池化的基线分类器
+- 解释为什么 I3D 的"膨胀"3D 核能从 ImageNet 权重很好地迁移，以及因式分解的 (2+1)D 卷积做法有何不同
+- 读懂标准动作识别数据集和指标：Kinetics-400/600、UCF101、Something-Something V2；clip 级和 video 级的 top-1 准确率
 
-## The Problem
+## 问题所在
 
-A 30-second video at 30 fps is 900 images. Naively, video classification is image classification run 900 times followed by some kind of aggregation. That works when the action is visible in almost every frame (sports, cooking, exercise videos) and fails badly when the action is defined by motion itself: "pushing something from left to right" looks like two still objects in every single frame.
+一段 30 秒、30 fps 的视频是 900 张图像。朴素地看，视频分类就是把图像分类跑 900 次再做某种聚合。当动作在几乎每一帧都可见时（体育、烹饪、健身视频），这行得通；而当动作由运动本身定义时就惨败："把某物从左推到右"在每一帧里看起来都是两个静止的物体。
 
-The core question for every video architecture is: when does temporal structure get modelled, and how? The answer drives everything else — compute cost, pretraining strategy, whether you can reuse ImageNet weights, what datasets the model trains on.
+每个视频架构的核心问题是：时序结构何时被建模、怎么建模？答案驱动其余一切——算力成本、预训练策略、能否复用 ImageNet 权重、模型在什么数据集上训练。
 
-This lesson is deliberately shorter than the static-image lessons. The core image machinery is already in place, and video understanding is mostly about the temporal story: sampling, modelling, and aggregating.
+这一课故意比静态图像那几课短。图像的核心机制已经就位，视频理解大多是关于时序这条线：采样、建模、聚合。
 
-## The Concept
+## 核心概念
 
-### The three architectural families
+### 三个架构家族
 
 ```mermaid
 flowchart LR
-    V["Video clip<br/>(T frames)"] --> A1["2D + pool<br/>run 2D CNN per frame,<br/>average over time"]
-    V --> A2["3D conv<br/>convolve over<br/>T x H x W"]
-    V --> A3["Spatio-temporal<br/>transformer<br/>attention over<br/>(t, h, w) tokens"]
+    V["视频片段<br/>(T 帧)"] --> A1["2D + 池化<br/>每帧跑一次 2D CNN，<br/>在时间上平均"]
+    V --> A2["3D 卷积<br/>在<br/>T x H x W 上卷积"]
+    V --> A3["时空<br/>transformer<br/>在 (t, h, w) token 上<br/>做注意力"]
 
     A1 --> C["Logits"]
     A2 --> C
@@ -41,87 +41,87 @@ flowchart LR
     style A3 fill:#dcfce7,stroke:#16a34a
 ```
 
-### 2D + pool
+### 2D + 池化
 
-Take a 2D CNN (ResNet, EfficientNet, ViT). Run it independently on every sampled frame. Average (or max-pool, or attention-pool) the per-frame embeddings. Feed the pooled vector to a classifier.
+拿一个 2D CNN（ResNet、EfficientNet、ViT）。在每个采样帧上独立跑它。把逐帧嵌入做平均（或 max-pool，或 attention-pool）。把池化后的向量喂给分类器。
 
-Pros:
-- ImageNet pretraining transfers directly.
-- Simplest to implement.
-- Cheap: T frames * single-image inference cost.
+优点：
+- ImageNet 预训练直接迁移。
+- 实现最简单。
+- 便宜：T 帧 * 单图推理成本。
 
-Cons:
-- Cannot model motion. Action = aggregate of appearances.
-- Temporal pooling is order-invariant; "open door" and "close door" look the same.
+缺点：
+- 无法建模运动。动作 = 外观的聚合。
+- 时序池化对顺序不变；"开门"和"关门"看起来一样。
 
-When to use: appearance-heavy tasks, transfer learning on small video datasets, initial baselines.
+何时用：外观主导的任务、小视频数据集上的迁移学习、初始基线。
 
-### 3D convolutions
+### 3D 卷积
 
-Replace 2D (H, W) kernels with 3D (T, H, W) kernels. The network convolves over both space and time. Early family: C3D, I3D, SlowFast.
+把 2D (H, W) 核换成 3D (T, H, W) 核。网络在空间和时间上都做卷积。早期家族：C3D、I3D、SlowFast。
 
-I3D trick: take a pretrained 2D ImageNet model, "inflate" each 2D kernel by copying it along a new time axis. A 3x3 2D conv becomes a 3x3x3 3D conv. This gives the 3D model strong pretrained weights instead of training from scratch.
+I3D 技巧：拿一个预训练的 2D ImageNet 模型，把每个 2D 核沿一个新的时间轴复制来"膨胀"它。一个 3x3 的 2D 卷积变成一个 3x3x3 的 3D 卷积。这给 3D 模型强大的预训练权重，而不用从零训练。
 
-Pros:
-- Directly models motion.
-- I3D inflation gives free transfer learning.
+优点：
+- 直接建模运动。
+- I3D 膨胀白送迁移学习。
 
-Cons:
-- T/8 more FLOPs than the 2D counterpart (for temporal kernel of 3 stacked 3 times).
-- Temporal kernels are small; long-range motion needs a pyramid or dual-stream approach.
+缺点：
+- 比 2D 对应物多 T/8 的 FLOPs（时序核为 3、堆 3 次时）。
+- 时序核很小；长程运动需要金字塔或双流方法。
 
-When to use: action recognition where motion is the signal (Something-Something V2, Kinetics with motion-heavy classes).
+何时用：运动即信号的动作识别（Something-Something V2、Kinetics 里运动密集的类别）。
 
-### Spatio-temporal transformers
+### 时空 transformer
 
-Tokenise the video into a grid of space-time patches and attend across all of them. TimeSformer, ViViT, Video Swin, VideoMAE.
+把视频 token 化成时空 patch 的网格，在全部 patch 上做注意力。TimeSformer、ViViT、Video Swin、VideoMAE。
 
-Attention patterns that matter:
-- **Joint** — one big attention over (t, h, w). Quadratic in `T*H*W`; expensive.
-- **Divided** — two attentions per block: one over time, one over space. Linear-ish scaling.
-- **Factorised** — time attention alternates with space attention across blocks.
+要紧的注意力模式：
+- **联合（Joint）** —— 在 (t, h, w) 上做一次大注意力。在 `T*H*W` 上是二次的；贵。
+- **分离（Divided）** —— 每个块两次注意力：一次在时间上，一次在空间上。近似线性缩放。
+- **因式分解（Factorised）** —— 时间注意力和空间注意力跨块交替。
 
-Pros:
-- SOTA accuracy on every major benchmark.
-- Transfers from image transformers (ViT) via patch inflation.
-- Supports long-context video via sparse attention.
+优点：
+- 在每个主流基准上都是 SOTA 准确率。
+- 通过 patch 膨胀从图像 transformer（ViT）迁移。
+- 通过稀疏注意力支持长上下文视频。
 
-Cons:
-- Compute-hungry.
-- Requires careful attention pattern choice or runtime balloons.
+缺点：
+- 吃算力。
+- 需要小心选注意力模式，否则运行时膨胀。
 
-When to use: large datasets, high-fidelity video understanding, multi-modal video+text tasks.
+何时用：大数据集、高保真视频理解、多模态视频+文本任务。
 
-### Frame sampling
+### 帧采样
 
-A 10-second clip at 30 fps is 300 frames; feeding all 300 to any model is wasteful. Standard strategies:
+一段 10 秒、30 fps 的片段是 300 帧；把全部 300 帧喂给任何模型都是浪费。标准策略：
 
-- **Uniform sampling** — pick T frames evenly across the clip. Default for 2D+pool.
-- **Dense sampling** — random contiguous T-frame window. Common for 3D convs because motion requires neighbouring frames.
-- **Multi-clip** — sample multiple T-frame windows from the same video, classify each, average predictions at test time.
+- **均匀采样** —— 在片段上均匀挑 T 帧。2D+池化的默认。
+- **密集采样** —— 随机的连续 T 帧窗口。3D 卷积常用，因为运动需要相邻帧。
+- **多片段（Multi-clip）** —— 从同一视频采多个 T 帧窗口，各自分类，测试时把预测平均。
 
-T is usually 8, 16, 32, or 64. Higher T = more temporal signal at more compute.
+T 通常是 8、16、32 或 64。T 越高 = 越多时序信号、越多算力。
 
-### Evaluation
+### 评估
 
-Two levels:
-- **Clip-level accuracy** — model sees one T-frame clip, reports top-k.
-- **Video-level accuracy** — average clip-level predictions across multiple clips per video; higher and more stable.
+两个层级：
+- **Clip 级准确率** —— 模型看一个 T 帧片段，报告 top-k。
+- **Video 级准确率** —— 把每个视频的多个片段的 clip 级预测平均；更高、更稳。
 
-Always report both. A model that scores 78% clip / 82% video is relying heavily on test-time averaging; one that scores 80% / 81% is more robust per-clip.
+永远两个都报。一个 78% clip / 82% video 的模型严重依赖测试时平均；一个 80% / 81% 的模型在单片段上更鲁棒。
 
-### Datasets you will meet
+### 你会遇到的数据集
 
-- **Kinetics-400 / 600 / 700** — the general-purpose action dataset. 400k clips; YouTube URLs (many now dead).
-- **Something-Something V2** — motion-defined actions ("moving X from left to right"). Cannot be solved by 2D+pool.
-- **UCF-101**, **HMDB-51** — older, smaller, still reported.
-- **AVA** — action *localisation* in space and time; harder than classification.
+- **Kinetics-400 / 600 / 700** —— 通用动作数据集。40 万片段；YouTube URL（很多现在已失效）。
+- **Something-Something V2** —— 运动定义的动作（"把 X 从左移到右"）。无法用 2D+池化解决。
+- **UCF-101**、**HMDB-51** —— 更老、更小，仍在被报告。
+- **AVA** —— 空间和时间上的动作*定位*；比分类更难。
 
-## Build It
+## 动手构建
 
-### Step 1: Frame sampler
+### 第 1 步：帧采样器
 
-Uniform and dense samplers that work on a list of frames (or a video tensor).
+作用于帧列表（或视频张量）的均匀和密集采样器。
 
 ```python
 import numpy as np
@@ -141,11 +141,11 @@ def sample_dense(num_frames_total, T, rng=None):
     return list(range(start, start + T))
 ```
 
-Both return `T` indices that you use to slice the video tensor.
+两者都返回 `T` 个索引，你用它们切片视频张量。
 
-### Step 2: A 2D+pool baseline
+### 第 2 步：一个 2D+池化基线
 
-Run a 2D ResNet-18 over every frame, average-pool features, classify.
+在每帧上跑一个 2D ResNet-18，平均池化特征，分类。
 
 ```python
 import torch
@@ -157,7 +157,7 @@ class FramePool(nn.Module):
         super().__init__()
         weights = ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
         backbone = resnet18(weights=weights)
-        self.features = nn.Sequential(*(list(backbone.children())[:-1]))  # global avg pool kept
+        self.features = nn.Sequential(*(list(backbone.children())[:-1]))  # 保留全局平均池化
         self.head = nn.Linear(512, num_classes)
 
     def forward(self, x):
@@ -174,11 +174,11 @@ print(f"output: {model(x).shape}")
 print(f"params: {sum(p.numel() for p in model.parameters()):,}")
 ```
 
-Eleven million parameters, ImageNet pretrained, runs per-frame, averages, classifies. This baseline is often within 5-10 points of proper 3D models on appearance-heavy tasks — sometimes better, because it reuses a stronger ImageNet backbone.
+一千一百万参数，ImageNet 预训练，逐帧跑，平均，分类。在外观密集的任务上，这个基线常常和正经的 3D 模型差距在 5-10 个点以内——有时还更好，因为它复用了一个更强的 ImageNet 骨干。
 
-### Step 3: An I3D-style inflated 3D conv
+### 第 3 步：一个 I3D 风格的膨胀 3D 卷积
 
-Turn a single 2D conv into a 3D conv by repeating weights along a new time axis.
+把单个 2D 卷积沿一个新的时间轴重复权重，变成 3D 卷积。
 
 ```python
 def inflate_2d_to_3d(conv2d, time_kernel=3):
@@ -200,11 +200,11 @@ x = torch.randn(1, 3, 8, 56, 56)
 print(f"3D output shape:  {tuple(conv3d(x).shape)}")
 ```
 
-The division by `time_kernel` keeps the activation magnitudes roughly constant — important for not breaking batch-norm statistics on the first pass.
+除以 `time_kernel` 让激活量级大致保持不变——这对第一遍不破坏批归一化统计量很重要。
 
-### Step 4: Factorised (2+1)D conv
+### 第 4 步：因式分解的 (2+1)D 卷积
 
-Split a 3D conv into a 2D (spatial) and a 1D (temporal) conv. Same receptive field, fewer parameters, better accuracy on some benchmarks.
+把一个 3D 卷积拆成一个 2D（空间）和一个 1D（时序）卷积。相同感受野，更少参数，在某些基准上准确率更好。
 
 ```python
 class Conv2Plus1D(nn.Module):
@@ -227,46 +227,46 @@ x = torch.randn(1, 3, 8, 56, 56)
 print(f"(2+1)D output: {tuple(c(x).shape)}")
 ```
 
-A full R(2+1)D network is the same as a ResNet-18 with every 3x3 conv replaced by `Conv2Plus1D`.
+一个完整的 R(2+1)D 网络就是一个 ResNet-18，把每个 3x3 卷积换成 `Conv2Plus1D`。
 
-## Use It
+## 上手使用
 
-Two libraries cover production video work:
+两个库覆盖生产视频工作：
 
-- `torchvision.models.video` — R(2+1)D, MViT, Swin3D with pretrained Kinetics weights. Same API as image models.
-- `pytorchvideo` (Meta) — model zoo, data loaders for Kinetics / SSv2 / AVA, standard transforms.
+- `torchvision.models.video` —— R(2+1)D、MViT、Swin3D，带预训练的 Kinetics 权重。和图像模型同一套 API。
+- `pytorchvideo`（Meta）—— 模型库、Kinetics / SSv2 / AVA 的 data loader、标准变换。
 
-For Vision-Language video models (video captioning, video QA), use `transformers` (`VideoMAE`, `VideoLLaMA`, `InternVideo`).
+做视觉-语言视频模型（视频字幕、视频问答），用 `transformers`（`VideoMAE`、`VideoLLaMA`、`InternVideo`）。
 
-## Ship It
+## 交付
 
-This lesson produces:
+这一课产出：
 
-- `outputs/prompt-video-architecture-picker.md` — a prompt that picks 2D+pool / I3D / (2+1)D / transformer based on appearance-vs-motion, dataset size, and compute budget.
-- `outputs/skill-frame-sampler-auditor.md` — a skill that inspects a video pipeline's sampler and flags common bugs: off-by-one index, uneven sampling when `num_frames < T`, lack of aspect-preserving crop, etc.
+- `outputs/prompt-video-architecture-picker.md` —— 一个 prompt，根据"外观 vs 运动"、数据集规模和算力预算，挑选 2D+池化 / I3D / (2+1)D / transformer。
+- `outputs/skill-frame-sampler-auditor.md` —— 一个 skill，检查视频 pipeline 的采样器并标出常见 bug：差一索引、`num_frames < T` 时采样不均、缺少保宽高比的裁剪等。
 
-## Exercises
+## 练习
 
-1. **(Easy)** Compute FLOPs (approximate) for FramePool with T=8 vs an I3D-style 3D ResNet with T=8. Justify why 2D+pool is 3-5x cheaper.
-2. **(Medium)** Generate a synthetic video dataset: random balls moving in random directions, labelled by direction of motion ("left-to-right", "right-to-left", "diagonal-up"). Train FramePool on it. Show that it achieves near-chance accuracy, proving appearance alone is insufficient for motion tasks.
-3. **(Hard)** Build an R(2+1)D-18 by replacing every Conv2d in a ResNet-18 with `Conv2Plus1D`. Inflate the first conv's weights from an ImageNet-pretrained ResNet-18. Train on the motion dataset from exercise 2 and beat FramePool.
+1. **（简单）** 算 FramePool（T=8）与 I3D 风格 3D ResNet（T=8）的（近似）FLOPs。论证为什么 2D+池化便宜 3-5 倍。
+2. **（中等）** 生成一个合成视频数据集：随机的球往随机方向移动，按运动方向打标签（"从左到右""从右到左""对角向上"）。在它上面训练 FramePool。展示它达到接近随机的准确率，证明对运动任务光靠外观不够。
+3. **（困难）** 把 ResNet-18 里每个 Conv2d 换成 `Conv2Plus1D`，搭一个 R(2+1)D-18。从一个 ImageNet 预训练的 ResNet-18 膨胀第一个卷积的权重。在练习 2 的运动数据集上训练，打败 FramePool。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|----------------------|
-| 2D + pool | "Per-frame classifier" | Run a 2D CNN on every sampled frame, average-pool features across time, classify |
-| 3D convolution | "Spatio-temporal kernel" | Kernel that convolves over (T, H, W); can model motion natively |
-| Inflation | "Lift 2D weights to 3D" | Initialise 3D conv weights by repeating a 2D conv's weights along the new time axis, then divide by kernel_T to preserve activation scale |
-| (2+1)D | "Factorised conv" | Split 3D into 2D spatial + 1D temporal; fewer parameters, extra non-linearity between |
-| Divided attention | "Time then space" | Transformer block with two attentions per layer: one over tokens at the same frame, one over tokens at the same position |
-| Clip | "T-frame window" | A sampled subsequence of T frames; the unit a video model consumes |
-| Clip vs video accuracy | "Two eval settings" | Clip = one sample per video, video = average across multiple sampled clips |
-| Kinetics | "The ImageNet of video" | 400-700 action classes, 300k+ YouTube clips, the standard video pretraining corpus |
+| 2D + 池化 | "逐帧分类器" | 在每个采样帧上跑一个 2D CNN，跨时间平均池化特征，分类 |
+| 3D 卷积 | "时空核" | 在 (T, H, W) 上卷积的核；能原生建模运动 |
+| 膨胀（Inflation） | "把 2D 权重抬到 3D" | 沿新时间轴重复 2D 卷积的权重来初始化 3D 卷积权重，再除以 kernel_T 保住激活尺度 |
+| (2+1)D | "因式分解卷积" | 把 3D 拆成 2D 空间 + 1D 时序；更少参数，中间多一个非线性 |
+| 分离注意力 | "先时间后空间" | 每层两次注意力的 transformer 块：一次在同一帧的 token 上，一次在同一位置的 token 上 |
+| Clip | "T 帧窗口" | T 帧的一个采样子序列；视频模型消费的单位 |
+| Clip vs video 准确率 | "两种评估设置" | Clip = 每视频一个样本，video = 跨多个采样片段平均 |
+| Kinetics | "视频界的 ImageNet" | 400-700 个动作类别、30 万+ YouTube 片段，标准的视频预训练语料 |
 
-## Further Reading
+## 延伸阅读
 
-- [I3D: Quo Vadis, Action Recognition (Carreira & Zisserman, 2017)](https://arxiv.org/abs/1705.07750) — introduces inflation and the Kinetics dataset
-- [R(2+1)D: A Closer Look at Spatiotemporal Convolutions (Tran et al., 2018)](https://arxiv.org/abs/1711.11248) — factorised conv, still a strong baseline
-- [TimeSformer: Is Space-Time Attention All You Need? (Bertasius et al., 2021)](https://arxiv.org/abs/2102.05095) — the first strong video transformer
-- [VideoMAE (Tong et al., 2022)](https://arxiv.org/abs/2203.12602) — masked autoencoder pretraining for video; current dominant pretraining recipe
+- [I3D: Quo Vadis, Action Recognition (Carreira & Zisserman, 2017)](https://arxiv.org/abs/1705.07750) —— 引入膨胀和 Kinetics 数据集
+- [R(2+1)D: A Closer Look at Spatiotemporal Convolutions (Tran et al., 2018)](https://arxiv.org/abs/1711.11248) —— 因式分解卷积，至今仍是强基线
+- [TimeSformer: Is Space-Time Attention All You Need? (Bertasius et al., 2021)](https://arxiv.org/abs/2102.05095) —— 第一个强大的视频 transformer
+- [VideoMAE (Tong et al., 2022)](https://arxiv.org/abs/2203.12602) —— 视频的掩码自编码器预训练；当前主导的预训练配方

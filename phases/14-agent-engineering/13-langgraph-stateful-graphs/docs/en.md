@@ -1,121 +1,121 @@
-# LangGraph: Stateful Graphs and Durable Execution
+# LangGraph：有状态图与持久执行
 
-> LangGraph is the 2026 reference for low-level stateful orchestration. Agent is a state machine; nodes are functions; edges are transitions; state is immutable and checkpointed after every step. Resume from any failure exactly where it left off.
+> LangGraph 是 2026 年底层有状态编排的参考。agent 是一个状态机；节点是函数；边是转移；状态不可变，每一步后都做检查点。从任何失败处恰好原地恢复。
 
-**Type:** Learn + Build
-**Languages:** Python (stdlib)
-**Prerequisites:** Phase 14 · 01 (Agent Loop), Phase 14 · 12 (Workflow Patterns)
-**Time:** ~75 minutes
+**类型：** Learn + Build
+**语言：** Python（标准库）
+**前置要求：** 阶段 14 · 01（Agent 循环）、阶段 14 · 12（工作流模式）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Describe LangGraph's core model: state machine with immutable state, function nodes, conditional edges, and post-step checkpoints.
-- Name the four capabilities the docs highlight: durable execution, streaming, human-in-the-loop, comprehensive memory.
-- Explain the three orchestration topologies LangGraph supports: supervisor, peer-to-peer (swarm), hierarchical (nested subgraphs).
-- Implement a stdlib state graph with immutable state, conditional edges, and a checkpoint/resume cycle.
+- 描述 LangGraph 的核心模型：带不可变状态的状态机、函数节点、条件边、每步后的检查点。
+- 说出文档强调的四项能力：持久执行、流式、human-in-the-loop、全面记忆。
+- 解释 LangGraph 支持的三种编排拓扑：supervisor、点对点（swarm）、分层（嵌套子图）。
+- 用标准库实现一个状态图，带不可变状态、条件边和一个检查点/恢复周期。
 
-## The Problem
+## 问题所在
 
-Agents and workflows share a problem: when a 40-step run fails at step 38, you want to resume from step 38, not start over. Second-class state models leave operators hacking retries around a library that assumes fresh runs.
+agent 和工作流共享一个问题：当一次 40 步的运行在第 38 步失败时，你想从第 38 步恢复，而不是从头来过。二等公民的状态模型逼着运维围着一个假设「全新运行」的库去硬凑重试。
 
-LangGraph's design answer: state is a first-class typed object, mutations are explicit, and checkpoints persist after every node. Resume is a `load_state(session_id)` call.
+LangGraph 的设计回答：状态是一等的带类型对象，变更是显式的，每个节点后检查点都被持久化。恢复就是一次 `load_state(session_id)` 调用。
 
-## The Concept
+## 核心概念
 
-### The graph
+### 图
 
-A graph is defined by:
+一张图由以下定义：
 
-- **State type.** A typed dict (or Pydantic model) that every node reads and mutates.
-- **Nodes.** Pure functions `(state) -> state_update`. Updates are merged into state after return.
-- **Edges.** Conditional or direct transitions between nodes.
-- **Entry and exit.** `START` and `END` sentinel nodes mark the boundary.
+- **状态类型。** 一个带类型的字典（或 Pydantic 模型），每个节点都读取并变更它。
+- **节点。** 纯函数 `(state) -> state_update`。返回后更新被合并进状态。
+- **边。** 节点之间的条件转移或直接转移。
+- **入口和出口。** `START` 和 `END` 哨兵节点标记边界。
 
-Example: an agent with `classify`, `refund`, `bug`, `sales`, `done` nodes — a routing workflow as a graph.
+例子：一个带 `classify`、`refund`、`bug`、`sales`、`done` 节点的 agent —— 一个表现为图的路由工作流。
 
-### Durable execution
+### 持久执行
 
-After each node returns, the runtime serializes the state and writes it to a checkpointer (SQLite, Postgres, Redis, custom). On failure at step N, the runtime can `resume(session_id)` and pick up from step N+1 with exact state.
+每个节点返回后，运行时序列化状态并写进一个检查点器（SQLite、Postgres、Redis、自定义）。在第 N 步失败时，运行时可以 `resume(session_id)` 并从第 N+1 步带着精确的状态接着跑。
 
-The LangGraph docs explicitly highlight production users where this matters: Klarna, Uber, J.P. Morgan. The claim isn't the graph shape; it's that the graph shape plus checkpointing makes recovery cheap.
+LangGraph 文档明确强调了这一点重要的生产用户：Klarna、Uber、J.P. Morgan。主张不在于图的形态；而在于图的形态加上检查点让恢复变得廉价。
 
-### Streaming
+### 流式
 
-Every node can yield partial output. The graph streams per-node-delta events to the caller so UIs update as the graph runs.
+每个节点都能产出部分输出。图把每节点的增量事件流式推给调用者，于是 UI 随图运行而更新。
 
 ### Human-in-the-loop
 
-Inspect and modify state between nodes. Implementations: pause before a critical node, surface state to a human, accept modifications, resume. The checkpointer makes this easy because state is already serialized.
+在节点之间检视并修改状态。实现方式：在一个关键节点前暂停、把状态暴露给人、接受修改、恢复。检查点器让这件事很容易，因为状态已经序列化好了。
 
-### Memory
+### 记忆
 
-Short-term (within a run — conversation history in state) and long-term (across runs — persistent via the checkpointer plus a separate long-term store). LangGraph integrates with external memory systems (Mem0, custom) via tools.
+短期（一次运行内 —— 状态里的对话历史）和长期（跨运行 —— 通过检查点器加一个独立长期存储来持久化）。LangGraph 通过工具与外部记忆系统（Mem0、自定义）集成。
 
-### Three topologies
+### 三种拓扑
 
-1. **Supervisor.** Central router LLM dispatches to specialist subagents. `create_supervisor()` in `langgraph-supervisor` (though the LangChain team in 2026 recommends doing this through tool calls directly for more context control).
-2. **Swarm / peer-to-peer.** Agents hand off directly via a shared tool surface. No central router.
-3. **Hierarchical.** Supervisors managing sub-supervisors, implemented as nested subgraphs.
+1. **Supervisor。** 一个中央路由器 LLM 分派给专家子 agent。`langgraph-supervisor` 里的 `create_supervisor()`（不过 2026 年 LangChain 团队建议直接通过工具调用来做这件事，以获得更多上下文控制）。
+2. **Swarm / 点对点。** agent 通过一个共享工具接触面直接交接。没有中央路由器。
+3. **分层。** supervisor 管理子 supervisor，实现为嵌套子图。
 
-### Where this pattern goes wrong
+### 这个模式在哪里会出错
 
-- **Checkpoints too small.** Only checkpointing conversation turns leaves tool state and memory writes unrecoverable. Full state must serialize.
-- **Non-deterministic nodes.** Resume assumes node inputs produce the same state update. Random seeds, wall-clock, external APIs must be captured.
-- **Over-use of conditional edges.** A graph with every edge conditional is a state machine that cannot be reasoned about. Prefer linear chains with occasional branches.
+- **检查点太小。** 只对对话轮次做检查点，会让工具状态和记忆写入无法恢复。完整状态必须序列化。
+- **非确定性节点。** 恢复假设节点输入会产生同样的状态更新。随机种子、墙钟、外部 API 都必须被捕获。
+- **过度使用条件边。** 一张每条边都是条件的图，是个无法被推理的状态机。优先用线性链加偶尔的分支。
 
-## Build It
+## 动手构建
 
-`code/main.py` implements a stdlib stateful graph:
+`code/main.py` 用标准库实现一个有状态图：
 
-- `State` — a typed dict with `messages`, `step`, `route`, `output`, `human_approval`.
-- `Node` — callable taking state and returning an update dict.
-- `StateGraph` — nodes + edges + conditional edges + run + resume.
-- `SQLiteCheckpointer` (in-memory fake) — serializes state after every node; `load(session_id)` restores.
-- A demo graph: classify -> branch(refund / bug / sales) -> human gate -> send.
+- `State` —— 一个带类型的字典，含 `messages`、`step`、`route`、`output`、`human_approval`。
+- `Node` —— 接收状态并返回更新字典的可调用对象。
+- `StateGraph` —— 节点 + 边 + 条件边 + 运行 + 恢复。
+- `SQLiteCheckpointer`（内存假货）—— 每个节点后序列化状态；`load(session_id)` 恢复。
+- 一个演示图：classify -> branch(refund / bug / sales) -> 人工关卡 -> send。
 
-Run it:
+运行它：
 
 ```
 python3 code/main.py
 ```
 
-The trace shows the first run failing at the human gate, persistence, then resume producing the final output.
+轨迹展示第一次运行在人工关卡处失败、持久化、然后恢复并产出最终输出。
 
-## Use It
+## 上手使用
 
-- **LangGraph** — the reference, production-ready. Use `create_react_agent`, `create_supervisor`, or build your own graph.
-- **AutoGen v0.4** (Lesson 14) — actor model alternative for high-concurrency scenarios.
-- **Claude Agent SDK** (Lesson 17) — managed harness with built-in session store.
-- **Custom** — when you need exact control over state shape or checkpointer backend.
+- **LangGraph** —— 参考，生产就绪。用 `create_react_agent`、`create_supervisor`，或自己造图。
+- **AutoGen v0.4**（第 14 课）—— 高并发场景的 actor 模型替代品。
+- **Claude Agent SDK**（第 17 课）—— 带内置会话存储的托管 harness。
+- **自定义** —— 当你需要对状态形态或检查点器后端做精确控制时。
 
-## Ship It
+## 交付
 
-`outputs/skill-state-graph.md` generates a LangGraph-shaped state graph in any target runtime with checkpointing and resume wired in.
+`outputs/skill-state-graph.md` 在任意目标运行时生成一个 LangGraph 形态的状态图，检查点和恢复都接好。
 
-## Exercises
+## 练习
 
-1. Add a conditional edge from `classify` to `end` when classification confidence is below a threshold. Resume the run after a human sets `route` manually.
-2. Swap the SQLite-like fake for a real SQLite checkpointer. Measure per-step serialization overhead.
-3. Implement parallel edges: two nodes run concurrently, merge by a custom reducer. What does immutable state buy here?
-4. Read `langgraph-supervisor` reference. Port the toy to `create_supervisor`. Compare the trace shapes.
-5. Add streaming: each node yields partial state while it runs. Print the deltas as they arrive.
+1. 加一条从 `classify` 到 `end` 的条件边，当分类置信度低于阈值时走。在人工手动设置 `route` 后恢复运行。
+2. 把类 SQLite 的假货换成一个真实的 SQLite 检查点器。度量每步序列化开销。
+3. 实现并行边：两个节点并发跑，用一个自定义 reducer 合并。不可变状态在这里带来什么好处？
+4. 读 `langgraph-supervisor` 参考。把玩具移植到 `create_supervisor`。对比轨迹形态。
+5. 加流式：每个节点运行时产出部分状态。增量到达时就打印出来。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| State graph | "Agent as state machine" | Typed state + nodes + edges + reducers |
-| Checkpointer | "Persistence backend" | Serializes state after every node; enables resume |
-| Reducer | "State merger" | Function that combines current state with a node's update |
-| Conditional edge | "Branch" | Edge chosen by a function of state |
-| Subgraph | "Nested graph" | A graph used as a node inside another graph |
-| Durable execution | "Resume from failure" | Restart at the last successful node with exact state |
-| Supervisor | "Router LLM" | Central dispatcher for specialist subagents |
-| Swarm | "P2P agents" | Agents hand off via shared tools; no central router |
+| State graph | 「agent 即状态机」 | 带类型状态 + 节点 + 边 + reducer |
+| Checkpointer | 「持久化后端」 | 每个节点后序列化状态；使恢复成为可能 |
+| Reducer | 「状态合并器」 | 把当前状态与一个节点的更新合并的函数 |
+| Conditional edge | 「分支」 | 由状态的某个函数选出的边 |
+| Subgraph | 「嵌套图」 | 用作另一张图里一个节点的图 |
+| Durable execution | 「从失败恢复」 | 带精确状态从上一个成功节点重启 |
+| Supervisor | 「路由器 LLM」 | 给专家子 agent 的中央调度器 |
+| Swarm | 「P2P agent」 | agent 通过共享工具交接；无中央路由器 |
 
-## Further Reading
+## 延伸阅读
 
-- [LangGraph overview](https://docs.langchain.com/oss/python/langgraph/overview) — the reference docs
-- [langgraph-supervisor reference](https://reference.langchain.com/python/langgraph/supervisor/) — supervisor pattern API
-- [AutoGen v0.4, Microsoft Research](https://www.microsoft.com/en-us/research/articles/autogen-v0-4-reimagining-the-foundation-of-agentic-ai-for-scale-extensibility-and-robustness/) — actor-model alternative
-- [Claude Agent SDK overview](https://platform.claude.com/docs/en/agent-sdk/overview) — session store and subagents
+- [LangGraph overview](https://docs.langchain.com/oss/python/langgraph/overview) —— 参考文档
+- [langgraph-supervisor reference](https://reference.langchain.com/python/langgraph/supervisor/) —— supervisor 模式 API
+- [AutoGen v0.4, Microsoft Research](https://www.microsoft.com/en-us/research/articles/autogen-v0-4-reimagining-the-foundation-of-agentic-ai-for-scale-extensibility-and-robustness/) —— actor 模型替代品
+- [Claude Agent SDK overview](https://platform.claude.com/docs/en/agent-sdk/overview) —— 会话存储与子 agent

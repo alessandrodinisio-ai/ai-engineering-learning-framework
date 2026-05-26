@@ -1,119 +1,119 @@
-# CAIS, CAISI, and Societal-Scale Risk
+# CAIS、CAISI 与社会尺度风险
 
-> The Center for AI Safety (CAIS, San Francisco, founded 2022 by Hendrycks and Zhang) publishes the four-risk framework — malicious use, AI races, organizational risks, rogue AIs — and the May 2023 statement on extinction risk signed by hundreds of professors and company leaders. 2026 releases from CAIS: AI Dashboard for frontier-model evaluation, Remote Labor Index (with Scale AI), Superintelligence Strategy Paper, AI Frontiers newsletter. A distinct entity: NIST Center for AI Standards and Innovation (CAISI) — US-government-facing voluntary agreements and unclassified capability evaluations focused on cyber, bio, and chemical-weapons risks. CAIS flags organizational risk as one of four top-level risks: safety culture, rigorous audits, multi-layered defenses, and information security are foundational but routinely traded off against deployment speed. California SB-53, if signed, would be the first US state-level catastrophic-risk regulation.
+> AI 安全中心（CAIS，旧金山，2022 年由 Hendrycks 和 Zhang 创立）发布了四风险框架——恶意使用、AI 竞赛、组织性风险、失控 AI——以及 2023 年 5 月那份由数百名教授和企业领袖签署的关于灭绝风险的声明。CAIS 2026 年的发布：用于前沿模型评估的 AI Dashboard、Remote Labor Index（与 Scale AI 合作）、超级智能战略论文（Superintelligence Strategy Paper）、AI Frontiers 通讯。一个不同的实体：NIST 的 AI 标准与创新中心（CAISI）——面向美国政府的自愿协议和聚焦网络、生物、化学武器风险的非密级能力评估。CAIS 把组织性风险列为四个顶级风险之一：安全文化、严格审计、多层防御和信息安全是根基，但常常被拿来跟部署速度做取舍。加州 SB-53 一旦签署，将是美国第一项州级的灾难性风险监管。
 
-**Type:** Learn
-**Languages:** Python (stdlib, four-risk inventory and mitigation matcher)
-**Prerequisites:** Phase 15 · 19 (RSP), Phase 15 · 20 (PF + FSF)
-**Time:** ~45 minutes
+**类型：** Learn
+**语言：** Python（标准库，四风险清单与缓解匹配器）
+**前置要求：** 阶段 15 · 19（RSP），阶段 15 · 20（PF + FSF）
+**预计时间：** ~45 分钟
 
-## The Problem
+## 问题所在
 
-Lessons 19 and 20 covered lab-internal scaling policies. Lesson 21 covered independent capability evaluation. This lesson covers the third perspective: civil society and government organizations who shape public discussion and regulatory baseline for catastrophic AI risk.
+第 19 和第 20 课讲了实验室内部的扩展政策。第 21 课讲了独立的能力评估。本课讲第三个视角：塑造公众讨论和灾难性 AI 风险监管基线的民间社会与政府组织。
 
-Two distinct entities matter. CAIS is a non-profit research org that publishes frameworks for thinking about AI risk and coordinates public statements. CAISI is a US-government center within NIST that runs voluntary agreements with labs and unclassified capability evaluations. The names rhyme; the missions do not overlap. A practitioner should know both.
+有两个不同的实体要紧。CAIS 是一家非营利研究机构，发布关于如何思考 AI 风险的框架并协调公开声明。CAISI 是 NIST 内的一个美国政府中心，跟实验室运作自愿协议和非密级能力评估。名字押韵；使命不重叠。一个从业者两者都该知道。
 
-The practical content: CAIS's four-risk framework is the most widely cited societal-scale-risk taxonomy in the literature. Safety culture and organizational risk are one of those four, and this is the one most directly under a practitioner's control. SB-53 (California) would be the first US state-level catastrophic-risk regulation if signed; the bill's framing matters because state-level regulation has historically led federal action in US tech policy.
+实际内容是：CAIS 的四风险框架是文献中被引用最广的社会尺度风险分类法。安全文化和组织性风险是这四个之一，而这一个最直接处在从业者的掌控之下。SB-53（加州）一旦签署将是美国第一项州级灾难性风险监管；这部法案的框架要紧，因为在美国科技政策史上，州级监管历来引领联邦行动。
 
-## The Concept
+## 核心概念
 
-### CAIS — Center for AI Safety
+### CAIS —— AI 安全中心
 
-- Founded: 2022 in San Francisco, by Dan Hendrycks and colleagues (the "Zhang" name refers to an early collaborator, not a current co-founder; see CAIS website for current leadership).
-- Status: 501(c)(3) non-profit.
-- Notable 2023 output: statement on extinction risk, co-signed by hundreds of researchers and CEOs. Stated: "Mitigating the risk of extinction from AI should be a global priority alongside other societal-scale risks such as pandemics and nuclear war."
-- 2026 outputs: AI Dashboard for frontier-model evaluation, Remote Labor Index (joint with Scale AI), Superintelligence Strategy Paper, AI Frontiers newsletter.
+- 成立：2022 年于旧金山，由 Dan Hendrycks 及同事创立（"Zhang" 这个名字指的是一位早期合作者，不是当前的联合创始人；当前领导层见 CAIS 网站）。
+- 性质：501(c)(3) 非营利。
+- 值得注意的 2023 年产出：关于灭绝风险的声明，由数百名研究者和 CEO 联署。声明称："减轻 AI 带来的灭绝风险，应当与大流行病和核战争等其他社会尺度风险并列，成为一项全球优先事项。"
+- 2026 年产出：用于前沿模型评估的 AI Dashboard、Remote Labor Index（与 Scale AI 联合）、超级智能战略论文、AI Frontiers 通讯。
 
-### The four-risk framework
+### 四风险框架
 
-CAIS's framework groups catastrophic AI risk into four top-level categories:
+CAIS 的框架把灾难性 AI 风险归为四个顶级类别：
 
-1. **Malicious use**: a bad actor uses AI to cause harm (bioweapons synthesis, disinformation, cyberattacks).
-2. **AI races**: competitive pressure between labs, companies, or nations pushes deployment past the point where it is safe.
-3. **Organizational risks**: internal lab dynamics (safety-culture failures, insufficient audit, under-resourced security) produce a bad deployment.
-4. **Rogue AIs**: a sufficiently capable AI pursues goals that conflict with human welfare.
+1. **恶意使用（malicious use）**：一个坏行为者用 AI 致害（生物武器合成、虚假信息、网络攻击）。
+2. **AI 竞赛（AI races）**：实验室、公司或国家之间的竞争压力把部署推过安全的那个点。
+3. **组织性风险（organizational risks）**：内部实验室动态（安全文化失败、审计不足、安全资源不够）产出一次糟糕的部署。
+4. **失控 AI（rogue AIs）**：一个足够有能力的 AI 追求与人类福祉冲突的目标。
 
-This is not the only taxonomy; it is the most cited. The categories are not mutually exclusive — a rogue AI produced by an organization that traded audit for speed in a race is all four.
+这不是唯一的分类法；它是被引用最多的。这些类别并不互斥——一个由"在竞赛里拿审计换速度"的组织产出的失控 AI，四样占全了。
 
-### Where organizational risk lives
+### 组织性风险活在哪
 
-Of the four categories, organizational risk is the most actionable for practitioners. A lab's safety culture, audit rigor, defense layering, and information security decide whether their model ships with the controls of Lessons 10–18 actually in place, or whether those controls are checklist items nobody verified.
+四个类别里，组织性风险对从业者最可操作。一个实验室的安全文化、审计严谨度、防御分层和信息安全，决定了它的模型上线时第 10-18 课的那些控制是否真的就位，还是说那些控制只是没人核实过的清单条目。
 
-The concrete organizational-risk levers:
+具体的组织性风险杠杆：
 
-- **Safety culture**: do team members feel able to escalate a concern without career cost? CAIS surveys find this is a strong predictor of the other levers.
-- **Rigorous audits**: external and internal. Internal-only audits produce optimistic reports.
-- **Multi-layered defenses**: no single layer is sufficient (the running theme of Phase 15).
-- **Information security**: model weights leaking, eval data leaking, monitor-bypass techniques leaking. RAND SL-4 in Lesson 19 is a specific standard.
+- **安全文化**：团队成员是否觉得能在不付出职业代价的前提下升级一个顾虑？CAIS 的调研发现，这是其他杠杆的一个强预测因子。
+- **严格审计**：外部和内部的。只做内部审计会产出乐观的报告。
+- **多层防御**：没有任何单层是充分的（阶段 15 贯穿的主题）。
+- **信息安全**：模型权重泄漏、评估数据泄漏、绕过监控的技术泄漏。第 19 课的 RAND SL-4 是一个具体标准。
 
-### CAISI — Center for AI Standards and Innovation
+### CAISI —— AI 标准与创新中心
 
-- Operates within NIST.
-- Runs voluntary agreements with frontier labs.
-- Publishes unclassified capability evaluations focused on cyber, bio, and chemical-weapons risks.
-- Distinct from CAIS; the acronyms collide; check the URL (nist.gov) to confirm which one you are reading.
+- 在 NIST 内运作。
+- 跟前沿实验室运作自愿协议。
+- 发布聚焦网络、生物和化学武器风险的非密级能力评估。
+- 不同于 CAIS；缩写撞车；查 URL（nist.gov）来确认你读的是哪一个。
 
-CAISI's role is the public, government-facing counterpart to METR's private lab engagements (Lesson 21). CAISI reports are unclassified; METR reports are often NDA-gated. A practitioner reading both gets a fuller picture.
+CAISI 的角色是 METR 私下实验室合作（第 21 课）的公开、面向政府的对应物。CAISI 报告是非密级的；METR 报告常常被 NDA 封着。一个两者都读的从业者能得到更完整的图景。
 
-### California SB-53
+### 加州 SB-53
 
-The California Senate bill (2025–2026 session) addresses catastrophic risk from frontier models. Key provisions as drafted:
+这部加州参议院法案（2025-2026 会期）处理前沿模型的灾难性风险。草案中的关键条款：
 
-- Specific capability thresholds that trigger state-level obligations.
-- Whistleblower protections for AI lab employees.
-- Incident reporting requirements for catastrophic failures.
+- 触发州级义务的具体能力阈值。
+- 对 AI 实验室员工的吹哨人保护。
+- 灾难性失败的事件报告要求。
 
-If signed, it would be the first US state-level catastrophic-risk regulation. Regardless of signing status, the bill's framing shapes how other state legislatures approach the problem. Practitioners in California should track the bill's status; practitioners elsewhere should read it to understand what US state-level regulation will likely look like.
+一旦签署，它将是美国第一项州级灾难性风险监管。无论签署状态如何，这部法案的框架塑造着其他州议会如何对待这个问题。加州的从业者应该跟踪这部法案的状态；其他地方的从业者应该读它，以理解美国州级监管大概会长什么样。
 
-### Societal-scale risk is not a single-layer problem
+### 社会尺度风险不是单层问题
 
-The running theme of Phase 15 — defense in depth — applies at the societal layer too. No single organization, regulation, or framework closes catastrophic risk. The ecosystem functions only when:
+阶段 15 贯穿的主题——纵深防御——在社会层也适用。没有任何单个组织、监管或框架能闭合灾难性风险。这个生态只有在以下条件都满足时才运转：
 
-- Labs ship scaling policies (Lessons 19, 20).
-- External evaluators produce measurements (Lesson 21).
-- Civil society tracks and publicizes (CAIS).
-- Government runs voluntary programs and baseline regulation (CAISI, SB-53).
-- Practitioners build multi-layered controls (Lessons 10–18).
+- 实验室交付扩展政策（第 19、20 课）。
+- 外部评估者产出测量（第 21 课）。
+- 民间社会跟踪并公之于众（CAIS）。
+- 政府运作自愿项目和基线监管（CAISI、SB-53）。
+- 从业者构建多层控制（第 10-18 课）。
 
-This is the final synthesis for the phase: every previous lesson is one layer in a stack whose completeness matters more than any single layer's strength.
+这是本阶段的最终综合：之前每一课都是一个栈里的一层，而这个栈的完整性比任何单层的强度都更要紧。
 
-## Use It
+## 上手使用
 
-`code/main.py` implements a small risk-inventory tool. Given a proposed deployment, it tags the deployment against the four-risk categories and returns a mitigation checklist. It's a reading aid for the framework, not a substitute for human judgment.
+`code/main.py` 实现一个小的风险清单工具。给定一个提议的部署，它对照四风险类别给这个部署打标签，并返回一份缓解清单。它是这个框架的阅读辅助，不是人类判断的替代品。
 
-## Ship It
+## 交付
 
-`outputs/skill-societal-risk-review.md` reviews a deployment for societal-scale-risk posture: which of the four categories it touches, what mitigations are in place, what the organizational-risk exposure is.
+`outputs/skill-societal-risk-review.md` 审查一个部署的社会尺度风险姿态：它碰到四个类别中的哪些、哪些缓解就位、组织性风险敞口是什么。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Feed in three synthetic deployments at different scales. Confirm the four-risk tags match what you would expect; identify one case where the tool under- or over-tags.
+1. 运行 `code/main.py`。喂入三个不同规模的合成部署。确认四风险标签跟你的预期相符；指出一个工具打标签偏低或偏高的案例。
 
-2. Read the CAIS four-risk paper in full. Pick one risk category and write two paragraphs on what you believe is the most important 2026 development in that category.
+2. 完整读 CAIS 的四风险论文。挑一个风险类别，写两段说明你认为该类别 2026 年最重要的进展是什么。
 
-3. Read a current draft of California SB-53. Identify one provision you believe strengthens the catastrophic-risk posture and one you believe weakens it. Justify both.
+3. 读一份加州 SB-53 的当前草案。指出一条你认为强化了灾难性风险姿态的条款，和一条你认为削弱了的。两者都论证。
 
-4. Pick a production AI deployment you know (yours or a published one). Score it against the organizational-risk sub-levers: safety culture, audit rigor, multi-layered defenses, information security. Which is weakest? What would it cost to bring it to par?
+4. 挑一个你熟悉的生产 AI 部署（你的或一个已发布的）。对照组织性风险子杠杆给它打分：安全文化、审计严谨度、多层防御、信息安全。哪个最弱？把它拉到合格要花多少代价？
 
-5. Sketch a 2028 version of the four-risk framework that reflects one year of additional capability and one year of additional deployment experience. What would you add, remove, or regroup?
+5. 勾勒一个 2028 版本的四风险框架，反映多一年的能力和多一年的部署经验。你会加什么、去掉什么，或重新分组什么？
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 实际指什么 |
 |---|---|---|
-| CAIS | "Center for AI Safety" | Non-profit; four-risk framework; 2023 extinction statement |
-| CAISI | "US government AI safety" | NIST Center; voluntary agreements; unclassified evals |
-| Four-risk framework | "CAIS's taxonomy" | malicious use, AI races, organizational risks, rogue AIs |
-| Malicious use | "Bad actor uses AI" | Bioweapons, disinformation, cyberattacks |
-| AI races | "Competitive pressure" | Labs/companies/nations push deployment past safety |
-| Organizational risk | "Lab internal failure" | Safety culture, audit, defenses, infosec |
-| Rogue AI | "Misaligned agent" | Capable AI pursuing goals conflicting with human welfare |
-| California SB-53 | "State-level regulation" | 2025–2026 bill; first US state catastrophic-risk regulation if signed |
+| CAIS | "AI 安全中心" | 非营利；四风险框架；2023 年灭绝声明 |
+| CAISI | "美国政府 AI 安全" | NIST 中心；自愿协议；非密级评估 |
+| Four-risk framework（四风险框架） | "CAIS 的分类法" | 恶意使用、AI 竞赛、组织性风险、失控 AI |
+| Malicious use（恶意使用） | "坏行为者用 AI" | 生物武器、虚假信息、网络攻击 |
+| AI races（AI 竞赛） | "竞争压力" | 实验室/公司/国家把部署推过安全 |
+| Organizational risk（组织性风险） | "实验室内部失败" | 安全文化、审计、防御、信息安全 |
+| Rogue AI（失控 AI） | "失准的 agent" | 有能力的 AI 追求与人类福祉冲突的目标 |
+| California SB-53（加州 SB-53） | "州级监管" | 2025-2026 法案；一旦签署即美国首项州级灾难性风险监管 |
 
-## Further Reading
+## 延伸阅读
 
-- [Center for AI Safety](https://safe.ai/) — institutional home of the four-risk framework.
-- [CAIS — AI Risks that Could Lead to Catastrophe](https://safe.ai/ai-risk) — the four-risk paper.
-- [CAIS — May 2023 statement on extinction risk](https://safe.ai/statement-on-ai-risk) — short joint statement.
-- [NIST CAISI](https://www.nist.gov/caisi) — government-facing AI standards and innovation center.
-- [Anthropic — Measuring agent autonomy in practice](https://www.anthropic.com/research/measuring-agent-autonomy) — connects lab-level commitments to societal-scale framing.
+- [Center for AI Safety](https://safe.ai/) —— 四风险框架的机构主页。
+- [CAIS — AI Risks that Could Lead to Catastrophe](https://safe.ai/ai-risk) —— 四风险论文。
+- [CAIS — May 2023 statement on extinction risk](https://safe.ai/statement-on-ai-risk) —— 简短的联合声明。
+- [NIST CAISI](https://www.nist.gov/caisi) —— 面向政府的 AI 标准与创新中心。
+- [Anthropic — Measuring agent autonomy in practice](https://www.anthropic.com/research/measuring-agent-autonomy) —— 把实验室层面的承诺跟社会尺度的框架联系起来。

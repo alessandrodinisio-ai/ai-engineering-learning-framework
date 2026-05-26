@@ -1,83 +1,83 @@
-# Speculative Decoding and EAGLE-3
+# 推测解码与 EAGLE-3
 
-> Phase 7 · Lesson 16 proved the math: the Leviathan rejection rule preserves the verifier's distribution exactly. This lesson is the training-stack view of 2026 production speculative decoding. EAGLE-3 turned the draft model from a cheap approximation into a purpose-built tiny network trained on the verifier's own hidden states, then added a training-time test loop that aligns its train and inference distributions. Result: 3× to 6.5× end-to-end speedup, accepted per-token rates above 0.9 on chat, no distributional tradeoff. Every production inference stack in 2026 ships it by default.
+> 阶段 7 · 第 16 课证明了数学：Leviathan 拒绝规则精确保留了验证器的分布。本节课是 2026 年生产级推测解码的训练栈视角。EAGLE-3 把 draft 模型从一个廉价近似变成了一个专门构建、在验证器自己的隐藏状态上训练的小网络，然后加了一个训练时测试循环来对齐它的训练和推理分布。结果：端到端 3 倍到 6.5 倍加速，聊天上每 token 接受率超过 0.9，无分布权衡。2026 年每个生产推理栈都默认装它。
 
-**Type:** Build
-**Languages:** Python (stdlib)
-**Prerequisites:** Phase 7 · 16 (speculative decoding math), Phase 10 · 12 (inference optimization)
-**Time:** ~75 minutes
+**类型：** Build
+**语言：** Python（stdlib）
+**前置要求：** 阶段 7 · 16（推测解码数学），阶段 10 · 12（推理优化）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- State the Leviathan theorem in one sentence and prove that the speculative loop produces samples identically distributed to the verifier.
-- Walk the two-year progression from vanilla spec-decoding (Leviathan 2023) through EAGLE, EAGLE-2, and EAGLE-3 and name the exact limitation each step removed.
-- Compute expected speedup from acceptance rate `α` and draft-to-verifier cost ratio `c`, and choose the optimal draft length `N` for each regime.
-- Implement the full speculative loop from scratch: draft, verify, reject-sample from the residual, roll the KV cache back on rejection, emit the bonus token on full acceptance.
+- 用一句话陈述 Leviathan 定理，并证明推测循环产出的样本与验证器同分布。
+- 走一遍从原版推测解码（Leviathan 2023）经 EAGLE、EAGLE-2 到 EAGLE-3 的两年演进，点出每一步移除的确切局限。
+- 从接受率 `α` 和 draft 对验证器的成本比 `c` 计算预期加速，并为每个区间选择最优 draft 长度 `N`。
+- 从零实现完整的推测循环：起草、验证、从残差拒绝采样、拒绝时回滚 KV cache、完全接受时发出 bonus token。
 
-## The Problem
+## 问题所在
 
-Autoregressive decoding on a 70B model runs at maybe 35 tokens per second on an H100. The GPU is nowhere near saturated. Memory bandwidth is the ceiling: every token loads 70B of weights from HBM, does one step of arithmetic, and produces one float. The compute units sit mostly idle.
+70B 模型上的自回归解码在 H100 上也许跑 35 token/秒。GPU 远没饱和。内存带宽是天花板：每个 token 从 HBM 加载 70B 权重，做一步算术，产出一个 float。计算单元大部分时间闲着。
 
-Speculative decoding turns that into a throughput problem you can actually solve. A cheap draft proposes `N` tokens in `N` small forward passes. The verifier runs once on the prefix plus all `N` drafts. If the verifier's distribution at position `i` agrees with the draft (in a statistical sense we will make precise), we accept; if not, we reject and sample a correction from the residual distribution. A single big-model forward produces up to `N+1` accepted tokens instead of one.
+推测解码把这个变成一个你实际能解的吞吐问题。一个廉价的 draft 用 `N` 次小前向传播提议 `N` 个 token。验证器在前缀加全部 `N` 个 draft 上跑一次。如果验证器在位置 `i` 的分布和 draft 一致（在一个我们会精确化的统计意义上），我们接受；如果不，我们拒绝并从残差分布采样一个修正。一次大模型前向产出最多 `N+1` 个被接受的 token，而不是一个。
 
-The theorem that matters is Leviathan, Kalman, Matias (ICML 2023): the output distribution is identical to what sampling from the verifier directly would have produced. Not approximately. Identically. This is the entire reason speculative decoding is acceptable in production — it is a pure latency optimization with no quality tradeoff.
+要紧的定理是 Leviathan、Kalman、Matias（ICML 2023）：输出分布和直接从验证器采样会产出的完全相同。不是近似。是完全相同。这就是推测解码在生产里可接受的全部理由——它是纯粹的延迟优化，没有质量权衡。
 
-What Phase 7 · Lesson 16 gave you was the math. What this lesson gives you is the training stack. A good draft is worth 2× more speedup than a cheap draft. EAGLE, EAGLE-2, and EAGLE-3 (Li et al., 2024–2025) turned "draft = smaller version of the same model" into a precise engineering discipline. 2026 production inference servers default to EAGLE-3.
+阶段 7 · 第 16 课给你的是数学。本节课给你的是训练栈。一个好的 draft 比一个廉价的 draft 多值 2 倍加速。EAGLE、EAGLE-2 和 EAGLE-3（Li et al., 2024–2025）把 "draft = 同一个模型的更小版本" 变成了一门精确的工程学科。2026 年生产推理服务器默认 EAGLE-3。
 
-## The Concept
+## 核心概念
 
-### The invariant: Leviathan rejection sampling
+### 不变量：Leviathan 拒绝采样
 
-Let `p(t)` be the draft's distribution for the next token given some prefix, and `q(t)` be the verifier's. Sample a draft token `d ~ p`. Accept with probability `min(1, q(d) / p(d))`. On reject, sample from the residual distribution `(q - p)_+ / ||(q - p)_+||_1`. The resulting samples are distributed according to `q`. This is true regardless of how bad `p` is — the worse it is, the more often you reject, but the output remains exact.
+设 `p(t)` 是给定某个前缀时 draft 对下一个 token 的分布，`q(t)` 是验证器的。采样一个 draft token `d ~ p`。以概率 `min(1, q(d) / p(d))` 接受。拒绝时，从残差分布 `(q - p)_+ / ||(q - p)_+||_1` 采样。所得样本按 `q` 分布。无论 `p` 多差这都成立——它越差，你拒绝越频繁，但输出保持精确。
 
-Stack `N` of these calls back to back using one verifier forward pass on `prefix + d_1 + ... + d_N`. The verifier returns `q_1, q_2, ..., q_{N+1}` simultaneously. Walk left to right. On the first rejection at position `j`, sample from `residual(q_j, p_j)` and stop. On full acceptance, sample one bonus token from `q_{N+1}`.
+用一次验证器在 `prefix + d_1 + ... + d_N` 上的前向传播，把 `N` 次这样的调用背靠背叠起来。验证器同时返回 `q_1, q_2, ..., q_{N+1}`。从左到右走。在位置 `j` 的第一次拒绝时，从 `residual(q_j, p_j)` 采样并停止。完全接受时，从 `q_{N+1}` 采样一个 bonus token。
 
-### What determines speedup
+### 什么决定加速
 
-Let `α` be the expected acceptance rate per drafted token. Let `c = cost(draft) / cost(verifier)` be the cost ratio. The expected number of accepted tokens per verifier forward is:
+设 `α` 是每个起草 token 的预期接受率。设 `c = cost(draft) / cost(verifier)` 是成本比。每次验证器前向预期接受的 token 数是：
 
 ```
 E[accepted] = (1 - α^(N+1)) / (1 - α)
 ```
 
-The expected total wall time per accepted token is `(N * c + 1) / E[accepted]`. Minimize that with respect to `N` and you get the sweet spot. For `α = 0.8, c = 0.05`: optimal `N` is around 5–7, speedup is 3.2×. For `α = 0.95, c = 0.02`: optimal `N` is around 8–10, speedup pushes 5×.
+每个被接受 token 的预期总墙钟时间是 `(N * c + 1) / E[accepted]`。对 `N` 最小化它就得到甜点区。对 `α = 0.8, c = 0.05`：最优 `N` 约 5-7，加速 3.2 倍。对 `α = 0.95, c = 0.02`：最优 `N` 约 8-10，加速逼近 5 倍。
 
-The single biggest lever is `α`. Going from `α = 0.6` (vanilla draft) to `α = 0.9` (EAGLE-3) at fixed `N = 5` takes you from 2.2 expected accepted tokens per verifier forward to 4.1. Nearly 2× more throughput from the same verifier.
+最大的单个杠杆是 `α`。在固定 `N = 5` 下从 `α = 0.6`（原版 draft）走到 `α = 0.9`（EAGLE-3），让你从每次验证器前向 2.2 个预期接受 token 变成 4.1 个。同一个验证器近乎 2 倍的吞吐。
 
-### The two-year progression
+### 两年演进
 
-**Vanilla speculative (Leviathan, 2023).** Draft model is an independently trained smaller LLM from the same family. Easy to wire up, `α ≈ 0.6`, speedup around 2× at best.
+**原版推测（Leviathan，2023）。** Draft 模型是同家族独立训练的更小 LLM。容易接上，`α ≈ 0.6`，加速至多约 2 倍。
 
-**EAGLE-1 (Li et al., 2024).** Draft is a tiny transformer — typically one or two layers — that takes the verifier's last-layer hidden state as input and predicts the next token directly. Because the draft sees the verifier's feature representation, its distribution is much closer to the verifier's. `α` climbs to 0.7–0.8.
+**EAGLE-1（Li et al., 2024）。** Draft 是一个小 transformer——通常一两层——它接收验证器的最后一层隐藏状态作为输入，直接预测下一个 token。因为 draft 看到了验证器的特征表示，它的分布和验证器的更接近。`α` 爬到 0.7-0.8。
 
-**EAGLE-2 (Li et al., 2024).** Adds a dynamic draft tree: instead of proposing a single sequence of `N` tokens, propose a small tree of candidates, score each with the verifier in one forward pass (tree attention), and walk the highest-probability path. Draft length becomes adaptive per step. `α` per accepted-path token climbs above 0.85.
+**EAGLE-2（Li et al., 2024）。** 加了一棵动态 draft 树：不提议单条 `N` 个 token 的序列，而是提议一棵小候选树，用验证器在一次前向传播里给每个打分（树注意力），走概率最高的路径。Draft 长度变成每步自适应。被接受路径上每 token 的 `α` 爬过 0.85。
 
-**EAGLE-3 (Li et al., 2025, NeurIPS).** Two more changes. First, drop the feature-prediction loss entirely — EAGLE-1/2 trained the draft to match the verifier's hidden states, which caps how much data helps. EAGLE-3 trains directly on token prediction. Second, training-time test (TTT): during draft training, feed the draft's own previous predictions back as inputs over multiple steps, the same way it operates at inference. This aligns the train and test distributions and stops error accumulation. Measured speedup: up to 6.5× on chat, 38% throughput improvement at batch 64 in SGLang on H100.
+**EAGLE-3（Li et al., 2025，NeurIPS）。** 又两处改动。第一，完全丢掉特征预测损失——EAGLE-1/2 训练 draft 去匹配验证器的隐藏状态，这给数据能帮多少封了顶。EAGLE-3 直接在 token 预测上训练。第二，训练时测试（TTT）：draft 训练时，把 draft 自己之前的预测作为输入喂回去、跨多步，和它推理时的运作方式一样。这对齐了训练和测试分布，止住了误差累积。实测加速：聊天上至多 6.5 倍，在 H100 的 SGLang batch 64 下吞吐提升 38%。
 
-### KV cache rollback
+### KV cache 回滚
 
-Verification extends the verifier's KV cache by `N` entries in one pass. If rejection happens at position `j`, the cache contents past position `j-1` are now wrong. Two common implementations: write to a scratch buffer and commit on acceptance (vLLM, TensorRT-LLM), or keep a physical KV cache plus a logical length and truncate on reject. Either way, the rollback cost is bytes per layer per head, which is negligible next to the forward-pass cost.
+验证一次性把验证器的 KV cache 扩展 `N` 个条目。如果拒绝发生在位置 `j`，超过位置 `j-1` 的缓存内容现在是错的。两种常见实现：写到一个临时缓冲、接受时提交（vLLM、TensorRT-LLM），或保留一个物理 KV cache 加一个逻辑长度、拒绝时截断。无论哪种，回滚成本是每层每头几个字节，相比前向传播成本可忽略。
 
-For EAGLE-2 tree search, the verifier runs attention with a non-causal mask that respects tree topology. The engineering is fiddly but the computation is a standard flash-attention call with a custom mask.
+对 EAGLE-2 树搜索，验证器用一个尊重树拓扑的非因果 mask 跑注意力。工程上麻烦，但计算是一次带自定义 mask 的标准 flash-attention 调用。
 
-### Draft architectures in 2026
+### 2026 年的 draft 架构
 
-| Strategy | Draft type | `α` | Speedup | Training cost |
+| 策略 | Draft 类型 | `α` | 加速 | 训练成本 |
 |----------|-----------|-----|---------|---------------|
-| Vanilla | Separate small LLM | 0.55-0.70 | 1.8-2.3× | None (reuse existing small model) |
-| Medusa | Extra LM heads on verifier | 0.65-0.75 | 2-3× | ~1B SFT tokens |
-| EAGLE-1 | 1-layer transformer on hidden states | 0.70-0.80 | 2.5-3× | ~60B tokens |
-| EAGLE-2 | EAGLE-1 + dynamic draft tree | 0.80-0.88 | 3-4× | ~60B tokens |
-| EAGLE-3 | Multi-layer feature fusion + TTT | 0.88-0.92 | 3.5-6.5× | ~60-200B tokens |
-| Lookahead | No draft (Jacobi iteration) | N/A | 1.3-1.6× | None |
+| 原版 | 单独的小 LLM | 0.55-0.70 | 1.8-2.3 倍 | 无（复用现有小模型） |
+| Medusa | 验证器上的额外 LM 头 | 0.65-0.75 | 2-3 倍 | ~1B SFT token |
+| EAGLE-1 | 隐藏状态上的 1 层 transformer | 0.70-0.80 | 2.5-3 倍 | ~60B token |
+| EAGLE-2 | EAGLE-1 + 动态 draft 树 | 0.80-0.88 | 3-4 倍 | ~60B token |
+| EAGLE-3 | 多层特征融合 + TTT | 0.88-0.92 | 3.5-6.5 倍 | ~60-200B token |
+| Lookahead | 无 draft（Jacobi 迭代） | 不适用 | 1.3-1.6 倍 | 无 |
 
-In 2026 production: vLLM and SGLang default to EAGLE-3 when available, EAGLE-2 otherwise. TensorRT-LLM has the fastest Medusa path for Meta and NVIDIA public models. llama.cpp ships vanilla draft for CPU deployments.
+2026 年生产里：vLLM 和 SGLang 在可用时默认 EAGLE-3，否则 EAGLE-2。TensorRT-LLM 对 Meta 和 NVIDIA 公开模型有最快的 Medusa 路径。llama.cpp 为 CPU 部署装原版 draft。
 
-## Build It
+## 动手构建
 
-See `code/main.py`. This is the full Leviathan speculative loop with all the pieces: draft-of-N, verifier parallel pass, per-position rejection, residual sampling, bonus token, KV rollback, and empirical verification that the output distribution matches direct sampling from `q`.
+见 `code/main.py`。这是完整的 Leviathan 推测循环，带所有部件：起草 N 个、验证器并行传播、按位置拒绝、残差采样、bonus token、KV 回滚，以及对输出分布匹配直接从 `q` 采样的经验验证。
 
-### Step 1: the rejection rule
+### 第 1 步：拒绝规则
 
 ```python
 def accept(q_prob, p_prob, u):
@@ -86,7 +86,7 @@ def accept(q_prob, p_prob, u):
     return u < min(1.0, q_prob / p_prob)
 ```
 
-### Step 2: residual distribution
+### 第 2 步：残差分布
 
 ```python
 def residual(q, p):
@@ -97,25 +97,25 @@ def residual(q, p):
     return [r / s for r in raw]
 ```
 
-### Step 3: a full speculative step
+### 第 3 步：一个完整的推测步骤
 
-The `spec_step` function drafts `N` tokens from `p`, then verifies all of them in one parallel `q` evaluation. For each drafted token it applies the rejection rule, and on the first rejection it samples the correction from the residual. If everything accepts, it emits a bonus token from `q_{N+1}`.
+`spec_step` 函数从 `p` 起草 `N` 个 token，然后在一次并行 `q` 评估里验证它们全部。对每个起草 token 应用拒绝规则，在第一次拒绝时从残差采样修正。如果全部接受，它从 `q_{N+1}` 发出一个 bonus token。
 
-### Step 4: KV rollback bookkeeping
+### 第 4 步：KV 回滚记账
 
-The simulator tracks a logical `kv_length` per worker. On acceptance of `k` drafts, `kv_length += k`. On a rejection at position `j`, the cache is already written past `j`, but the logical length is set to `prefix_length + j + 1` — one past the correction token. Subsequent reads truncate to the logical length.
+模拟器为每个 worker 跟踪一个逻辑 `kv_length`。接受 `k` 个 draft 时，`kv_length += k`。在位置 `j` 的一次拒绝时，缓存已经写过了 `j`，但逻辑长度被设为 `prefix_length + j + 1`——修正 token 之后一个。后续读取截断到逻辑长度。
 
-### Step 5: the Leviathan check
+### 第 5 步：Leviathan 检查
 
-Run 50,000 speculative steps. Count the empirical distribution of accepted tokens. Compare to 50,000 direct samples from `q`. The chi-square statistic should be well under the critical value. The theorem passes in practice.
+跑 50,000 次推测步骤。统计被接受 token 的经验分布。和 50,000 次直接从 `q` 采样对比。卡方统计量应该远低于临界值。定理在实践中通过。
 
-### Step 6: speedup vs. α
+### 第 6 步：加速 vs. α
 
-Sweep the draft quality by perturbing `p` away from `q` at different amplitudes. Measure `α`, then plot expected tokens per verifier call as a function of `α` and `N`. The code prints a table showing how EAGLE-3-class draft quality (`α ≈ 0.9`) unlocks 4–5 tokens per verifier call.
+通过以不同幅度把 `p` 从 `q` 扰开来扫描 draft 质量。测量 `α`，然后把每次验证器调用的预期 token 数作为 `α` 和 `N` 的函数画出来。代码打印一张表，显示 EAGLE-3 级别的 draft 质量（`α ≈ 0.9`）如何解锁每次验证器调用 4-5 个 token。
 
-## Use It
+## 上手使用
 
-Production-level `vllm serve` with EAGLE-3:
+带 EAGLE-3 的生产级 `vllm serve`：
 
 ```bash
 vllm serve meta-llama/Llama-3.3-70B-Instruct \
@@ -126,57 +126,57 @@ vllm serve meta-llama/Llama-3.3-70B-Instruct \
   }'
 ```
 
-SGLang with EAGLE-3 at batch 64 on H100: roughly 1.38× more throughput than batch-64 vanilla decoding, per the EAGLE-3 paper.
+SGLang 在 H100 上 batch 64 带 EAGLE-3：据 EAGLE-3 论文，相比 batch-64 原版解码大约多 1.38 倍吞吐。
 
-When to reach for speculative decoding:
+什么时候上推测解码：
 
-- Any interactive chat workload where p50 latency matters more than peak throughput.
-- Code generation and structured output (JSON, SQL). `α` is above 0.9 because the target distribution is highly predictable.
-- Long-form generation (thousands of tokens). The amortized speedup keeps paying.
+- 任何 p50 延迟比峰值吞吐更要紧的交互式聊天工作负载。
+- 代码生成和结构化输出（JSON、SQL）。`α` 超过 0.9，因为目标分布高度可预测。
+- 长篇生成（数千个 token）。摊薄后的加速持续付费。
 
-When not to:
+什么时候不上：
 
-- Very small models (< 3B). The draft is not that much cheaper than the verifier.
-- Tiny batch-1 CPU deployments. Memory overhead of the draft model may not be worth it.
-- Very-high-temperature creative sampling where `α` collapses.
+- 非常小的模型（< 3B）。draft 没比验证器便宜多少。
+- 微小的 batch-1 CPU 部署。draft 模型的内存开销可能不值。
+- 接受率 `α` 崩溃的极高温度创意采样。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-eagle3-tuner.md`. Given an inference workload (model, batch size, target latency, task profile), it recommends a speculative-decoding strategy and tuning parameters (draft family, `N`, tree depth, temperature-aware switching).
+本节课产出 `outputs/skill-eagle3-tuner.md`。给定一个推理工作负载（模型、batch size、目标延迟、任务画像），它推荐一个推测解码策略和调优参数（draft 家族、`N`、树深度、温度感知切换）。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Confirm the chi-square statistic on the Leviathan distribution check stays below the 95% critical value on 50,000 samples.
+1. 跑 `code/main.py`。确认 Leviathan 分布检查的卡方统计量在 50,000 个样本上保持低于 95% 临界值。
 
-2. Sweep `N` from 1 to 10 with `α` held at 0.9 and `c` held at 0.04. Plot expected tokens per verifier call and actual wall time per token. Find the `N` that minimizes wall time. Explain the shape of the curve.
+2. 把 `N` 从 1 扫到 10，`α` 固定在 0.9、`c` 固定在 0.04。画出每次验证器调用的预期 token 数和每 token 实际墙钟时间。找出最小化墙钟的 `N`。解释曲线的形状。
 
-3. Modify the code to simulate EAGLE-2 tree search: at each step, the draft proposes a tree of shape `[2, 2, 2]` (eight candidate paths). The verifier runs once, and the highest-probability accepted path wins. Compute `α` per leaf and total tokens per verifier call. Compare to linear-chain spec-decoding at equivalent compute.
+3. 改代码模拟 EAGLE-2 树搜索：每步 draft 提议一棵形状为 `[2, 2, 2]` 的树（八条候选路径）。验证器跑一次，概率最高的被接受路径胜出。计算每个叶子的 `α` 和每次验证器调用的总 token 数。在等价算力下和线性链推测解码对比。
 
-4. Implement a batched KV rollback simulator for two concurrent sequences. Sequence A has all drafts accepted; sequence B rejects at position 2. Show that the correct `kv_length` is updated per sequence and that no work is wasted.
+4. 为两条并发序列实现一个批量 KV 回滚模拟器。序列 A 全部 draft 被接受；序列 B 在位置 2 拒绝。展示每条序列的 `kv_length` 被正确更新，且没有工作被浪费。
 
-5. Read the EAGLE-3 paper's Section 4 (Training-Time Test). Explain in two sentences why naive draft training without TTT suffers from exposure bias, and why feeding the draft its own predictions during training fixes it. Connect this to the scheduled-sampling literature in seq2seq.
+5. 读 EAGLE-3 论文第 4 节（训练时测试）。用两句话解释为什么没有 TTT 的朴素 draft 训练受暴露偏差之苦，以及为什么训练时把 draft 自己的预测喂给它能修复这个问题。把它和 seq2seq 里的 scheduled-sampling 文献联系起来。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 人们怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| Leviathan rule | "min(1, q over p)" | Bernoulli accept/reject with probability `min(1, q(d)/p(d))`, preserves the verifier distribution exactly when you sample from the residual on rejection |
-| Residual distribution | "(q minus p) plus, normalized" | `(q - p)_+` clamped at zero and renormalized — the correct distribution to sample from on rejection |
-| Acceptance rate α | "how often the draft is right" | Expected per-token Bernoulli-success probability under the rejection rule; governs all speedup math |
-| EAGLE-1 | "hidden-state draft" | Tiny transformer draft conditioned on the verifier's last-layer hidden state (Li et al., 2024) |
-| EAGLE-2 | "dynamic draft tree" | EAGLE-1 plus a tree of candidate continuations scored with tree attention in one verifier pass |
-| EAGLE-3 | "training-time test" | Drops the feature-prediction loss, trains on direct token prediction with the draft fed its own outputs during training |
-| Training-time test (TTT) | "exposure bias fix" | Run the draft autoregressively during training so train and test input distributions match — the direct analog of scheduled sampling |
-| KV rollback | "undo rejected drafts" | Bookkeeping that resets the verifier's KV cache to the accepted-prefix length after a rejection |
-| Bonus token | "the free one" | When all `N` drafts accept, sample one extra from `q_{N+1}` at no additional verifier cost |
-| Tree attention | "verify many candidates at once" | Attention with a non-causal mask that respects the topology of a draft tree; computes `q_i` for every node in the tree in one forward pass |
+| Leviathan 规则 | "min(1, q 除以 p)" | 以概率 `min(1, q(d)/p(d))` 做伯努利接受/拒绝，当拒绝时从残差采样时精确保留验证器分布 |
+| 残差分布 | "(q 减 p) 的正部，归一化" | `(q - p)_+` 钳到零并重归一化——拒绝时正确的采样分布 |
+| 接受率 α | "draft 多常对" | 拒绝规则下每 token 的预期伯努利成功概率；主宰所有加速数学 |
+| EAGLE-1 | "隐藏状态 draft" | 以验证器最后一层隐藏状态为条件的小 transformer draft（Li et al., 2024） |
+| EAGLE-2 | "动态 draft 树" | EAGLE-1 加一棵候选续写树，在一次验证器传播里用树注意力打分 |
+| EAGLE-3 | "训练时测试" | 丢掉特征预测损失，在直接 token 预测上训练，训练时把 draft 自己的输出喂给它 |
+| 训练时测试（TTT） | "暴露偏差修复" | 训练时让 draft 自回归运行，使训练和测试输入分布匹配——scheduled sampling 的直接类比 |
+| KV 回滚 | "撤销被拒的 draft" | 拒绝后把验证器的 KV cache 重置到被接受前缀长度的记账 |
+| Bonus token | "免费那个" | 当所有 `N` 个 draft 都接受时，从 `q_{N+1}` 额外采样一个，无需额外验证器成本 |
+| 树注意力 | "一次验证许多候选" | 带尊重 draft 树拓扑的非因果 mask 的注意力；在一次前向传播里为树中每个节点计算 `q_i` |
 
-## Further Reading
+## 延伸阅读
 
-- [Leviathan, Kalman, Matias — Fast Inference from Transformers via Speculative Decoding (arXiv:2211.17192, ICML 2023)](https://arxiv.org/abs/2211.17192) — the foundational paper and equivalence theorem
-- [Chen et al. — Accelerating Large Language Model Decoding with Speculative Sampling (arXiv:2302.01318)](https://arxiv.org/abs/2302.01318) — concurrent independent introduction with a clean proof
-- [Li et al. — EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty (arXiv:2401.15077)](https://arxiv.org/abs/2401.15077) — EAGLE-1, hidden-state-conditioned draft
-- [Li et al. — EAGLE-2: Faster Inference of Language Models with Dynamic Draft Trees (arXiv:2406.16858)](https://arxiv.org/abs/2406.16858) — dynamic tree search
-- [Li et al. — EAGLE-3: Scaling up Inference Acceleration via Training-Time Test (arXiv:2503.01840, NeurIPS 2025)](https://arxiv.org/abs/2503.01840) — the 2026 production default
-- [Cai et al. — Medusa: Multiple Decoding Heads (arXiv:2401.10774)](https://arxiv.org/abs/2401.10774) — alternative draft-free approach
-- [vLLM Speculative Decoding documentation](https://docs.vllm.ai/en/latest/features/spec_decode.html) — canonical production reference with all strategies wired up
+- [Leviathan, Kalman, Matias — Fast Inference from Transformers via Speculative Decoding (arXiv:2211.17192, ICML 2023)](https://arxiv.org/abs/2211.17192) — 奠基性论文和等价定理
+- [Chen et al. — Accelerating Large Language Model Decoding with Speculative Sampling (arXiv:2302.01318)](https://arxiv.org/abs/2302.01318) — 并行独立提出，带一个干净的证明
+- [Li et al. — EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty (arXiv:2401.15077)](https://arxiv.org/abs/2401.15077) — EAGLE-1，隐藏状态条件化的 draft
+- [Li et al. — EAGLE-2: Faster Inference of Language Models with Dynamic Draft Trees (arXiv:2406.16858)](https://arxiv.org/abs/2406.16858) — 动态树搜索
+- [Li et al. — EAGLE-3: Scaling up Inference Acceleration via Training-Time Test (arXiv:2503.01840, NeurIPS 2025)](https://arxiv.org/abs/2503.01840) — 2026 年生产默认
+- [Cai et al. — Medusa: Multiple Decoding Heads (arXiv:2401.10774)](https://arxiv.org/abs/2401.10774) — 替代的无 draft 方法
+- [vLLM Speculative Decoding documentation](https://docs.vllm.ai/en/latest/features/spec_decode.html) — 接好所有策略的经典生产参考

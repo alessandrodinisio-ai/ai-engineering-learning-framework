@@ -1,118 +1,118 @@
-# Bounded Self-Improvement Designs
+# 有界自我改进的设计
 
-> Research has converged on four primitives for bounding a self-improvement loop. Formal invariants that must hold across every edit. Alignment anchors that cannot be modified. Multi-objective constraints where every dimension (safety, fairness, robustness) must hold, not just performance. Regression detection that pauses the loop when historical metrics suggest capability loss. None of them is a proof of safety — information-theoretic results (Kolmogorov complexity, Lob's theorem) bound what any system can prove about its own successors. They are mitigations that raise the cost of silent failure.
+> 研究在如何约束一个自我改进循环上，已经收敛到四个原语。必须在每一次编辑中都成立的形式化不变量（invariant）。无法被修改的对齐锚点。多目标约束——每一个维度（安全、公平、鲁棒）都得成立，而不只是性能。回退检测——当历史指标暗示能力下降时暂停循环。它们都不是安全的证明——信息论结论（Kolmogorov 复杂度、Lob 定理）限制了任何系统能对它自己的后继者证明什么。它们是让"悄无声息地失败"成本更高的缓解手段。
 
-**Type:** Learn
-**Languages:** Python (stdlib, bounded-loop with invariant check)
-**Prerequisites:** Phase 15 · 07 (RSI), Phase 15 · 04 (DGM)
-**Time:** ~60 minutes
+**类型：** Learn
+**语言：** Python（标准库，带不变量检查的有界循环）
+**前置要求：** 阶段 15 · 07（RSI），阶段 15 · 04（DGM）
+**预计时间：** ~60 分钟
 
-## The Problem
+## 问题所在
 
-Lesson 7's race simulator showed that small rate differences compound into large gaps. Lesson 4's DGM case study showed that loops can actively game their own evaluators. Both results point to the same engineering question: what constraints can you put on a self-improvement loop such that the constraints cannot be silently weakened by the loop itself?
+第 7 课的赛跑模拟器表明，速率上微小的差异会复利成巨大的差距。第 4 课的 DGM 案例研究表明，循环会主动钻自己评估器的空子。两个结果都指向同一个工程问题：你能给一个自我改进循环加上什么约束，使得这些约束无法被循环自己悄无声息地削弱？
 
-The ICLR 2026 RSI Workshop summary (openreview.net/pdf?id=OsPQ6zTQXV) identifies four such primitives. Anthropic's RSP v3.0 (Lesson 19) and DeepMind's FSF v3 (Lesson 20) both reference them in capability thresholds. The Meta HyperAgents work and community frameworks like SAHOO (March 2026) implement subsets in production.
+ICLR 2026 RSI Workshop 总结（openreview.net/pdf?id=OsPQ6zTQXV）点出了四个这样的原语。Anthropic 的 RSP v3.0（第 19 课）和 DeepMind 的 FSF v3（第 20 课）都在能力阈值里引用了它们。Meta 的 HyperAgents 工作以及像 SAHOO（2026 年 3 月）这样的社区框架，在生产中实现了其中的子集。
 
-The honest framing: these are mitigations. Information-theoretic results bound what any system can prove about its own successor, and no current design closes the problem formally. A well-bounded loop is safer than an unbounded one, not safe in absolute terms.
+诚实的框架是：这些是缓解手段。信息论结论限制了任何系统能对它自己的后继者证明什么，没有任何当前的设计能在形式上闭合这个问题。一个被良好约束的循环比一个无界的更安全，但不是绝对意义上的安全。
 
-## The Concept
+## 核心概念
 
-### Primitive 1: formal invariants
+### 原语 1：形式化不变量
 
-An invariant is a property that must hold before and after every self-modification. Examples:
+不变量是一条必须在每一次自我修改前后都成立的属性。例子：
 
-- Output distribution is conditioned on a fixed constitution header (Lesson 17).
-- No tool call goes to an unauthorized endpoint.
-- Memory writes go through a logged, signed path.
-- The evaluator's module hash matches the approved version.
+- 输出分布以一段固定的章程头部（第 17 课）为条件。
+- 没有工具调用打到未授权的端点。
+- 记忆写入走一条带日志、带签名的路径。
+- 评估器的模块哈希跟批准的版本相符。
 
-Invariants are checked by external code the loop cannot edit. If a proposed modification violates an invariant, it is rejected. This catches the DGM-style evaluator-tampering mode (Lesson 4).
+不变量由循环无法编辑的外部代码检查。如果一个提议的修改违反了某个不变量，它就被拒绝。这抓住了 DGM 风格的篡改评估器模式（第 4 课）。
 
-The hard part is choosing invariants that are necessary for safety and computable in reasonable time. Over-specifying stalls progress; under-specifying lets the loop walk past important properties.
+难点在于挑选既是安全所必需、又能在合理时间内计算的不变量。过度规定会拖住进展；规定不足则让循环越过重要的属性。
 
-### Primitive 2: alignment anchors
+### 原语 2：对齐锚点
 
-An alignment anchor is an immutable representation of the loop's core objective, pinned outside the loop's edit surface. Examples:
+对齐锚点是循环核心目标的一个不可变表示，钉在循环的编辑面之外。例子：
 
-- A constitutional text (Lesson 17) that is loaded from a read-only location on every invocation.
-- An evaluator in a separate repository with independent access control.
-- A tool-permission manifest signed by a human and re-verified each cycle.
+- 一段章程文本（第 17 课），每次调用都从一个只读位置加载。
+- 一个放在独立仓库、带独立访问控制的评估器。
+- 一份由人签名、每个周期重新核验的工具权限清单。
 
-The anchor's role is to prevent objective drift. The loop may improve how it pursues the objective, but cannot edit what the objective is.
+锚点的作用是防止目标漂移。循环可以改进它追求目标的方式，但不能编辑目标本身是什么。
 
-The subtle failure mode: an anchor the loop cannot edit can still be reinterpreted by a loop that drifts in how it reads the anchor. Constitutional AI (Lesson 17) is explicitly reason-based to handle novel situations; that reasoning layer is where interpretation drift lives. Anchors are necessary, not sufficient.
+微妙的失败模式是：一个循环无法编辑的锚点，仍可能被一个在如何读取锚点上发生漂移的循环重新解读。Constitutional AI（第 17 课）明确是基于推理的，以应对新情况；那个推理层正是解读漂移所在之处。锚点是必要的，不是充分的。
 
-### Primitive 3: multi-objective constraints
+### 原语 3：多目标约束
 
-A loop that optimizes a single scalar score will find shortcuts. A loop that must simultaneously satisfy multiple hard constraints has fewer shortcuts available. Typical axes:
+一个优化单个标量分数的循环会找到捷径。一个必须同时满足多个硬约束的循环可用的捷径更少。典型的维度：
 
-- Performance (task-level benchmark)
-- Safety (red-team evaluations, refusal rate on known-bad)
-- Fairness (disparate-impact bounds on sensitive subgroups)
-- Robustness (OOD test sets, adversarial input handling)
+- 性能（任务级基准）
+- 安全（红队评估、对已知坏样本的拒答率）
+- 公平（敏感子群上的差异影响界限）
+- 鲁棒（OOD 测试集、对抗输入的处理）
 
-A modification is accepted only if every constraint holds. Lesson 13's cost governor stacks this with financial constraints. Lesson 18's Llama Guard plugs in as a safety axis.
+只有当每一个约束都成立时，一次修改才被接受。第 13 课的成本调控器把它跟财务约束叠在一起。第 18 课的 Llama Guard 作为一个安全维度插进来。
 
-### Primitive 4: regression detection
+### 原语 4：回退检测
 
-Each cycle's scores are compared against historical distributions. A drop beyond configured tolerance pauses the loop. This catches silent capability loss that would otherwise be absorbed into the running average as the loop "improved past" it.
+每个周期的分数跟历史分布做对比。下跌超过配置的容差就暂停循环。这抓住了悄无声息的能力损失——否则它会被吸收进运行均值，仿佛循环"改进着越过了"它。
 
-A practical implementation: store the last N cycles' per-task scores. Each new cycle computes a per-task delta. If any delta drops below a threshold, the cycle is rejected and a human reviews.
+一种实际的实现：存下最近 N 个周期每个任务的分数。每个新周期计算每个任务的增量。如果任何增量跌破阈值，这个周期就被拒绝，交给人审查。
 
-### Information-theoretic limits
+### 信息论上的极限
 
-Kolmogorov complexity and Lob's theorem set upper bounds on what a system can prove about itself. Schmidhuber's formal Godel Machine (Lesson 4) aimed for the highest such bound; nobody has completed a non-trivial proof. Lob's result says: if a system provably believes "I will do X if I prove I should do X," it will do X without proving it should, a well-known self-reference failure.
+Kolmogorov 复杂度和 Lob 定理给一个系统能对自己证明什么设了上界。Schmidhuber 的形式化 Godel Machine（第 4 课）瞄准的是最高的那个界；没有人完成过一个非平凡的证明。Lob 的结论是说：如果一个系统可证明地相信"如果我证明了我该做 X，我就会做 X"，它就会在没证明该做之前就做 X，这是一个著名的自指失败。
 
-The implication for our primitives: they cannot close the safety problem. They make silent failure more expensive. A malicious or drifted loop that would quietly bypass a missing check must now actively undermine an explicit one, which is a more detectable signature.
+对我们这些原语的含义是：它们闭合不了安全问题。它们让悄无声息的失败更昂贵。一个本来会悄悄绕过一项缺失检查的恶意或漂移循环，现在必须主动破坏一项显式的检查，而那是一个更可检测的签名。
 
-### A worked example
+### 一个走通的例子
 
-Suppose an agent proposes an edit. The gating stack:
+假设一个 agent 提出一次编辑。这道门控栈：
 
-1. Invariant checks: module hashes, tool-permission manifest, constitutional header.
-2. Anchor check: objective statement matches approved version (byte-wise or semantically).
-3. Multi-objective evaluation: performance, safety, fairness, robustness axes.
-4. Regression detection: no axis drops more than tolerance.
+1. 不变量检查：模块哈希、工具权限清单、章程头部。
+2. 锚点检查：目标陈述跟批准的版本相符（逐字节或语义上）。
+3. 多目标评估：性能、安全、公平、鲁棒各维度。
+4. 回退检测：没有任何维度下跌超过容差。
 
-All four must pass for the edit to land. Any single failure pauses the loop.
+四项全过，这次编辑才落地。任何单项失败都暂停循环。
 
-## Use It
+## 上手使用
 
-`code/main.py` runs a bounded self-improvement loop on the DGM-style toy from Lesson 4, but with the four primitives layered on top. Each primitive can be enabled or disabled individually. The demonstration is that each primitive catches a specific failure class, and that removing any one of them lets that failure class through.
+`code/main.py` 在第 4 课那个 DGM 风格的玩具上跑一个有界自我改进循环，但在上面叠了这四个原语。每个原语都能单独启用或禁用。演示要点是：每个原语抓住一类特定的失败，而拿掉其中任何一个，那类失败就会放进来。
 
-## Ship It
+## 交付
 
-`outputs/skill-bounded-loop-review.md` audits a proposed bounded loop and scores which of the four primitives it actually implements versus claims to.
+`outputs/skill-bounded-loop-review.md` 审计一个提议的有界循环，给它实际实现了四个原语中的哪几个（相对于它声称实现的）打分。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py` with all primitives enabled. Confirm the loop still improves on the primary metric without letting the hack win.
+1. 启用全部原语运行 `code/main.py`。确认循环在不让黑客取胜的前提下，仍在主指标上改进。
 
-2. Disable regression detection. Construct an input where this leads to silent capability loss being accepted.
+2. 禁用回退检测。构造一个输入，让它导致悄无声息的能力损失被接受。
 
-3. Disable the multi-objective constraint. Show the loop converges on the performance axis while a safety axis drops.
+3. 禁用多目标约束。展示循环在性能维度上收敛，而一个安全维度下跌。
 
-4. Design an alignment anchor for a coding agent. What text, stored where, checked how?
+4. 为一个编码 agent 设计一个对齐锚点。什么文本、存在哪、怎么检查？
 
-5. Read the ICLR 2026 RSI Workshop summary. Pick one of the four primitives and propose a concrete improvement to the current state of the art.
+5. 读 ICLR 2026 RSI Workshop 总结。挑四个原语中的一个，对当前的技术水平提出一项具体改进。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 实际指什么 |
 |---|---|---|
-| Invariant | "Always-true property" | A property checked by external code before and after every edit |
-| Alignment anchor | "Pinned objective" | Immutable core-goal representation outside the loop's edit surface |
-| Multi-objective constraint | "All axes must hold" | Performance, safety, fairness, robustness — all required |
-| Regression detection | "Pause on drop" | Pause the loop when historical metric deltas suggest capability loss |
-| Kolmogorov bound | "Information-theoretic limit" | Limits what a system can prove about its own successor |
-| Lob's theorem | "Self-reference trap" | System can act on "I should" without proving it should |
-| Gate stack | "Layered check" | Multiple primitives combined; any failure rejects the edit |
-| Bounded improvement | "Mitigation, not proof" | Raises silent-failure cost; does not close the safety problem |
+| Invariant（不变量） | "永远为真的属性" | 一条在每次编辑前后由外部代码检查的属性 |
+| Alignment anchor（对齐锚点） | "钉死的目标" | 不可变的核心目标表示，置于循环的编辑面之外 |
+| Multi-objective constraint（多目标约束） | "所有维度都得成立" | 性能、安全、公平、鲁棒——全部必需 |
+| Regression detection（回退检测） | "下跌即暂停" | 当历史指标增量暗示能力损失时暂停循环 |
+| Kolmogorov bound（Kolmogorov 界） | "信息论极限" | 限制一个系统能对它自己的后继者证明什么 |
+| Lob's theorem（Lob 定理） | "自指陷阱" | 系统可以在没证明"该做"之前就照"我该做"行动 |
+| Gate stack（门控栈） | "分层检查" | 多个原语组合在一起；任何失败都拒绝该编辑 |
+| Bounded improvement（有界改进） | "缓解，不是证明" | 抬高悄无声息失败的成本；闭合不了安全问题 |
 
-## Further Reading
+## 延伸阅读
 
-- [ICLR 2026 RSI Workshop summary (OpenReview)](https://openreview.net/pdf?id=OsPQ6zTQXV) — the four-primitive convergence.
-- [Anthropic Responsible Scaling Policy v3.0](https://anthropic.com/responsible-scaling-policy/rsp-v3-0) — multi-objective capability thresholds.
-- [DeepMind Frontier Safety Framework v3](https://deepmind.google/blog/strengthening-our-frontier-safety-framework/) — deceptive-alignment monitoring as an invariant primitive.
-- [Schmidhuber (2003). Godel Machines](https://people.idsia.ch/~juergen/goedelmachine.html) — the formal-proof ancestor of these primitives.
-- [Anthropic — Claude's Constitution (January 2026)](https://www.anthropic.com/news/claudes-constitution) — the reason-based alignment anchor.
+- [ICLR 2026 RSI Workshop summary (OpenReview)](https://openreview.net/pdf?id=OsPQ6zTQXV) —— 四原语的收敛。
+- [Anthropic Responsible Scaling Policy v3.0](https://anthropic.com/responsible-scaling-policy/rsp-v3-0) —— 多目标能力阈值。
+- [DeepMind Frontier Safety Framework v3](https://deepmind.google/blog/strengthening-our-frontier-safety-framework/) —— 把欺骗性对齐监控当作一个不变量原语。
+- [Schmidhuber (2003). Godel Machines](https://people.idsia.ch/~juergen/goedelmachine.html) —— 这些原语在形式化证明上的祖先。
+- [Anthropic — Claude's Constitution (January 2026)](https://www.anthropic.com/news/claudes-constitution) —— 基于推理的对齐锚点。

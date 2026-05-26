@@ -1,38 +1,38 @@
-# Real-Time Vision — Edge Deployment
+# 实时视觉 —— 边缘部署
 
-> Edge inference is the discipline of getting a 90-accuracy model to run at 30 fps on a device with 2 GB of RAM. Every percentage point of accuracy is traded against milliseconds of latency.
+> 边缘推理是这样一门手艺：让一个 90 准确率的模型在一台只有 2 GB 内存的设备上以 30 fps 跑起来。每一个百分点的准确率，都在和几毫秒的延迟做交换。
 
-**Type:** Learn + Build
-**Languages:** Python
-**Prerequisites:** Phase 4 Lesson 04 (Image Classification), Phase 10 Lesson 11 (Quantization)
-**Time:** ~75 minutes
+**类型：** Learn + Build
+**语言：** Python
+**前置要求：** 阶段 4 第 04 课（图像分类）、阶段 10 第 11 课（量化）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Measure inference latency, peak memory, and throughput for any PyTorch model, and read the FLOPs / params / latency trade-off
-- Quantise a vision model to INT8 using PyTorch's post-training quantisation and verify accuracy loss < 1%
-- Export to ONNX and compile with ONNX Runtime or TensorRT; name the three most common export failures and their fixes
-- Explain when to pick MobileNetV3, EfficientNet-Lite, ConvNeXt-Tiny, or MobileViT for an edge constraint
+- 为任意 PyTorch 模型测量推理延迟、峰值内存和吞吐，读懂 FLOPs / 参数 / 延迟的权衡
+- 用 PyTorch 的训练后量化把视觉模型量化到 INT8，验证准确率损失 < 1%
+- 导出到 ONNX 并用 ONNX Runtime 或 TensorRT 编译；说出三种最常见的导出失败及其修法
+- 解释边缘约束下何时挑 MobileNetV3、EfficientNet-Lite、ConvNeXt-Tiny 或 MobileViT
 
-## The Problem
+## 问题所在
 
-A training-time vision model is a floating-point monster. 100M parameters, 10 GFLOPs per forward pass, 2 GB of VRAM. None of that fits on a phone, a car's infotainment unit, an industrial camera, or a drone. Shipping a vision system means fitting the same predictions into a budget that is 100x smaller.
+训练时的视觉模型是个浮点怪兽。1 亿参数，每次前向 10 GFLOPs，2 GB 显存。这些没一样塞得进手机、车载信息娱乐单元、工业相机或无人机。交付一个视觉系统，意味着把同样的预测塞进一个小 100 倍的预算里。
 
-Three knobs do most of the work: model choice (a smaller architecture with the same recipe), quantisation (INT8 instead of FP32), and the inference runtime (ONNX Runtime, TensorRT, Core ML, TFLite). Getting them right is the difference between a demo that runs on a workstation and a product that ships on a $30 camera module.
+三个旋钮干了大部分活：模型选择（同样配方下更小的架构）、量化（INT8 而非 FP32），以及推理运行时（ONNX Runtime、TensorRT、Core ML、TFLite）。把它们调对，就是"在工作站上跑的 demo"和"装在 30 美元相机模组上发货的产品"之间的差别。
 
-This lesson sets up the measurement discipline first (you cannot optimise what you cannot measure), then walks the three knobs. The goal is not to learn every edge runtime but to know what levers exist and how to verify each one does what you think.
+这一课先立起测量的纪律（测不了就优化不了），再走这三个旋钮。目标不是学会每个边缘运行时，而是知道有哪些杠杆、以及怎么验证每一个都做了你以为它做的事。
 
-## The Concept
+## 核心概念
 
-### The three budgets
+### 三项预算
 
 ```mermaid
 flowchart LR
-    M["Model"] --> LAT["Latency<br/>ms per image"]
-    M --> MEM["Memory<br/>peak MB"]
-    M --> PWR["Power<br/>mJ per inference"]
+    M["模型"] --> LAT["延迟<br/>每张图毫秒"]
+    M --> MEM["内存<br/>峰值 MB"]
+    M --> PWR["功耗<br/>每次推理 mJ"]
 
-    LAT --> SHIP["Ship / no-ship<br/>decision"]
+    LAT --> SHIP["发货 / 不发货<br/>决策"]
     MEM --> SHIP
     PWR --> SHIP
 
@@ -41,70 +41,70 @@ flowchart LR
     style PWR fill:#dbeafe,stroke:#2563eb
 ```
 
-- **Latency**: p50, p95, p99. Averaging only p50 hides tail behaviour that matters for real-time systems.
-- **Peak memory**: the maximum the device ever sees, not the steady-state average. Matters because OOMs are fatal on embedded targets.
-- **Power / energy**: millijoules per inference on a battery-powered device. Often proxied by CPU/GPU utilisation * time.
+- **延迟**：p50、p95、p99。只看 p50 的平均会掩盖尾部行为，而尾部对实时系统很要紧。
+- **峰值内存**：设备见过的最大值，不是稳态平均。要紧是因为在嵌入式目标上 OOM 是致命的。
+- **功耗 / 能量**：电池供电设备上每次推理的毫焦。常用 CPU/GPU 利用率 * 时间来代理。
 
-A table of (model, latency, memory, accuracy) is what an edge decision is made from. Every cell is measured on the target device, not the workstation.
+一张 (模型, 延迟, 内存, 准确率) 的表，就是边缘决策的依据。每个格子都在目标设备上测，不是在工作站上。
 
-### Measurement discipline
+### 测量纪律
 
-Three rules that every edge profile should follow:
+每次边缘性能分析都该遵守的三条规则：
 
-1. **Warm up** the model with 5-10 dummy forward passes before measuring. Cold caches and JIT compilation produce unrepresentative first numbers.
-2. **Synchronise** GPU workloads with `torch.cuda.synchronize()` before and after the timed block. Without this you measure kernel dispatch, not kernel execution.
-3. **Fix input sizes** to the production resolution. Latency on 224x224 is not latency on 512x512.
+1. 测量前用 5-10 次占位前向**预热**模型。冷缓存和 JIT 编译产生不具代表性的最初数字。
+2. 在计时块前后用 `torch.cuda.synchronize()` **同步** GPU 工作负载。不这么做，你测的是 kernel 分发，不是 kernel 执行。
+3. 把输入尺寸**固定**到生产分辨率。224x224 的延迟不是 512x512 的延迟。
 
-### FLOPs as a proxy
+### 把 FLOPs 当代理
 
-FLOPs (floating-point operations per inference) is a cheap, device-independent proxy for latency. Useful for architecture comparison, misleading as absolute wall-clock. A model with 10% more FLOPs can be 2x faster in practice because it uses hardware-friendly ops (depthwise convs compile well, large 7x7 convs do not).
+FLOPs（每次推理的浮点运算数）是延迟的一个便宜、与设备无关的代理。用于架构对比有用，当绝对墙钟时间会误导。一个 FLOPs 多 10% 的模型在实践中可能快 2 倍，因为它用了硬件友好的操作（深度可分卷积编译得好，大的 7x7 卷积不行）。
 
-Rule: use FLOPs for architecture search, use on-device latency for deployment decisions.
+规则：架构搜索用 FLOPs，部署决策用设备上的延迟。
 
-### Quantisation in one paragraph
+### 一段话讲清量化
 
-Replace FP32 weights and activations with INT8. Model size drops 4x, memory bandwidth drops 4x, compute drops 2-4x on hardware that has INT8 kernels (every modern mobile SoC, every NVIDIA GPU with Tensor Cores). Accuracy loss on vision tasks is typically 0.1-1 percentage points with post-training static quantisation.
+把 FP32 权重和激活换成 INT8。模型大小降 4 倍，内存带宽降 4 倍，在有 INT8 kernel 的硬件上（每个现代移动 SoC、每个带 Tensor Core 的 NVIDIA GPU）算力降 2-4 倍。视觉任务上用训练后静态量化，准确率损失通常是 0.1-1 个百分点。
 
-Types:
+类型：
 
-- **Dynamic** — quantise weights to INT8, activations computed in FP. Easy, small speedup.
-- **Static (post-training)** — quantise weights + calibrate activation ranges on a small calibration set. Much faster than dynamic.
-- **Quantisation-aware training (QAT)** — simulate quantisation during training so the model learns around it. Best accuracy, needs labelled data.
+- **动态** —— 权重量化成 INT8，激活用 FP 计算。简单，加速小。
+- **静态（训练后）** —— 量化权重 + 在一个小校准集上校准激活范围。比动态快得多。
+- **量化感知训练（QAT）** —— 训练时模拟量化，让模型围着它学。准确率最佳，需要带标签数据。
 
-For vision, post-training static quantisation gives 95% of the benefit with 5% of the effort. Use QAT only when accuracy loss from PTQ is unacceptable.
+对视觉，训练后静态量化用 5% 的力气拿到 95% 的好处。只在 PTQ 的准确率损失无法接受时才用 QAT。
 
-### Pruning and distillation
+### 剪枝和蒸馏
 
-- **Pruning** — remove unimportant weights (magnitude-based) or channels (structured). Works well on overparameterised models; less useful on already-compact architectures.
-- **Distillation** — train a small student to mimic a large teacher's logits. Often recovers most of the accuracy lost by shrinking the model. Standard for production edge models.
+- **剪枝** —— 移除不重要的权重（基于幅值）或通道（结构化）。在过参数化的模型上效果好；在已经紧凑的架构上没那么有用。
+- **蒸馏** —— 训练一个小学生去模仿大教师的 logits。常常能找回缩小模型时损失的大部分准确率。生产边缘模型的标准做法。
 
-### The inference runtimes
+### 推理运行时
 
-- **PyTorch eager** — slow, not for deployment. Use for development only.
-- **TorchScript** — legacy. Superseded by `torch.compile` and ONNX export.
-- **ONNX Runtime** — the neutral runtime. CPU, CUDA, CoreML, TensorRT, OpenVINO all have ONNX providers. Start here.
-- **TensorRT** — NVIDIA's compiler. Best latency on NVIDIA GPUs (workstation and Jetson). Integrates with ONNX Runtime or standalone.
-- **Core ML** — Apple's runtime for iOS/macOS. Needs `.mlmodel` or `.mlpackage`.
-- **TFLite** — Google's runtime for Android/ARM. Needs `.tflite`.
-- **OpenVINO** — Intel's runtime for CPU/VPU. Needs `.xml` + `.bin`.
+- **PyTorch eager** —— 慢，不用于部署。仅用于开发。
+- **TorchScript** —— 遗留。被 `torch.compile` 和 ONNX 导出取代。
+- **ONNX Runtime** —— 中立运行时。CPU、CUDA、CoreML、TensorRT、OpenVINO 都有 ONNX provider。从这里起步。
+- **TensorRT** —— NVIDIA 的编译器。在 NVIDIA GPU（工作站和 Jetson）上延迟最佳。和 ONNX Runtime 集成或独立用。
+- **Core ML** —— Apple 的 iOS/macOS 运行时。需要 `.mlmodel` 或 `.mlpackage`。
+- **TFLite** —— Google 的 Android/ARM 运行时。需要 `.tflite`。
+- **OpenVINO** —— Intel 的 CPU/VPU 运行时。需要 `.xml` + `.bin`。
 
-In practice: export PyTorch -> ONNX -> pick the runtime for the target. ONNX is the lingua franca.
+实践中：导出 PyTorch -> ONNX -> 为目标挑运行时。ONNX 是通用语。
 
-### Edge architecture picker
+### 边缘架构选择器
 
-| Budget | Model | Why |
+| 预算 | 模型 | 为什么 |
 |--------|-------|-----|
-| < 3M params | MobileNetV3-Small | Compiles everywhere, good baseline |
-| 3-10M | EfficientNet-Lite-B0 | Best accuracy per param on TFLite |
-| 10-20M | ConvNeXt-Tiny | Best accuracy-per-param, CPU-friendly |
-| 20-30M | MobileViT-S or EfficientViT | Transformer with ImageNet accuracy |
-| 30-80M | Swin-V2-Tiny | If stack supports window attention |
+| < 3M 参数 | MobileNetV3-Small | 哪儿都能编译，不错的基线 |
+| 3-10M | EfficientNet-Lite-B0 | TFLite 上每参数准确率最佳 |
+| 10-20M | ConvNeXt-Tiny | 每参数准确率最佳，对 CPU 友好 |
+| 20-30M | MobileViT-S 或 EfficientViT | 带 ImageNet 准确率的 transformer |
+| 30-80M | Swin-V2-Tiny | 如果栈支持窗口注意力 |
 
-Quantise all of these to INT8 unless you have a specific reason not to.
+把这些都量化到 INT8，除非你有特定理由不这么做。
 
-## Build It
+## 动手构建
 
-### Step 1: Measure latency correctly
+### 第 1 步：正确测量延迟
 
 ```python
 import time
@@ -136,9 +136,9 @@ def measure_latency(model, input_shape, device="cpu", warmup=10, iters=50):
     }
 ```
 
-Warm up, synchronise, use `time.perf_counter()`. Report percentiles, not just mean.
+预热、同步、用 `time.perf_counter()`。报百分位数，不只是均值。
 
-### Step 2: Parameter and FLOP counts
+### 第 2 步：参数和 FLOP 计数
 
 ```python
 def parameter_count(model):
@@ -146,7 +146,7 @@ def parameter_count(model):
 
 def flops_estimate(model, input_shape):
     """
-    Rough FLOP count for a conv/linear-only model. For production use `fvcore` or `ptflops`.
+    只含卷积/线性的模型的粗略 FLOP 计数。生产中用 `fvcore` 或 `ptflops`。
     """
     total = 0
     def conv_hook(m, inp, out):
@@ -171,9 +171,9 @@ def flops_estimate(model, input_shape):
     return total
 ```
 
-For real projects use `fvcore.nn.FlopCountAnalysis` or `ptflops`; they handle every module type correctly.
+真实项目用 `fvcore.nn.FlopCountAnalysis` 或 `ptflops`；它们正确处理每种模块类型。
 
-### Step 3: Post-training static quantisation
+### 第 3 步：训练后静态量化
 
 ```python
 def quantise_ptq(model, calibration_loader, backend="x86"):
@@ -188,9 +188,9 @@ def quantise_ptq(model, calibration_loader, backend="x86"):
     return model
 ```
 
-Three steps: configure, prepare (insert observers), calibrate with real data, convert (fuse + quantise). Requires the model to be fused (`Conv -> BN -> ReLU` -> `ConvBnReLU`), which `torch.ao.quantization.fuse_modules` handles.
+三步：配置、prepare（插入 observer）、用真实数据校准、convert（融合 + 量化）。要求模型先被融合（`Conv -> BN -> ReLU` -> `ConvBnReLU`），这个由 `torch.ao.quantization.fuse_modules` 处理。
 
-### Step 4: Export to ONNX
+### 第 4 步：导出到 ONNX
 
 ```python
 def export_onnx(model, sample_input, path="model.onnx"):
@@ -207,9 +207,9 @@ def export_onnx(model, sample_input, path="model.onnx"):
     return path
 ```
 
-`opset_version=17` is the safe default in 2026. `dynamic_axes` lets you run the ONNX model with arbitrary batch size.
+`opset_version=17` 是 2026 年的安全默认。`dynamic_axes` 让你以任意 batch 大小运行 ONNX 模型。
 
-### Step 5: Benchmark and compare regimes
+### 第 5 步：基准测试并对比各模式
 
 ```python
 import torch.nn as nn
@@ -224,47 +224,47 @@ def compare_regimes():
           f"p50={lat_fp32['p50_ms']:.2f}ms  p95={lat_fp32['p95_ms']:.2f}ms")
 ```
 
-Run the same function for `resnet50`, `efficientnet_v2_s`, and `convnext_tiny` and you have the comparison table you need for a deployment decision.
+对 `resnet50`、`efficientnet_v2_s` 和 `convnext_tiny` 跑同一个函数，你就有了做部署决策所需的对比表。
 
-## Use It
+## 上手使用
 
-Production stacks converge on one of three paths:
+生产栈收敛到三条路径之一：
 
-- **Web / serverless**: PyTorch -> ONNX -> ONNX Runtime (CPU or CUDA provider). Easiest, good enough for most.
-- **NVIDIA edge (Jetson, GPU server)**: PyTorch -> ONNX -> TensorRT. Best latency, biggest engineering effort.
-- **Mobile**: PyTorch -> ONNX -> Core ML (iOS) or TFLite (Android). Quantise before export.
+- **Web / serverless**：PyTorch -> ONNX -> ONNX Runtime（CPU 或 CUDA provider）。最容易，对多数场景够用。
+- **NVIDIA 边缘（Jetson、GPU 服务器）**：PyTorch -> ONNX -> TensorRT。延迟最佳，工程量最大。
+- **移动端**：PyTorch -> ONNX -> Core ML（iOS）或 TFLite（Android）。导出前先量化。
 
-For measurement, `torch-tb-profiler`, `nvprof` / `nsys`, and Instruments on macOS give layer-by-layer breakdowns. `benchmark_app` (OpenVINO) and `trtexec` (TensorRT) give standalone CLI numbers.
+测量方面，`torch-tb-profiler`、`nvprof` / `nsys`，以及 macOS 上的 Instruments 给出逐层分解。`benchmark_app`（OpenVINO）和 `trtexec`（TensorRT）给出独立的 CLI 数字。
 
-## Ship It
+## 交付
 
-This lesson produces:
+这一课产出：
 
-- `outputs/prompt-edge-deployment-planner.md` — a prompt that picks backbone, quantisation strategy, and runtime given target device and latency SLA.
-- `outputs/skill-latency-profiler.md` — a skill that writes a complete latency-benchmarking script with warmup, synchronisation, percentiles, and memory tracking.
+- `outputs/prompt-edge-deployment-planner.md` —— 一个 prompt，给定目标设备和延迟 SLA，挑出骨干、量化策略和运行时。
+- `outputs/skill-latency-profiler.md` —— 一个 skill，写出一个完整的延迟基准测试脚本，含预热、同步、百分位数和内存追踪。
 
-## Exercises
+## 练习
 
-1. **(Easy)** Measure p50 latency for `resnet18`, `mobilenet_v3_small`, `efficientnet_v2_s`, and `convnext_tiny` at 224x224 on CPU. Report the table and identify which architecture has the best accuracy-per-ms.
-2. **(Medium)** Apply post-training static quantisation to `mobilenet_v3_small`. Report FP32 vs INT8 latency and accuracy loss on a held-out subset of CIFAR-10 or similar.
-3. **(Hard)** Export `convnext_tiny` to ONNX, run it through `onnxruntime` with the `CPUExecutionProvider`, and compare latency to the PyTorch eager baseline. Identify the first layer where ONNX Runtime is faster and explain why.
+1. **（简单）** 在 CPU 上测量 `resnet18`、`mobilenet_v3_small`、`efficientnet_v2_s` 和 `convnext_tiny` 在 224x224 的 p50 延迟。报告这张表，找出哪个架构的"每毫秒准确率"最佳。
+2. **（中等）** 对 `mobilenet_v3_small` 应用训练后静态量化。在 CIFAR-10 或类似数据集的一个留出子集上报告 FP32 vs INT8 的延迟和准确率损失。
+3. **（困难）** 把 `convnext_tiny` 导出到 ONNX，用 `onnxruntime` 配 `CPUExecutionProvider` 跑它，和 PyTorch eager 基线比延迟。找出 ONNX Runtime 开始更快的第一个层并解释为什么。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|----------------------|
-| Latency | "How fast" | Time from input to output; p50/p95/p99 percentiles, not mean |
-| FLOPs | "Model size" | Floating-point ops per forward pass; rough proxy for compute cost |
-| INT8 quantisation | "8-bit" | Replace FP32 weights/activations with 8-bit integers; ~4x smaller, 2-4x faster |
-| PTQ | "Post-training quantisation" | Quantise a trained model without retraining; easy, usually enough |
-| QAT | "Quantisation-aware training" | Simulate quantisation during training; best accuracy, requires labelled data |
-| ONNX | "The neutral format" | Model exchange format supported by every mainstream inference runtime |
-| TensorRT | "NVIDIA compiler" | Compiles ONNX into an optimised engine for NVIDIA GPUs |
-| Distillation | "Teacher -> student" | Train a small model to mimic a big model's logits; recovers most lost accuracy |
+| 延迟 | "多快" | 从输入到输出的时间；p50/p95/p99 百分位，不是均值 |
+| FLOPs | "模型大小" | 每次前向的浮点运算数；算力成本的粗略代理 |
+| INT8 量化 | "8 比特" | 把 FP32 权重/激活换成 8 位整数；小约 4 倍，快 2-4 倍 |
+| PTQ | "训练后量化" | 不重训就量化一个训练好的模型；简单，通常够用 |
+| QAT | "量化感知训练" | 训练时模拟量化；准确率最佳，需要带标签数据 |
+| ONNX | "中立格式" | 每个主流推理运行时都支持的模型交换格式 |
+| TensorRT | "NVIDIA 编译器" | 把 ONNX 编译成 NVIDIA GPU 的优化引擎 |
+| 蒸馏 | "教师 -> 学生" | 训练一个小模型模仿大模型的 logits；找回大部分损失的准确率 |
 
-## Further Reading
+## 延伸阅读
 
-- [EfficientNet (Tan & Le, 2019)](https://arxiv.org/abs/1905.11946) — compound scaling for efficient architectures
-- [MobileNetV3 (Howard et al., 2019)](https://arxiv.org/abs/1905.02244) — mobile-first architecture with h-swish and squeeze-excite
-- [A Practical Guide to TensorRT Optimization (NVIDIA)](https://developer.nvidia.com/blog/accelerating-model-inference-with-tensorrt-tips-and-best-practices-for-pytorch-users/) — how to actually get the throughput numbers in the paper
-- [ONNX Runtime docs](https://onnxruntime.ai/docs/) — quantisation, graph optimisation, provider selection
+- [EfficientNet (Tan & Le, 2019)](https://arxiv.org/abs/1905.11946) —— 用于高效架构的复合缩放
+- [MobileNetV3 (Howard et al., 2019)](https://arxiv.org/abs/1905.02244) —— 带 h-swish 和 squeeze-excite 的移动优先架构
+- [A Practical Guide to TensorRT Optimization (NVIDIA)](https://developer.nvidia.com/blog/accelerating-model-inference-with-tensorrt-tips-and-best-practices-for-pytorch-users/) —— 如何真正拿到论文里的吞吐数字
+- [ONNX Runtime docs](https://onnxruntime.ai/docs/) —— 量化、图优化、provider 选择

@@ -1,119 +1,119 @@
-# Instruction-Following as Alignment Signal
+# 把「遵循指令」当作对齐信号
 
-> Every later critique of RLHF argues against this pipeline. Before you study how optimization pressure distorts a proxy, you have to see the proxy. InstructGPT (Ouyang et al., 2022) defined the reference architecture: supervised fine-tuning on instruction-response pairs, a reward model trained on pairwise preference rankings, and PPO against the reward model with a KL penalty to the SFT policy. A 1.3B InstructGPT was preferred over a 175B GPT-3. That single result is the reason every frontier lab in 2026 still ships an RLHF-shaped post-training pipeline.
+> 后面对 RLHF 的每一条批评，针对的都是这条流水线。在你研究优化压力如何扭曲一个代理指标之前，你得先看清这个代理指标长什么样。InstructGPT（Ouyang et al., 2022）定义了那套参考架构：在「指令-回复」对上做监督微调，用成对偏好排序训练一个奖励模型，再用 PPO 针对奖励模型优化、同时加一个对 SFT 策略的 KL 惩罚。一个 1.3B 的 InstructGPT 在人类偏好上压过了 175B 的 GPT-3。就是这一个结果，让 2026 年的每一家前沿实验室至今仍在交付 RLHF 形态的后训练流水线。
 
-**Type:** Learn
-**Languages:** Python (stdlib, toy three-stage pipeline)
-**Prerequisites:** Phase 10 · 06 (SFT), Phase 10 · 07 (RLHF), Phase 10 · 08 (DPO)
-**Time:** ~45 minutes
+**类型：** Learn
+**语言：** Python（标准库，玩具级三阶段流水线）
+**前置要求：** 阶段 10 · 06（SFT）、阶段 10 · 07（RLHF）、阶段 10 · 08（DPO）
+**预计时间：** ~45 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Name the three stages of the InstructGPT pipeline and the loss used in each.
-- Explain why a 1.3B instruction-tuned model beat the raw 175B GPT-3 on human preference evaluation.
-- State what the KL penalty in stage 3 is protecting against and why removing it collapses to mode-seeking behaviour.
-- Describe the alignment tax and the PPO-ptx mitigation Ouyang et al. used against it.
+- 说出 InstructGPT 流水线的三个阶段，以及每个阶段用的损失。
+- 解释为什么一个 1.3B 的指令微调模型，在人类偏好评测上能打败原始的 175B GPT-3。
+- 说清楚第 3 阶段的 KL 惩罚到底在防什么，以及为什么去掉它会塌缩成寻峰（mode-seeking）行为。
+- 描述对齐税（alignment tax），以及 Ouyang et al. 用来对付它的 PPO-ptx 缓解手段。
 
-## The Problem
+## 问题所在
 
-Pre-trained language models complete text. They do not answer questions. Ask GPT-3 "write a Python function that reverses a list" and you often get back another prompt, because most of the training distribution is web text that continues with more web text. The model is doing its job — the job is wrong.
+预训练语言模型只会续写文本。它们不会回答问题。你让 GPT-3 「写一个反转列表的 Python 函数」，常常拿回来的是另一段提示词——因为训练分布里大部分是网页文本，而网页文本接着的还是更多网页文本。模型在干它该干的活——只是这活本身就错了。
 
-The proxy every serious lab used to fix this is human preference. Two completions go to a rater; the rater picks the better one; a reward model learns the rater. Then an RL loop shifts the policy toward outputs the reward model scores high. That is the full InstructGPT thesis in three sentences. The rest of the paper is engineering.
+每家正经实验室用来修这个问题的代理指标，是人类偏好。两段补全交给标注员；标注员挑出更好的那段；一个奖励模型去学这个标注员。然后一个 RL 循环把策略推向奖励模型打高分的输出。三句话讲完了整个 InstructGPT 的核心论点。论文剩下的部分都是工程。
 
-## The Concept
+## 核心概念
 
-### Stage 1: supervised fine-tuning (SFT)
+### 第 1 阶段：监督微调（SFT）
 
-Collect prompt-response pairs where the response is what a well-intentioned human would write. Ouyang et al. used 13k prompts from labelers and the OpenAI API. Fine-tune the base model on this data with standard cross-entropy loss.
+收集「提示-回复」对，其中回复是一个善意的人类会写出来的内容。Ouyang et al. 用了 13k 条提示，来自标注员和 OpenAI API。在这批数据上用标准的交叉熵损失微调基座模型。
 
-What SFT gives you: the model now answers questions instead of continuing them. What it does not give you: any signal about which answer the rater prefers when multiple are plausible.
+SFT 给了你什么：模型现在会回答问题，而不是续写问题。它没给你什么：当多个回答都说得过去时，关于标注员更偏好哪一个，没有任何信号。
 
-### Stage 2: reward model (RM)
+### 第 2 阶段：奖励模型（RM）
 
-For each prompt, sample K completions from the SFT model. A labeler ranks them. Train a reward model that scores any prompt-response pair so that, for pairs where `y_w` was preferred over `y_l`:
+对每条提示，从 SFT 模型采样 K 个补全。一个标注员对它们排序。训练一个奖励模型，给任意「提示-回复」对打分，使得对于那些 `y_w` 被偏好于 `y_l` 的对：
 
 ```
 L_RM = -log sigmoid(r(x, y_w) - r(x, y_l))
 ```
 
-This is the Bradley-Terry pairwise preference loss. The RM is usually initialized from the SFT model with the LM head replaced by a scalar head.
+这就是 Bradley-Terry 成对偏好损失。RM 通常从 SFT 模型初始化，把 LM 头换成一个标量头。
 
-Reward models are small: 6B was enough for the 175B InstructGPT. They are also fragile — section 5 of the paper is mostly about reward-hacking behaviours that showed up at small scale.
+奖励模型很小：对 175B 的 InstructGPT 而言，6B 就够了。它们也很脆——论文第 5 节大半都在讲小规模下冒出来的奖励作弊（reward-hacking）行为。
 
-### Stage 3: PPO with a KL penalty
+### 第 3 阶段：带 KL 惩罚的 PPO
 
-Define the objective:
+定义目标：
 
 ```
 J(pi) = E_{x~D, y~pi(.|x)} [ r(x, y) ] - beta * KL(pi(.|x) || pi_SFT(.|x))
 ```
 
-Maximize with PPO. The KL term keeps `pi` from drifting far from the SFT policy. Without it, the optimizer finds adversarial examples — strings that score high under the RM because the RM never saw them, not because humans actually prefer them.
+用 PPO 最大化它。KL 项让 `pi` 不至于离 SFT 策略漂太远。没有它，优化器会找到对抗样本——这些字符串在 RM 下得分高，是因为 RM 从没见过它们，而不是因为人类真的更喜欢它们。
 
-The KL coefficient `beta` is the single most important RLHF hyperparameter. Too low: reward hacking. Too high: no improvement over SFT.
+KL 系数 `beta` 是 RLHF 里最重要的那一个超参数。太低：奖励作弊。太高：相比 SFT 毫无长进。
 
-### The alignment tax
+### 对齐税
 
-After RLHF, the model is preferred by humans but regresses on standard benchmarks (SQuAD, HellaSwag, DROP). Ouyang et al. call this the alignment tax and fix it with PPO-ptx: mix pre-training gradients into the RL objective so the model does not forget how to do downstream tasks it was never rewarded for.
+RLHF 之后，模型更受人类青睐，但在标准基准上反而退步（SQuAD、HellaSwag、DROP）。Ouyang et al. 把这叫对齐税，并用 PPO-ptx 修它：把预训练梯度混进 RL 目标里，让模型不至于忘掉那些它从没因之得到奖励的下游任务。
 
 ```
 J_ptx(pi) = J(pi) + gamma * E_{x~D_pretrain} [ log pi(x) ]
 ```
 
-PPO-ptx became standard. Anthropic, DeepMind, and Meta all use some variant.
+PPO-ptx 成了标配。Anthropic、DeepMind、Meta 都用了某种变体。
 
-### The result
+### 结果
 
-A 1.3B InstructGPT (SFT + RM + PPO-ptx) is preferred by labelers over the 175B base GPT-3 about 70% of the time. The gap widens on hidden-test prompts from production traffic. Two things to read off this number:
+一个 1.3B 的 InstructGPT（SFT + RM + PPO-ptx），约有 70% 的概率被标注员偏好于 175B 的基座 GPT-3。在来自生产流量的隐藏测试提示上，差距还会拉大。从这个数字里能读出两件事：
 
-1. Alignment is a different axis from capability. The 175B model had more capability; the 1.3B model had more alignment; labelers preferred the aligned one.
-2. The capability floor is set by the base model. You cannot RLHF a base model into knowing facts it never saw.
+1. 对齐是一个跟能力不同的维度。175B 模型能力更强；1.3B 模型对齐更好；标注员选了对齐好的那个。
+2. 能力的下限由基座模型决定。你没法靠 RLHF 把一个基座模型「调」出它从没见过的事实。
 
-### Why this is the reference point for Phase 18
+### 为什么这是阶段 18 的参考原点
 
-Every critique in later lessons — reward hacking (Lesson 2), DPO (Lesson 3), sycophancy (Lesson 4), CAI (Lesson 5), sleeper agents (Lesson 7), alignment faking (Lesson 9) — argues against some part of this pipeline. Reward hacking attacks stage 2. DPO collapses stages 2 and 3. CAI replaces the human labeler. Sycophancy shows the labeler is a biased signal. Alignment faking shows the policy can route around stage 3 entirely. You cannot follow any of these critiques without the pipeline in your head first.
+后面每一课的批评——奖励作弊（第 2 课）、DPO（第 3 课）、阿谀奉承（第 4 课）、CAI（第 5 课）、潜伏特工（第 7 课）、对齐伪装（第 9 课）——针对的都是这条流水线的某一部分。奖励作弊攻击第 2 阶段。DPO 把第 2、3 阶段合并塌缩。CAI 替换掉人类标注员。阿谀奉承说明标注员本身是个有偏的信号。对齐伪装说明策略可以整个绕开第 3 阶段。脑子里没有这条流水线，你就读不懂这些批评里的任何一条。
 
-## Use It
+## 上手使用
 
-`code/main.py` simulates the three stages on toy preference data. The base "policy" is a biased coin over actions {A, B, C}. Stage 1 SFT mimics labeler actions on 200 prompts. Stage 2 fits a Bradley-Terry reward model from 500 pairwise rankings. Stage 3 runs a simplified PPO update with a KL penalty to the SFT policy. You can watch the reward climb, the KL divergence grow, and the policy drift — and you can turn off the KL term to see reward hacking appear inside 50 update steps.
+`code/main.py` 在玩具偏好数据上模拟这三个阶段。基座「策略」是一枚在动作 {A, B, C} 上有偏的硬币。第 1 阶段 SFT 在 200 条提示上模仿标注员的动作。第 2 阶段从 500 条成对排序里拟合一个 Bradley-Terry 奖励模型。第 3 阶段跑一个简化版 PPO 更新，带一个对 SFT 策略的 KL 惩罚。你可以看着奖励往上爬、KL 散度变大、策略漂移——还可以关掉 KL 项，眼看着奖励作弊在 50 个更新步内冒出来。
 
-What to look at:
+要看的东西：
 
-- Reward trajectory with `beta = 0.1` vs `beta = 0.0`.
-- KL(pi || pi_SFT) over training steps.
-- Final action distribution compared to labeler preference.
+- `beta = 0.1` 与 `beta = 0.0` 两种情况下的奖励轨迹。
+- 训练步数推进时的 KL(pi || pi_SFT)。
+- 最终动作分布与标注员偏好的对比。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-instructgpt-explainer.md`. Given an RLHF pipeline description or a paper abstract, it identifies which of the three stages is being modified, what loss is being used at each stage, and whether a KL penalty or equivalent regularizer is present.
+本课产出 `outputs/skill-instructgpt-explainer.md`。给定一段 RLHF 流水线描述或一篇论文摘要，它能指出三个阶段里哪一个被改动了、每个阶段用的是什么损失、以及是否存在 KL 惩罚或等价的正则项。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Set `beta = 0.0` and report the action distribution after 200 PPO steps. Explain the mode-seeking behaviour in one paragraph.
+1. 运行 `code/main.py`。设 `beta = 0.0`，报告 200 个 PPO 步之后的动作分布。用一段话解释这种寻峰行为。
 
-2. Modify the reward model to have a +0.5 bias for action B (a simulated reward bug). Run PPO with `beta = 0.1`. Does the KL penalty prevent the policy from exploiting the bias? At what `beta` does exploitation become visible?
+2. 改奖励模型，给动作 B 加一个 +0.5 的偏置（模拟一个奖励 bug）。用 `beta = 0.1` 跑 PPO。KL 惩罚阻止了策略去钻这个偏置的空子吗？`beta` 取到多少时这种钻空子才会变得明显？
 
-3. Read Ouyang et al. (arXiv:2203.02155) Figure 1. Reproduce the labeler-preference curve by running PPO for 1, 5, 20, 100 steps and measuring preference against the SFT model.
+3. 读 Ouyang et al.（arXiv:2203.02155）的图 1。通过把 PPO 跑 1、5、20、100 步并测量相对 SFT 模型的偏好，复现那条标注员偏好曲线。
 
-4. The paper's Section 4.3 reports a 1.3B InstructGPT beats 175B GPT-3 about 70% of the time. Why would the ratio be higher on hidden production prompts than on the labeler's own prompts?
+4. 论文 4.3 节报告 1.3B 的 InstructGPT 约有 70% 的概率打败 175B 的 GPT-3。为什么在隐藏的生产提示上这个比例会比在标注员自己的提示上更高？
 
-5. Replace the PPO loss with DPO (Phase 10 · 08) on the same preference data. Compare final policy drift (KL to SFT) and final reward. Which method drifts further at matched reward?
+5. 在同一批偏好数据上，把 PPO 损失换成 DPO（阶段 10 · 08）。对比最终的策略漂移（到 SFT 的 KL）和最终奖励。在奖励相当的情况下，哪种方法漂得更远？
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|-----------------|------------------------|
-| SFT | "instruction tuning" | Stage 1: cross-entropy fine-tune on prompt-response pairs |
-| Reward model | "the RM" | Scalar regressor over (prompt, response) trained with Bradley-Terry on pairwise labels |
-| Bradley-Terry | "pairwise preference loss" | -log sigmoid(r_w - r_l); reduces pairwise ranking to binary classification |
-| KL penalty | "the regularizer" | `beta * KL(pi || pi_SFT)` — keeps the RL policy near the SFT anchor |
-| PPO-ptx | "PPO with pretraining mix" | Adds a fraction of pre-training log-likelihood to the PPO objective to offset the alignment tax |
-| Alignment tax | "the RLHF regression" | Post-RLHF drop on standard benchmarks that RLHF did not target |
-| Labeler preference | "the ground truth" | Sample of human rankings; the RM is a statistical proxy for this, not for "human values" |
+| SFT | 「指令微调」 | 第 1 阶段：在「提示-回复」对上做交叉熵微调 |
+| 奖励模型 | 「那个 RM」 | 对 (提示, 回复) 打分的标量回归器，用 Bradley-Terry 在成对标注上训练 |
+| Bradley-Terry | 「成对偏好损失」 | -log sigmoid(r_w - r_l)；把成对排序化简成二分类 |
+| KL 惩罚 | 「那个正则项」 | `beta * KL(pi || pi_SFT)`——把 RL 策略拴在 SFT 锚点附近 |
+| PPO-ptx | 「带预训练混合的 PPO」 | 在 PPO 目标里加入一部分预训练对数似然，抵消对齐税 |
+| 对齐税 | 「RLHF 退步」 | RLHF 没瞄准的标准基准上，RLHF 之后出现的掉点 |
+| 标注员偏好 | 「那个 ground truth」 | 人类排序的一个采样；RM 是它的统计代理，而不是「人类价值观」的代理 |
 
-## Further Reading
+## 延伸阅读
 
-- [Ouyang et al. — Training language models to follow instructions with human feedback (arXiv:2203.02155)](https://arxiv.org/abs/2203.02155) — the InstructGPT paper, foundation for every RLHF pipeline that followed
-- [Stiennon et al. — Learning to summarize from human feedback (arXiv:2009.01325)](https://arxiv.org/abs/2009.01325) — the RLHF-for-summarization predecessor
-- [Christiano et al. — Deep reinforcement learning from human preferences (arXiv:1706.03741)](https://arxiv.org/abs/1706.03741) — the original preference-based RL formulation
-- [Bai et al. — Training a Helpful and Harmless Assistant with RLHF (arXiv:2204.05862)](https://arxiv.org/abs/2204.05862) — Anthropic's HH extension of the InstructGPT pipeline
+- [Ouyang et al. — Training language models to follow instructions with human feedback (arXiv:2203.02155)](https://arxiv.org/abs/2203.02155) —— InstructGPT 论文，此后每一条 RLHF 流水线的根基
+- [Stiennon et al. — Learning to summarize from human feedback (arXiv:2009.01325)](https://arxiv.org/abs/2009.01325) —— RLHF 用于摘要的前身工作
+- [Christiano et al. — Deep reinforcement learning from human preferences (arXiv:1706.03741)](https://arxiv.org/abs/1706.03741) —— 最早的基于偏好的 RL 形式化
+- [Bai et al. — Training a Helpful and Harmless Assistant with RLHF (arXiv:2204.05862)](https://arxiv.org/abs/2204.05862) —— Anthropic 对 InstructGPT 流水线的 HH 扩展

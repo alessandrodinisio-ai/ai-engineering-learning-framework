@@ -1,114 +1,114 @@
-# Moderation Systems — OpenAI, Perspective, Llama Guard
+# 审核系统 —— OpenAI、Perspective、Llama Guard
 
-> Production moderation systems operationalize the safety policies defined in Lessons 12-16. OpenAI Moderation API: `omni-moderation-latest` (2024) built on GPT-4o classifies text + images in one call; 42% better on multilingual test set than prior version; the response schema returns 13 category booleans — harassment, harassment/threatening, hate, hate/threatening, illicit, illicit/violent, self-harm, self-harm/intent, self-harm/instructions, sexual, sexual/minors, violence, violence/graphic; free for most developers. Layered patterns: Input moderation (pre-generation), Output moderation (post-generation), Custom moderation (domain rules). Async parallel calls hide latency; placeholder responses on flag. Llama Guard 3/4 (Lesson 16): 14 MLCommons hazards, Code Interpreter Abuse, 8 languages (v3), multi-image (v4). Perspective API (Google Jigsaw): toxicity scoring predating the LLM-as-moderator wave; primarily single-dimension toxicity with severe-toxicity/insult/profanity variants; baseline for content-moderation research. Deprecations: Azure Content Moderator deprecated February 2024, retired February 2027, replaced by Azure AI Content Safety.
+> 生产审核系统把第 12-16 课定义的安全政策操作化。OpenAI Moderation API：`omni-moderation-latest`（2024）建在 GPT-4o 上，一次调用即可分类文本 + 图像；在多语言测试集上比上一版好 42%；响应模式返回 13 个类别布尔值——骚扰、骚扰/威胁、仇恨、仇恨/威胁、违法、违法/暴力、自残、自残/意图、自残/指导、性、性/未成年人、暴力、暴力/血腥；对大多数开发者免费。分层模式：输入审核（生成前）、输出审核（生成后）、自定义审核（领域规则）。异步并行调用隐藏延迟；命中标记时返回占位响应。Llama Guard 3/4（第 16 课）：14 个 MLCommons 危害、代码解释器滥用、8 种语言（v3）、多图（v4）。Perspective API（Google Jigsaw）：早于「LLM 当审核者」浪潮的毒性打分；主要是单维度毒性，带 severe-toxicity/insult/profanity 变体；内容审核研究的基线。弃用：Azure Content Moderator 于 2024 年 2 月弃用、2027 年 2 月退役，由 Azure AI Content Safety 取代。
 
-**Type:** Build
-**Languages:** Python (stdlib, three-layer moderation harness)
-**Prerequisites:** Phase 18 · 16 (Llama Guard / Garak / PyRIT)
-**Time:** ~60 minutes
+**类型：** Build
+**语言：** Python（标准库，三层审核测试台）
+**前置要求：** 阶段 18 · 16（Llama Guard / Garak / PyRIT）
+**预计时间：** ~60 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Describe the OpenAI Moderation API's category taxonomy and how it differs from Llama Guard 3's MLCommons set.
-- Describe the three moderation-layer pattern (input, output, custom) and name one failure mode of each.
-- Describe Perspective API's position as a pre-LLM-era baseline and why it remains used in research.
-- State the Azure deprecation timeline.
+- 描述 OpenAI Moderation API 的类别分类法，以及它与 Llama Guard 3 的 MLCommons 集有何不同。
+- 描述三审核层模式（输入、输出、自定义），并说出每个的一个失败模式。
+- 描述 Perspective API 作为「LLM 时代之前」基线的位置，以及为什么它在研究中仍被使用。
+- 说出 Azure 的弃用时间线。
 
-## The Problem
+## 问题所在
 
-Lessons 12-16 describe attacks and defense tooling. Lesson 29 covers the deployed moderation systems that operationalize the defenses at the surface where users touch the product. The three-layer pattern is the 2026 default configuration.
+第 12-16 课描述攻击和防御工具。第 29 课讲那些在用户接触产品的表面把防御操作化的、已部署的审核系统。三层模式是 2026 年的默认配置。
 
-## The Concept
+## 核心概念
 
 ### OpenAI Moderation API
 
-`omni-moderation-latest` (2024). Built on GPT-4o. Classifies text + images in one call. Free for most developers.
+`omni-moderation-latest`（2024）。建在 GPT-4o 上。一次调用即可分类文本 + 图像。对大多数开发者免费。
 
-Categories (13 booleans in the response schema):
-- harassment, harassment/threatening
-- hate, hate/threatening
-- self-harm, self-harm/intent, self-harm/instructions
-- sexual, sexual/minors
-- violence, violence/graphic
-- illicit, illicit/violent
+类别（响应模式里的 13 个布尔值）：
+- harassment、harassment/threatening
+- hate、hate/threatening
+- self-harm、self-harm/intent、self-harm/instructions
+- sexual、sexual/minors
+- violence、violence/graphic
+- illicit、illicit/violent
 
-Multimodal support applies to `violence`, `self-harm`, and `sexual` but not `sexual/minors`; the rest are text-only.
+多模态支持适用于 `violence`、`self-harm`、`sexual`，但不含 `sexual/minors`；其余仅文本。
 
-For the code harness in `code/main.py` we collapse the `/threatening`, `/intent`, `/instructions`, and `/graphic` sub-categories into their top-level parents for pedagogical simplicity. Production code should use the full 13-category schema.
+在 `code/main.py` 的代码测试台里，为了教学简洁，我们把 `/threatening`、`/intent`、`/instructions`、`/graphic` 这些子类折叠进它们的顶级父类。生产代码应使用完整的 13 类模式。
 
-42% better on multilingual test set than the prior-generation moderation endpoint. Per-category scores; applications set thresholds.
+在多语言测试集上比上一代审核端点好 42%。每类一个分数；应用自行设阈值。
 
 ### Llama Guard 3/4
 
-Covered in Lesson 16. 14 MLCommons hazard categories (organized differently from OpenAI's 13 response-schema booleans). Supports 8 languages (v3). Llama Guard 4 (April 2025) is natively multimodal, 12B.
+在第 16 课讲过。14 个 MLCommons 危害类别（组织方式与 OpenAI 的 13 个响应模式布尔值不同）。支持 8 种语言（v3）。Llama Guard 4（2025 年 4 月）原生多模态、12B。
 
-The OpenAI and Llama Guard taxonomies overlap but diverge. OpenAI has "illicit" as a broad category; Llama Guard has "violent crimes" and "non-violent crimes" separately. Deployments pick based on their policy-taxonomy fit.
+OpenAI 和 Llama Guard 的分类法有重叠但有分歧。OpenAI 把「illicit」作为一个宽类别；Llama Guard 则把「暴力犯罪」和「非暴力犯罪」分开。部署方根据自己政策分类法的契合度来选。
 
-### Perspective API (Google Jigsaw)
+### Perspective API（Google Jigsaw）
 
-Toxicity scoring system predating the LLM-as-moderator wave (pre-2020). Categories: TOXICITY, SEVERE_TOXICITY, INSULT, PROFANITY, THREAT, IDENTITY_ATTACK. Single-dimension primary score (TOXICITY) with sub-dimension variants.
+早于「LLM 当审核者」浪潮（2020 年前）的毒性打分系统。类别：TOXICITY、SEVERE_TOXICITY、INSULT、PROFANITY、THREAT、IDENTITY_ATTACK。单维度主分数（TOXICITY）带子维度变体。
 
-Widely used as a content-moderation research baseline because the API is stable, documented, and has years of calibration data. For modern LLM-adjacent use cases, Llama Guard or OpenAI Moderation is typically a better fit.
+被广泛用作内容审核研究基线，因为这个 API 稳定、有文档、且有多年的校准数据。对现代与 LLM 相邻的用例，Llama Guard 或 OpenAI Moderation 通常更契合。
 
-### The three-layer pattern
+### 三层模式
 
-1. **Input moderation.** Classify the user's prompt before generation. Reject if flagged. Latency: one classifier call.
-2. **Output moderation.** Classify the model's output before delivery. Replace with a refusal if flagged. Latency: one classifier call after generation.
-3. **Custom moderation.** Domain-specific rules (regex, allowlists, business policy). Runs at either input or output.
+1. **输入审核。** 在生成前分类用户的提示。命中标记则拒绝。延迟：一次分类器调用。
+2. **输出审核。** 在交付前分类模型的输出。命中标记则替换为拒绝。延迟：生成后一次分类器调用。
+3. **自定义审核。** 领域特定规则（正则、allowlist、业务政策）。在输入或输出处运行。
 
-The three layers are sequential by design: input moderation must complete before generation, and output moderation runs after generation. Parallelism applies within a layer — running multiple classifiers (e.g., OpenAI Moderation + Llama Guard + Perspective) concurrently on the same text hides per-classifier latency. As an optional optimization, a placeholder response ("one moment, checking...") may be shown while input moderation completes and token-1 streaming is deferred. Flag behaviour is configurable: refuse, sanitize, escalate to human review.
+这三层按设计是顺序的：输入审核必须在生成前完成，输出审核在生成后运行。并行发生在一层之内——在同一段文本上并发跑多个分类器（比如 OpenAI Moderation + Llama Guard + Perspective）能隐藏每个分类器的延迟。作为一项可选优化，可在输入审核完成期间展示一个占位响应（「稍等，检查中……」）并推迟首 token 流式输出。命中标记的行为可配置：拒绝、净化、升级到人工审核。
 
-### Failure modes
+### 失败模式
 
-- **Input only.** Does not catch output hallucinations (Lesson 12-14 encoding attacks bypass input classifiers).
-- **Output only.** Allows any input to reach the model; increases cost; surfaces internal reasoning to attacker.
-- **Custom only.** Not robust across categories; regexes are brittle.
+- **仅输入。** 抓不到输出幻觉（第 12-14 课的编码攻击绕过输入分类器）。
+- **仅输出。** 允许任意输入到达模型；增加成本；把内部推理暴露给攻击者。
+- **仅自定义。** 跨类别不鲁棒；正则很脆。
 
-Layered is the default. Belt-and-suspenders.
+分层是默认。双保险。
 
-### Azure deprecation
+### Azure 弃用
 
-Azure Content Moderator: deprecated February 2024, retired February 2027. Replaced by Azure AI Content Safety, which is LLM-based and integrates with Azure OpenAI. The migration is a 2024-2027 field-level project for Azure deployments.
+Azure Content Moderator：2024 年 2 月弃用，2027 年 2 月退役。由 Azure AI Content Safety 取代，后者基于 LLM 并与 Azure OpenAI 集成。这次迁移对 Azure 部署是一个 2024-2027 的实战级项目。
 
-### Where this fits in Phase 18
+### 这在阶段 18 里的位置
 
-Lesson 16 covers the moderation tooling in the red-team context. Lesson 29 covers deployed moderation. Lesson 30 closes with the current dual-use capability evidence.
+第 16 课在红队语境下讲审核工具。第 29 课讲已部署的审核。第 30 课用当前两用能力证据收尾。
 
-## Use It
+## 上手使用
 
-`code/main.py` builds a three-layer moderation harness: input moderator (keyword + category score), output moderator (same classifier on output), custom moderator (domain rules). You can run inputs through and observe which layer catches what.
+`code/main.py` 造了一个三层审核测试台：输入审核器（关键词 + 类别分数）、输出审核器（在输出上跑同一个分类器）、自定义审核器（领域规则）。你可以把输入跑一遍，观察哪一层抓到了什么。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-moderation-stack.md`. Given a deployment, it recommends a moderation stack configuration: which classifier at input, which at output, which custom rules, and what judge for edge cases.
+本课产出 `outputs/skill-moderation-stack.md`。给定一个部署，它推荐一个审核栈配置：输入处用哪个分类器、输出处用哪个、哪些自定义规则、以及边缘情况用什么裁判。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Run a benign, borderline, and harmful input through all three layers. Report which layer fires for each.
+1. 运行 `code/main.py`。把一个无害、一个边缘、一个有害的输入跑过全部三层。报告每个分别由哪一层发作。
 
-2. Extend the harness with Perspective-API-style toxicity scoring on a specific category. Compare its threshold behaviour to the category score.
+2. 给测试台扩展一个针对特定类别的 Perspective-API 风格毒性打分。把它的阈值行为与类别分数对比。
 
-3. Read the OpenAI Moderation API docs and the Llama Guard 3 category list. Map each OpenAI category to the closest Llama Guard categories. Identify three categories that do not cleanly map.
+3. 读 OpenAI Moderation API 文档和 Llama Guard 3 类别列表。把每个 OpenAI 类别映射到最接近的 Llama Guard 类别。指出三个无法干净映射的类别。
 
-4. Design a moderation stack for a code-assistant deployment (e.g., GitHub Copilot). Identify the categories most and least relevant and propose custom rules.
+4. 为一个代码助手部署（比如 GitHub Copilot）设计一个审核栈。指出最相关和最不相关的类别，并提出自定义规则。
 
-5. Azure Content Moderator retires February 2027. Plan a migration to Azure AI Content Safety. Identify the highest-risk element of the migration.
+5. Azure Content Moderator 在 2027 年 2 月退役。规划一次迁移到 Azure AI Content Safety。指出迁移中风险最高的环节。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|-----------------|------------------------|
-| OpenAI Moderation | "omni-moderation-latest" | GPT-4o-based 13-category (text) classifier with partial multimodal support |
-| Perspective API | "Google Jigsaw toxicity" | Pre-LLM-era toxicity scoring baseline |
-| Llama Guard | "MLCommons 14-category" | Meta's hazard classifier (v3: 8B text, 8 langs; v4: 12B multimodal) |
-| Input moderation | "pre-generation filter" | Classifier on user prompt before model call |
-| Output moderation | "post-generation filter" | Classifier on model output before delivery |
-| Custom moderation | "domain rules" | Deployment-specific rules (regex, allowlist, policy) |
-| Layered moderation | "all three layers" | Standard production deployment pattern |
+| OpenAI Moderation | 「omni-moderation-latest」 | 基于 GPT-4o、13 类（文本）、带部分多模态支持的分类器 |
+| Perspective API | 「Google Jigsaw 毒性」 | LLM 时代之前的毒性打分基线 |
+| Llama Guard | 「MLCommons 14 类」 | Meta 的危害分类器（v3：8B 文本、8 语言；v4：12B 多模态） |
+| 输入审核 | 「生成前过滤」 | 在模型调用前对用户提示的分类器 |
+| 输出审核 | 「生成后过滤」 | 在交付前对模型输出的分类器 |
+| 自定义审核 | 「领域规则」 | 部署特定规则（正则、allowlist、政策） |
+| 分层审核 | 「全部三层」 | 标准的生产部署模式 |
 
-## Further Reading
+## 延伸阅读
 
-- [OpenAI Moderation API docs](https://platform.openai.com/docs/api-reference/moderations) — omni-moderation endpoint
-- [Meta PurpleLlama + Llama Guard](https://github.com/meta-llama/PurpleLlama) — Llama Guard repo
-- [Google Jigsaw Perspective API](https://perspectiveapi.com/) — toxicity scoring
-- [Azure AI Content Safety](https://learn.microsoft.com/en-us/azure/ai-services/content-safety/) — Azure replacement
+- [OpenAI Moderation API docs](https://platform.openai.com/docs/api-reference/moderations) —— omni-moderation 端点
+- [Meta PurpleLlama + Llama Guard](https://github.com/meta-llama/PurpleLlama) —— Llama Guard 仓库
+- [Google Jigsaw Perspective API](https://perspectiveapi.com/) —— 毒性打分
+- [Azure AI Content Safety](https://learn.microsoft.com/en-us/azure/ai-services/content-safety/) —— Azure 替代品

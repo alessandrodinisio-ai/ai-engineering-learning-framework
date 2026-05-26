@@ -1,59 +1,59 @@
-# Build a Voice Assistant Pipeline — The Phase 6 Capstone
+# 搭一条语音助手流水线 —— 第 6 阶段顶点项目
 
-> Everything from lessons 01-11, stitched together. Build a voice assistant that listens, reasons, and talks back. In 2026 that is a solved engineering problem, not a research problem — but the integration details decide whether it ships.
+> 把第 01-11 课的一切缝到一起。搭一个会听、会推理、会说话的语音助手。2026 年这是一个已经解决的工程问题，不是研究问题——但集成细节决定它能不能上线。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 6 · 04, 05, 06, 07, 11; Phase 11 · 09 (Function Calling); Phase 14 · 01 (Agent Loop)
-**Time:** ~120 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 阶段 6 · 04、05、06、07、11；阶段 11 · 09（函数调用）；阶段 14 · 01（Agent 循环）
+**预计时间：** ~120 分钟
 
-## The Problem
+## 问题所在
 
-Build an end-to-end assistant:
+搭一个端到端助手：
 
-1. Captures mic input (16 kHz mono).
-2. Detects start/end of user speech.
-3. Transcribes streaming.
-4. Passes transcript to an LLM that can call tools (timer, weather, calendar).
-5. Streams LLM text to a TTS.
-6. Plays audio back to the user.
-7. Stops if the user interrupts mid-response.
+1. 捕获麦克风输入（16 kHz 单声道）。
+2. 检测用户说话的开始/结束。
+3. 流式转写。
+4. 把转写文本交给一个能调工具（计时器、天气、日历）的 LLM。
+5. 把 LLM 文本流给一个 TTS。
+6. 把音频放回给用户。
+7. 用户在回应中途打断时停下来。
 
-Latency target: first TTS audio byte within 800 ms of the user finishing their utterance on a laptop CPU. Quality target: no missed words, no hallucinated subtitles on silence, no voice cloning leakage, no prompt injection success.
+延迟目标：在笔记本 CPU 上，用户说完后 800 ms 内出第一个 TTS 音频字节。质量目标：不漏词、静音上不产生幻觉字幕、不泄漏语音克隆、prompt 注入不得逞。
 
-## The Concept
+## 核心概念
 
-![Voice assistant pipeline: mic → VAD → STT → LLM+tools → TTS → speaker](../assets/voice-assistant.svg)
+![语音助手流水线：麦克风 → VAD → STT → LLM+工具 → TTS → 扬声器](../assets/voice-assistant.svg)
 
-### The seven components
+### 七个组件
 
-1. **Audio capture.** Mic → 16 kHz mono → 20 ms chunks. Usually `sounddevice` in Python or native AudioUnit/ALSA/WASAPI in production.
-2. **VAD (Lesson 11).** Silero VAD @ threshold 0.5, min speech 250 ms, silence hang-over 500 ms. Signals "start" and "end."
-3. **Streaming STT (Lesson 4-5).** Whisper-streaming, Parakeet-TDT, or Deepgram Nova-3 (API). Partial + final transcripts.
-4. **LLM with tool calling.** GPT-4o / Claude 3.5 / Gemini 2.5 Flash. JSON schema for tools. Stream tokens.
-5. **Streaming TTS (Lesson 7).** Kokoro-82M (fastest open) or Cartesia Sonic (commercial). Start TTS after 20 LLM tokens.
-6. **Playback.** Speaker out; opus-encode for low-bandwidth networks.
-7. **Interruption handler.** If VAD fires during TTS playback, stop playback, cancel LLM, restart STT.
+1. **音频捕获。** 麦克风 → 16 kHz 单声道 → 20 ms 块。Python 里通常用 `sounddevice`，生产里用原生 AudioUnit/ALSA/WASAPI。
+2. **VAD（第 11 课）。** Silero VAD @ 阈值 0.5，最短语音 250 ms，静音挂起 500 ms。给出「开始」和「结束」信号。
+3. **流式 STT（第 4-5 课）。** Whisper-streaming、Parakeet-TDT，或 Deepgram Nova-3（API）。部分 + 最终转写。
+4. **带工具调用的 LLM。** GPT-4o / Claude 3.5 / Gemini 2.5 Flash。工具用 JSON schema。流式吐 token。
+5. **流式 TTS（第 7 课）。** Kokoro-82M（最快的开源）或 Cartesia Sonic（商用）。LLM 吐出 20 个 token 后就启动 TTS。
+6. **播放。** 扬声器输出；低带宽网络下做 opus 编码。
+7. **打断处理器。** 如果 TTS 播放时 VAD 触发，就停播放、取消 LLM、重启 STT。
 
-### The three failure modes you will hit
+### 你会撞上的三种失败模式
 
-1. **First-word clip.** VAD starts a beat too late. User's "hey" is missing. Start threshold at 0.3, not 0.5.
-2. **Mid-response interrupt confusion.** LLM keeps generating after user interrupts; assistant talks over user. Wire VAD → cancel-LLM.
-3. **Silence hallucination.** Whisper outputs "Thanks for watching" on the silent warm-up frames. Always VAD-gate.
+1. **首词被切。** VAD 起步晚了一拍。用户的「hey」没了。起始阈值设 0.3，不是 0.5。
+2. **回应中途打断的混乱。** 用户打断后 LLM 还在生成；助手压着用户说。把 VAD → 取消 LLM 接好。
+3. **静音幻觉。** Whisper 在静音的热身帧上输出「Thanks for watching」。永远 VAD 把门。
 
-### 2026 production reference stacks
+### 2026 年生产参考栈
 
-| Stack | Latency | License | Notes |
+| 栈 | 延迟 | 许可证 | 备注 |
 |-------|---------|---------|-------|
-| LiveKit + Deepgram + GPT-4o + Cartesia | 350-500 ms | commercial API | Industry default 2026 |
-| Pipecat + Whisper-streaming + GPT-4o + Kokoro | 500-800 ms | mostly open | DIY-friendly |
-| Moshi (full-duplex) | 200-300 ms | CC-BY 4.0 | Single-model; different architecture, lesson 15 |
-| Vapi / Retell (managed) | 300-500 ms | commercial | Fastest to launch; limited customization |
-| Whisper.cpp + llama.cpp + Kokoro-ONNX | offline | open | Privacy / edge |
+| LiveKit + Deepgram + GPT-4o + Cartesia | 350-500 ms | 商用 API | 2026 年行业默认 |
+| Pipecat + Whisper-streaming + GPT-4o + Kokoro | 500-800 ms | 大体开源 | DIY 友好 |
+| Moshi（全双工） | 200-300 ms | CC-BY 4.0 | 单模型；不同架构，第 15 课 |
+| Vapi / Retell（托管） | 300-500 ms | 商用 | 上线最快；定制有限 |
+| Whisper.cpp + llama.cpp + Kokoro-ONNX | 离线 | 开源 | 隐私 / 边缘端 |
 
-## Build It
+## 动手构建
 
-### Step 1: mic capture with chunking (pseudocode)
+### 第 1 步：带分块的麦克风捕获（伪代码）
 
 ```python
 import sounddevice as sd
@@ -67,7 +67,7 @@ def mic_stream(chunk_ms=20, sr=16000):
             yield q.get()
 ```
 
-### Step 2: VAD-gated turn capture
+### 第 2 步：VAD 把门的轮次捕获
 
 ```python
 def capture_turn(stream, vad, pre_roll_ms=300, silence_ms=500):
@@ -88,7 +88,7 @@ def capture_turn(stream, vad, pre_roll_ms=300, silence_ms=500):
                 return b"".join(buf)
 ```
 
-### Step 3: streaming STT → LLM → TTS
+### 第 3 步：流式 STT → LLM → TTS
 
 ```python
 async def turn(audio_bytes):
@@ -98,7 +98,7 @@ async def turn(audio_bytes):
             await speaker.play(audio)
 ```
 
-### Step 4: tool calling inside the LLM loop
+### 第 4 步：LLM 循环里的工具调用
 
 ```python
 tools = [
@@ -114,7 +114,7 @@ async for chunk in llm.stream(user_text, tools=tools):
         await tts.stream(chunk.text)
 ```
 
-### Step 5: interruption handling
+### 第 5 步：打断处理
 
 ```python
 tts_task = asyncio.create_task(tts_loop())
@@ -127,51 +127,51 @@ while True:
         break
 ```
 
-## Use It
+## 上手使用
 
-See `code/main.py` for a runnable simulation that wires all seven components with stub models, so you can see the pipeline shape even without hardware. For a real implementation, swap stubs with:
+看 `code/main.py`，里面是一个可运行的模拟，用桩模型把七个组件全接起来，这样你不用硬件也能看到流水线的形状。要做真实实现，把桩换成：
 
-- `silero-vad` (`pip install silero-vad`)
-- `deepgram-sdk` or `openai-whisper`
-- `openai` (`gpt-4o`) or `anthropic`
-- `kokoro` or `cartesia`
-- `sounddevice` for I/O
+- `silero-vad`（`pip install silero-vad`）
+- `deepgram-sdk` 或 `openai-whisper`
+- `openai`（`gpt-4o`）或 `anthropic`
+- `kokoro` 或 `cartesia`
+- `sounddevice` 做 I/O
 
-## Pitfalls
+## 坑
 
-- **Logging PII forever.** Full-turn audio is PII in most jurisdictions. 30-day retention, encrypted at rest.
-- **No barge-in.** Users will interrupt. Your assistant must stop talking.
-- **TTS that blocks.** Synchronous TTS blocks the event loop. Use async or a separate thread.
-- **No tool-call error handling.** Tools fail. LLM must get back the error + retry once, then gracefully degrade.
-- **Overzealous hallucination filters.** Over-filter and the assistant repeats "I can't help with that." Under-filter and it says anything. Calibrate on a held-out set.
-- **No wake-word option.** Always-listening is a privacy liability. Add a wake-word gate (Porcupine or openWakeWord).
+- **永久记录 PII。** 整轮音频在大多数司法辖区算 PII。保留 30 天，静态加密。
+- **没有插话处理。** 用户一定会打断。你的助手必须停下来。
+- **会阻塞的 TTS。** 同步 TTS 会阻塞事件循环。用异步或单独线程。
+- **没有工具调用错误处理。** 工具会失败。LLM 必须拿回错误 + 重试一次，然后优雅降级。
+- **过激的幻觉过滤器。** 过滤太狠，助手反复说「这个我帮不了」。过滤太松，它什么都敢说。在留出集上校准。
+- **没有唤醒词选项。** 一直在听是隐私负债。加一个唤醒词闸门（Porcupine 或 openWakeWord）。
 
-## Ship It
+## 交付
 
-Save as `outputs/skill-voice-assistant-architect.md`. Given budget + scale + language + compliance constraints, produce a full stack spec.
+存为 `outputs/skill-voice-assistant-architect.md`。给定预算 + 规模 + 语种 + 合规约束，产出一份完整的栈规格。
 
-## Exercises
+## 练习
 
-1. **Easy.** Run `code/main.py`. It simulates one full turn end-to-end with stub modules and prints per-stage latency.
-2. **Medium.** Replace the STT stub with a real Whisper model on a pre-recorded `.wav`. Measure WER and end-to-end latency.
-3. **Hard.** Add tool calling: implement `get_weather` (any API) and `set_timer`. Route the LLM through the tools and verify that when the user says "set a 5 minute timer" the right function fires and the spoken reply confirms it.
+1. **简单。** 跑 `code/main.py`。它用桩模块端到端模拟一个完整轮次，并打印各阶段延迟。
+2. **中等。** 把 STT 桩换成一个真实的 Whisper 模型，作用在一段预录的 `.wav` 上。测量 WER 和端到端延迟。
+3. **困难。** 加上工具调用：实现 `get_weather`（任意 API）和 `set_timer`。把 LLM 接到工具上，验证当用户说「set a 5 minute timer」时正确的函数触发，且口语回应确认了它。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际指什么 |
 |------|-----------------|-----------------------|
-| Turn | A user + assistant round-trip | One VAD-bounded user speech + one LLM-TTS response. |
-| Barge-in | Interruption | User speaks while assistant talks; assistant stops. |
-| Wake word | "Hey assistant" | Short keyword detector; Porcupine, Snowboy, openWakeWord. |
-| End-pointing | Turn ending | VAD + min-silence decision that user has finished. |
-| Pre-roll | Pre-speech buffer | Keep 200-400 ms of audio before VAD fires to avoid first-word clip. |
-| Tool call | Function invocation | LLM emits JSON; runtime dispatches; result feeds back in-loop. |
+| 轮次（Turn） | 一次用户 + 助手往返 | 一段 VAD 界定的用户语音 + 一次 LLM-TTS 回应。 |
+| 插话（Barge-in） | 打断 | 用户在助手说话时开口；助手停下。 |
+| 唤醒词 | 「Hey assistant」 | 短关键词检测器；Porcupine、Snowboy、openWakeWord。 |
+| 端点判定（End-pointing） | 轮次结束 | VAD + 最短静音判定用户已说完。 |
+| 预滚（Pre-roll） | 说话前缓冲 | 在 VAD 触发前留 200-400 ms 音频，避免首词被切。 |
+| 工具调用 | 函数调用 | LLM 吐出 JSON；运行时分发；结果在循环内回喂。 |
 
-## Further Reading
+## 延伸阅读
 
-- [LiveKit — voice agent quickstart](https://docs.livekit.io/agents/) — production-grade reference.
-- [Pipecat — voice agent examples](https://github.com/pipecat-ai/pipecat) — DIY-friendly framework.
-- [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime) — the managed voice-native path.
-- [Kyutai Moshi](https://github.com/kyutai-labs/moshi) — full-duplex reference (Lesson 15).
-- [Porcupine wake-word](https://picovoice.ai/products/porcupine/) — wake-word gating.
-- [Anthropic — tool use guide](https://docs.anthropic.com/en/docs/build-with-claude/tool-use) — LLM function calling.
+- [LiveKit — voice agent quickstart](https://docs.livekit.io/agents/) —— 生产级参考。
+- [Pipecat — voice agent examples](https://github.com/pipecat-ai/pipecat) —— DIY 友好的框架。
+- [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime) —— 托管的语音原生路线。
+- [Kyutai Moshi](https://github.com/kyutai-labs/moshi) —— 全双工参考（第 15 课）。
+- [Porcupine wake-word](https://picovoice.ai/products/porcupine/) —— 唤醒词把门。
+- [Anthropic — tool use guide](https://docs.anthropic.com/en/docs/build-with-claude/tool-use) —— LLM 函数调用。

@@ -1,93 +1,93 @@
-# Self-Attention from Scratch
+# 从零实现 Self-Attention
 
-> Attention is a lookup table where every word asks "who matters to me?" - and learns the answer.
+> 注意力是一张查找表，每个词都在问"谁对我重要？"——并学会答案。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 3 (Deep Learning Core), Phase 5 Lesson 10 (Sequence-to-Sequence)
-**Time:** ~90 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 阶段 3（深度学习核心）、阶段 5 第 10 课（序列到序列）
+**预计时间：** ~90 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Implement scaled dot-product self-attention from scratch using only NumPy, including query/key/value projections and the softmax-weighted sum
-- Build a multi-head attention layer that splits heads, computes parallel attention, and concatenates results
-- Trace how the attention matrix captures token relationships and explain why scaling by sqrt(d_k) prevents softmax saturation
-- Apply causal masking to convert bidirectional attention into autoregressive (decoder-style) attention
+- 只用 NumPy 从零实现缩放点积 self-attention，包括 query/key/value 投影和 softmax 加权求和
+- 构建一个 multi-head attention 层，拆分多个头、并行计算注意力、再拼接结果
+- 追踪注意力矩阵如何捕捉 token 之间的关系，并解释为什么除以 sqrt(d_k) 能防止 softmax 饱和
+- 应用因果掩码，把双向注意力转成自回归（解码器风格）注意力
 
-## The Problem
+## 问题所在
 
-RNNs process sequences one token at a time. By the time you reach token 50, the information from token 1 has been squeezed through 50 compression steps. Long-range dependencies get crushed into a fixed-size hidden state - a bottleneck that no amount of LSTM gating fully solves.
+RNN 一次处理一个 token。等你走到第 50 个 token，来自第 1 个 token 的信息已经被压缩了 50 步。长程依赖被挤进一个固定大小的隐藏状态——这个瓶颈靠再多 LSTM 门控也没法彻底解决。
 
-The 2014 Bahdanau attention paper showed the fix: let the decoder look back at every encoder position and decide which ones matter for the current step. But it was still bolted onto an RNN. The 2017 "Attention Is All You Need" paper asked a sharper question: what if attention is the *only* mechanism? No recurrence. No convolution. Just attention.
+2014 年的 Bahdanau 注意力论文给出了修法：让解码器回头看每一个编码器位置，决定哪些对当前这一步重要。但它还是焊在 RNN 上的。2017 年的《Attention Is All You Need》问了一个更尖锐的问题：如果注意力是*唯一*的机制呢？没有循环，没有卷积，只有注意力。
 
-Self-attention lets every position in a sequence attend to every other position in a single parallel step. That is what makes transformers fast, scalable, and dominant.
+self-attention 让序列里的每个位置在一个并行步骤里关注其他每一个位置。这正是 transformer 又快、又能扩展、又称霸的原因。
 
-## The Concept
+## 核心概念
 
-### The Database Lookup Analogy
+### 数据库查找的类比
 
-Think of attention as a soft database lookup:
-
-```
-Traditional database:
-  Query: "capital of France"  -->  exact match  -->  "Paris"
-
-Attention:
-  Query: "capital of France"  -->  similarity to ALL keys  -->  weighted blend of ALL values
-```
-
-Every token generates three vectors:
-- **Query (Q)**: "What am I looking for?"
-- **Key (K)**: "What do I contain?"
-- **Value (V)**: "What information do I provide if selected?"
-
-The dot product between a query and all keys produces attention scores. High score means "this key matches my query." Those scores weight the values. The output is a weighted sum of values.
-
-### Q, K, V Computation
-
-Each token embedding gets projected through three learned weight matrices:
+把注意力想成一次软性的数据库查找：
 
 ```
-Input embeddings (sequence of n tokens, each d-dimensional):
+传统数据库：
+  Query: "capital of France"  -->  精确匹配  -->  "Paris"
+
+注意力：
+  Query: "capital of France"  -->  和所有 key 算相似度  -->  对所有 value 加权混合
+```
+
+每个 token 生成三个向量：
+- **Query (Q)**："我在找什么？"
+- **Key (K)**："我包含什么？"
+- **Value (V)**："如果被选中，我提供什么信息？"
+
+query 和所有 key 的点积产生注意力分数。分数高意味着"这个 key 匹配我的 query"。这些分数给 value 加权。输出是 value 的加权和。
+
+### Q、K、V 的计算
+
+每个 token 嵌入都经过三个学到的权重矩阵投影：
+
+```
+输入嵌入（n 个 token 的序列，每个 d 维）：
 
   X = [x1, x2, x3, ..., xn]       shape: (n, d)
 
-Three weight matrices:
+三个权重矩阵：
 
   Wq  shape: (d, dk)
   Wk  shape: (d, dk)
   Wv  shape: (d, dv)
 
-Projections:
+投影：
 
-  Q = X @ Wq    shape: (n, dk)      each token's query
-  K = X @ Wk    shape: (n, dk)      each token's key
-  V = X @ Wv    shape: (n, dv)      each token's value
+  Q = X @ Wq    shape: (n, dk)      每个 token 的 query
+  K = X @ Wk    shape: (n, dk)      每个 token 的 key
+  V = X @ Wv    shape: (n, dv)      每个 token 的 value
 ```
 
-Visually, for one token:
+对单个 token，直观地看：
 
 ```
              Wq
-  x_i ------[*]------> q_i    "What am I looking for?"
+  x_i ------[*]------> q_i    "我在找什么？"
        |
        |     Wk
-       +----[*]------> k_i    "What do I contain?"
+       +----[*]------> k_i    "我包含什么？"
        |
        |     Wv
-       +----[*]------> v_i    "What do I offer?"
+       +----[*]------> v_i    "我提供什么？"
 ```
 
-### The Attention Matrix
+### 注意力矩阵
 
-Once you have Q, K, V for all tokens, attention scores form a matrix:
+一旦你有了所有 token 的 Q、K、V，注意力分数就构成一个矩阵：
 
 ```
 Scores = Q @ K^T    shape: (n, n)
 
               k1    k2    k3    k4    k5
         +-----+-----+-----+-----+-----+
-   q1   | 2.1 | 0.3 | 0.1 | 0.8 | 0.2 |   <- how much q1 attends to each key
+   q1   | 2.1 | 0.3 | 0.1 | 0.8 | 0.2 |   <- q1 对每个 key 关注多少
         +-----+-----+-----+-----+-----+
    q2   | 0.4 | 1.9 | 0.7 | 0.1 | 0.3 |
         +-----+-----+-----+-----+-----+
@@ -98,45 +98,45 @@ Scores = Q @ K^T    shape: (n, n)
    q5   | 0.1 | 0.3 | 0.2 | 0.5 | 2.0 |
         +-----+-----+-----+-----+-----+
 
-Each row: one token's attention over the entire sequence
+每一行：一个 token 对整个序列的注意力
 ```
 
-### Why Scale?
+### 为什么要缩放？
 
-The dot products grow with dimension dk. If dk = 64, dot products can be in the range of tens, pushing softmax into regions where gradients vanish. The fix: divide by sqrt(dk).
+点积随维度 dk 增大。如果 dk = 64，点积可能落在几十的量级，把 softmax 推进梯度消失的区域。修法是：除以 sqrt(dk)。
 
 ```
 Scaled scores = (Q @ K^T) / sqrt(dk)
 ```
 
-This keeps values in a range where softmax produces useful gradients.
+这让数值保持在 softmax 能产生有用梯度的范围里。
 
-### Softmax Turns Scores into Weights
+### Softmax 把分数变成权重
 
-Softmax converts raw scores into a probability distribution across each row:
+softmax 把原始分数转成每一行上的一个概率分布：
 
 ```
-Raw scores for q1:   [2.1, 0.3, 0.1, 0.8, 0.2]
+q1 的原始分数：   [2.1, 0.3, 0.1, 0.8, 0.2]
                             |
                          softmax
                             |
-Attention weights:   [0.52, 0.09, 0.07, 0.14, 0.08]   (sums to ~1.0)
+注意力权重：      [0.52, 0.09, 0.07, 0.14, 0.08]   (和约等于 1.0)
 ```
 
-Now each token has a set of weights saying how much to attend to every other token.
+现在每个 token 都有一组权重，说明它该对其他每个 token 关注多少。
 
-### Weighted Sum of Values
+### value 的加权和
 
-The final output for each token is a weighted sum of all value vectors:
+每个 token 的最终输出是所有 value 向量的加权和：
 
 ```
 output_i = sum( attention_weight[i][j] * v_j  for all j )
 
-For token 1:
+对 token 1：
   output_1 = 0.52 * v1 + 0.09 * v2 + 0.07 * v3 + 0.14 * v4 + 0.08 * v5
 ```
 
-### Full Pipeline
+### 完整流水线
 
 ```
                     +-------+
@@ -158,17 +158,17 @@ For token 1:
                               +-----------------+
 ```
 
-Formula in one line:
+一行公式：
 
 ```
 Attention(Q, K, V) = softmax( Q @ K^T / sqrt(dk) ) @ V
 ```
 
-## Build It
+## 动手构建
 
-### Step 1: Softmax from scratch
+### 第 1 步：从零写 softmax
 
-Softmax converts raw logits into probabilities. Subtract the max for numerical stability.
+softmax 把原始 logits 转成概率。减去最大值是为了数值稳定。
 
 ```python
 import numpy as np
@@ -184,9 +184,9 @@ print(f"softmax: {softmax(logits)}")
 print(f"sum:     {softmax(logits).sum():.4f}")
 ```
 
-### Step 2: Scaled dot-product attention
+### 第 2 步：缩放点积注意力
 
-The core function. Takes Q, K, V matrices and returns the attention output plus the weight matrix.
+核心函数。接收 Q、K、V 矩阵，返回注意力输出加权重矩阵。
 
 ```python
 def scaled_dot_product_attention(Q, K, V):
@@ -197,9 +197,9 @@ def scaled_dot_product_attention(Q, K, V):
     return output, weights
 ```
 
-### Step 3: Self-attention class with learned projections
+### 第 3 步：带可学习投影的 self-attention 类
 
-A full self-attention module with Wq, Wk, Wv weight matrices initialized with Xavier-like scaling.
+一个完整的 self-attention 模块，Wq、Wk、Wv 权重矩阵用类似 Xavier 的缩放初始化。
 
 ```python
 class SelfAttention:
@@ -220,9 +220,9 @@ class SelfAttention:
         return output, weights
 ```
 
-### Step 4: Run it on a sentence
+### 第 4 步：在一个句子上跑起来
 
-Create fake embeddings for a sentence and watch the attention weights.
+为一个句子造假的嵌入，观察注意力权重。
 
 ```python
 sentence = ["The", "cat", "sat", "on", "the", "mat"]
@@ -251,9 +251,9 @@ for i, token in enumerate(sentence):
     print()
 ```
 
-### Step 5: Visualize attention with ASCII heatmap
+### 第 5 步：用 ASCII 热力图把注意力可视化
 
-Map attention weights to characters for a quick visual.
+把注意力权重映射成字符，快速看个直观效果。
 
 ```python
 def ascii_heatmap(weights, tokens, chars=" ░▒▓█"):
@@ -274,9 +274,9 @@ def ascii_heatmap(weights, tokens, chars=" ░▒▓█"):
 ascii_heatmap(weights, sentence)
 ```
 
-## Use It
+## 上手使用
 
-PyTorch's `nn.MultiheadAttention` does exactly what we built, plus multi-head splitting and output projection:
+PyTorch 的 `nn.MultiheadAttention` 做的正是我们刚搭的东西，外加多头拆分和输出投影：
 
 ```python
 import torch
@@ -299,33 +299,33 @@ print(f"\nAttn weights (averaged over heads):")
 print(attn_weights[0].detach().numpy().round(3))
 ```
 
-The key difference: multi-head attention runs multiple attention functions in parallel, each with its own Q, K, V projections of size dk = d_model / n_heads, then concatenates results. This lets the model attend to different relationship types simultaneously.
+关键区别：multi-head attention 并行跑多个注意力函数，每个有自己的、大小为 dk = d_model / n_heads 的 Q、K、V 投影，然后拼接结果。这让模型能同时关注不同类型的关系。
 
-## Ship It
+## 交付
 
-This lesson produces:
-- `outputs/prompt-attention-explainer.md` - a prompt for explaining attention through the database lookup analogy
+这节课产出：
+- `outputs/prompt-attention-explainer.md` —— 一个通过数据库查找类比来讲解注意力的 prompt
 
-## Exercises
+## 练习
 
-1. Modify `scaled_dot_product_attention` to accept an optional mask matrix that sets certain positions to negative infinity before softmax (this is how causal/decoder masking works)
-2. Implement multi-head attention from scratch: split Q, K, V into `n_heads` chunks, run attention on each, concatenate, and project through a final weight matrix Wo
-3. Take two different sentences of the same length, feed them through the same SelfAttention instance, and compare their attention patterns. What changes? What stays the same?
+1. 修改 `scaled_dot_product_attention`，让它接受一个可选的掩码矩阵，在 softmax 之前把某些位置置为负无穷（这就是因果/解码器掩码的工作方式）
+2. 从零实现 multi-head attention：把 Q、K、V 切成 `n_heads` 块，在每块上跑注意力，拼接，再经过一个最终权重矩阵 Wo 投影
+3. 取两个长度相同但不同的句子，喂进同一个 SelfAttention 实例，对比它们的注意力模式。什么变了？什么没变？
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 实际是什么意思 |
 |------|----------------|----------------------|
-| Query (Q) | "The question vector" | A learned projection of the input that represents what information this token is looking for |
-| Key (K) | "The label vector" | A learned projection that represents what information this token contains, matched against queries |
-| Value (V) | "The content vector" | A learned projection carrying the actual information that gets aggregated based on attention scores |
-| Scaled dot-product attention | "The attention formula" | softmax(QK^T / sqrt(dk)) @ V - scaling prevents softmax saturation in high dimensions |
-| Self-attention | "The token looks at itself and others" | Attention where Q, K, V all come from the same sequence, letting every position attend to every other position |
-| Attention weights | "How much focus" | A probability distribution over positions, produced by softmax over scaled dot products |
-| Multi-head attention | "Parallel attention" | Running multiple attention functions with different projections, then concatenating results for richer representations |
+| Query (Q) | "提问向量" | 输入的一个可学习投影，表示这个 token 在找什么信息 |
+| Key (K) | "标签向量" | 一个可学习投影，表示这个 token 包含什么信息，用来和 query 匹配 |
+| Value (V) | "内容向量" | 一个可学习投影，携带真正的信息，根据注意力分数被聚合 |
+| 缩放点积注意力 | "注意力公式" | softmax(QK^T / sqrt(dk)) @ V —— 缩放防止高维下 softmax 饱和 |
+| Self-attention | "token 看自己也看别人" | Q、K、V 都来自同一序列的注意力，让每个位置都能关注其他每个位置 |
+| 注意力权重 | "关注多少" | 位置上的一个概率分布，由对缩放点积做 softmax 得到 |
+| Multi-head attention | "并行注意力" | 用不同投影跑多个注意力函数，再拼接结果，得到更丰富的表示 |
 
-## Further Reading
+## 延伸阅读
 
-- [Attention Is All You Need (Vaswani et al., 2017)](https://arxiv.org/abs/1706.03762) - the original transformer paper
-- [The Illustrated Transformer (Jay Alammar)](https://jalammar.github.io/illustrated-transformer/) - best visual walkthrough of the full architecture
-- [The Annotated Transformer (Harvard NLP)](https://nlp.seas.harvard.edu/annotated-transformer/) - line-by-line PyTorch implementation with explanations
+- [Attention Is All You Need (Vaswani et al., 2017)](https://arxiv.org/abs/1706.03762) —— 最初的 transformer 论文
+- [The Illustrated Transformer (Jay Alammar)](https://jalammar.github.io/illustrated-transformer/) —— 对整个架构最好的图解
+- [The Annotated Transformer (Harvard NLP)](https://nlp.seas.harvard.edu/annotated-transformer/) —— 逐行 PyTorch 实现并附讲解

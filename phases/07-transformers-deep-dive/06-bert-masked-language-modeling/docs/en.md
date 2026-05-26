@@ -1,83 +1,83 @@
-# BERT — Masked Language Modeling
+# BERT —— 掩码语言建模
 
-> GPT predicts the next word. BERT predicts a missing word. One sentence of difference — and half a decade of everything embedding-shaped.
+> GPT 预测下一个词。BERT 预测缺失的词。一句话的差别——撑起了之后五年里所有和 embedding 沾边的东西。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 7 · 05 (Full Transformer), Phase 5 · 02 (Text Representation)
-**Time:** ~45 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 阶段 7 · 05（完整的 Transformer）、阶段 5 · 02（文本表示）
+**预计时间：** ~45 分钟
 
-## The Problem
+## 问题所在
 
-In 2018 every NLP task — sentiment, NER, QA, entailment — trained its own model from scratch on its own labeled data. There was no pre-trained "understand English" checkpoint you could fine-tune. ELMo (2018) showed you could pre-train contextual embeddings with a bidirectional LSTM; it helped but did not generalize.
+2018 年，每个 NLP 任务——情感、NER、问答、蕴含——都在自己的标注数据上从零训练自己的模型。没有一个预训练好的"懂英语"的 checkpoint 供你微调。ELMo（2018）证明你可以用双向 LSTM 预训练上下文嵌入；它有帮助，但没法泛化。
 
-BERT (Devlin et al. 2018) asked: what if we took a transformer encoder, trained it on every sentence on the internet, and forced it to predict missing words from context on both sides? Then you fine-tune one head on your downstream task. Parameter efficiency was a revelation.
+BERT（Devlin et al. 2018）问了一个问题：如果我们拿一个 transformer 编码器，在互联网上每个句子上训练它，逼它根据两侧的上下文预测缺失的词，会怎样？然后你在下游任务上微调一个头。参数效率是一次启示。
 
-The result: within 18 months BERT and its variants (RoBERTa, ALBERT, ELECTRA) dominated every NLP leaderboard that existed. By 2020 every search engine, content moderation pipeline, and semantic-search system on earth had a BERT inside.
+结果是：18 个月内，BERT 及其变体（RoBERTa、ALBERT、ELECTRA）横扫了当时存在的每一个 NLP 排行榜。到 2020 年，地球上每个搜索引擎、内容审核流水线、语义搜索系统里都装着一个 BERT。
 
-In 2026 encoder-only models are still the right tool for classification, retrieval, and structured extraction — they run 5–10× faster per token than decoders and their embeddings are the backbone of every modern retrieval stack. ModernBERT (Dec 2024) pushed the architecture to 8K context with Flash Attention + RoPE + GeGLU.
+2026 年，纯编码器模型仍然是分类、检索和结构化抽取的正确工具——它们每 token 跑得比解码器快 5–10 倍，而且它们的嵌入是每个现代检索栈的脊梁。ModernBERT（2024 年 12 月）用 Flash Attention + RoPE + GeGLU 把这个架构推到了 8K 上下文。
 
-## The Concept
+## 核心概念
 
-![Masked language modeling: pick tokens, mask them, predict originals](../assets/bert-mlm.svg)
+![掩码语言建模：挑 token、掩掉、预测原词](../assets/bert-mlm.svg)
 
-### The training signal
+### 训练信号
 
-Take a sentence: `the quick brown fox jumps over the lazy dog`.
+取一个句子：`the quick brown fox jumps over the lazy dog`。
 
-Mask 15% of tokens randomly:
+随机掩掉 15% 的 token：
 
 ```
 input:  the [MASK] brown fox jumps [MASK] the lazy dog
 target: the  quick brown fox jumps  over  the lazy dog
 ```
 
-Train the model to predict the original tokens at masked positions. Because the encoder is bidirectional, predicting `[MASK]` at position 1 can use `brown fox jumps` at positions 2+. That is the thing GPT cannot do.
+训练模型在被掩位置预测原始 token。因为编码器是双向的，预测位置 1 的 `[MASK]` 可以用上位置 2 及之后的 `brown fox jumps`。这正是 GPT 做不到的事。
 
-### The BERT mask rules
+### BERT 的掩码规则
 
-Of the 15% of tokens selected for prediction:
+在被选中预测的那 15% token 里：
 
-- 80% are replaced with `[MASK]`.
-- 10% are replaced with a random token.
-- 10% are left unchanged.
+- 80% 被换成 `[MASK]`。
+- 10% 被换成一个随机 token。
+- 10% 保持不变。
 
-Why not always `[MASK]`? Because `[MASK]` never appears at inference time. Training the model to expect `[MASK]` at 100% of masked positions would create a distribution shift between pretraining and fine-tuning. The 10% random + 10% unchanged keeps the model honest.
+为什么不总是 `[MASK]`？因为 `[MASK]` 在推理时从不出现。训练模型在 100% 的被掩位置都期待 `[MASK]`，会在预训练和微调之间制造分布偏移。10% 随机 + 10% 不变让模型保持诚实。
 
-### Next Sentence Prediction (NSP) — and why it was dropped
+### Next Sentence Prediction（NSP）——以及它为什么被砍了
 
-Original BERT also trained on NSP: given two sentences A and B, predict if B follows A. RoBERTa (2019) ablated it and showed NSP hurt, not helped. Modern encoders skip it.
+最初的 BERT 还训练了 NSP：给两个句子 A 和 B，预测 B 是否跟在 A 后面。RoBERTa（2019）把它消融了，证明 NSP 帮倒忙，不是帮忙。现代编码器跳过它。
 
-### What changed in 2026: ModernBERT
+### 2026 年变了什么：ModernBERT
 
-The 2024 ModernBERT paper rebuilt the block with 2026 primitives:
+2024 年的 ModernBERT 论文用 2026 年的原语重建了这个 block：
 
-| Component | Original BERT (2018) | ModernBERT (2024) |
+| 组件 | 原始 BERT（2018） | ModernBERT（2024） |
 |-----------|----------------------|-------------------|
-| Positional | Learned absolute | RoPE |
-| Activation | GELU | GeGLU |
-| Normalization | LayerNorm | Pre-norm RMSNorm |
-| Attention | Full dense | Alternating local (128) + global |
-| Context length | 512 | 8192 |
-| Tokenizer | WordPiece | BPE |
+| 位置 | 学习式绝对位置 | RoPE |
+| 激活 | GELU | GeGLU |
+| 归一化 | LayerNorm | Pre-norm RMSNorm |
+| 注意力 | 完整稠密 | 交替的局部（128）+ 全局 |
+| 上下文长度 | 512 | 8192 |
+| 分词器 | WordPiece | BPE |
 
-And unlike the 2018 stack, it is Flash-Attention-native. Inference is 2–3× faster at sequence length 8K than DeBERTa-v3 with better GLUE scores.
+而且不像 2018 年的栈，它是 Flash-Attention 原生的。在序列长度 8K 时，推理比 DeBERTa-v3 快 2–3 倍，GLUE 分数还更高。
 
-### Use cases that still pick an encoder in 2026
+### 2026 年仍然选编码器的用例
 
-| Task | Why encoder beats decoder |
+| 任务 | 为什么编码器胜过解码器 |
 |------|---------------------------|
-| Retrieval / semantic search embeddings | Bidirectional context = better embedding quality per token |
-| Classification (sentiment, intent, toxicity) | One forward pass; no generation overhead |
-| NER / token labeling | Per-position output, natively bidirectional |
-| Zero-shot entailment (NLI) | Classifier head on top of encoder |
-| Reranker for RAG | Cross-encoder scoring, 10x faster than LLM rerankers |
+| 检索 / 语义搜索嵌入 | 双向上下文 = 每 token 更好的嵌入质量 |
+| 分类（情感、意图、毒性） | 一次前向；无生成开销 |
+| NER / token 标注 | 逐位置输出，原生双向 |
+| 零样本蕴含（NLI） | 编码器之上加分类头 |
+| RAG 的重排器 | 交叉编码器打分，比 LLM 重排器快 10 倍 |
 
-## Build It
+## 动手构建
 
-### Step 1: masking logic
+### 第 1 步：掩码逻辑
 
-See `code/main.py`. The function `create_mlm_batch` takes a list of token IDs, a vocab size, and a mask probability. Returns input IDs (with masks applied) and labels (only at masked positions, -100 elsewhere — PyTorch's ignore index convention).
+见 `code/main.py`。函数 `create_mlm_batch` 接收一个 token ID 列表、词表大小和掩码概率。返回输入 ID（已应用掩码）和标签（只在被掩位置，其余处为 -100——PyTorch 的 ignore index 约定）。
 
 ```python
 def create_mlm_batch(tokens, vocab_size, mask_prob=0.15, rng=None):
@@ -91,23 +91,23 @@ def create_mlm_batch(tokens, vocab_size, mask_prob=0.15, rng=None):
                 input_ids[i] = MASK_ID
             elif r < 0.9:
                 input_ids[i] = rng.randrange(vocab_size)
-            # else: keep original
+            # else: 保持原样
     return input_ids, labels
 ```
 
-### Step 2: run MLM prediction on a tiny corpus
+### 第 2 步：在一个微型语料上跑 MLM 预测
 
-Train a 2-layer encoder + MLM head on a vocabulary of 20 words, 200 sentences. No gradient — we do forward-pass sanity checks. Full training needs PyTorch.
+在一个 20 个词的词表、200 个句子上训练一个 2 层编码器 + MLM 头。不算梯度——我们做前向通过的健全性检查。完整训练需要 PyTorch。
 
-### Step 3: compare mask types
+### 第 3 步：对比掩码类型
 
-Show how the three-way rule keeps the model usable without `[MASK]`. Predict on an unmasked sentence and on a masked sentence. Both should produce reasonable token distributions because the model saw both patterns in training.
+展示三分规则如何让模型在没有 `[MASK]` 的情况下仍然可用。在一个未掩的句子和一个被掩的句子上预测。两者都应产生合理的 token 分布，因为模型在训练时见过这两种模式。
 
-### Step 4: fine-tune head
+### 第 4 步：微调头
 
-Replace the MLM head with a classification head on a toy sentiment dataset. Only the head trains; the encoder is frozen. This is the pattern every BERT application follows.
+在一个玩具情感数据集上，把 MLM 头换成分类头。只有头在训练；编码器冻结。这是每个 BERT 应用遵循的范式。
 
-## Use It
+## 上手使用
 
 ```python
 from transformers import AutoModel, AutoTokenizer
@@ -120,39 +120,39 @@ inputs = tok(text, return_tensors="pt")
 out = model(**inputs).last_hidden_state   # (1, N, 768)
 ```
 
-**Embedding models are fine-tuned BERT.** `sentence-transformers` models like `all-MiniLM-L6-v2` are BERTs trained with contrastive loss. The encoder is the same. The loss changed.
+**嵌入模型就是微调过的 BERT。** 像 `all-MiniLM-L6-v2` 这样的 `sentence-transformers` 模型是用对比损失训练的 BERT。编码器一样，变的是损失。
 
-**Cross-encoder rerankers are also fine-tuned BERT.** Pair-classification on `[CLS] query [SEP] doc [SEP]`. The bidirectional attention between query and doc is exactly what gives cross-encoders their quality edge over biencoders.
+**交叉编码器重排器也是微调过的 BERT。** 在 `[CLS] query [SEP] doc [SEP]` 上做配对分类。query 和 doc 之间的双向注意力，正是交叉编码器相比双编码器质量更高的来源。
 
-**When not to pick BERT in 2026.** Anything generative. The encoder has no sensible way to autoregressively produce tokens. Also: anything under 1B params where a small decoder can match quality with more flexibility (Phi-3-Mini, Qwen2-1.5B).
+**2026 年什么时候别选 BERT。** 任何生成式任务。编码器没有合理的方式自回归地产出 token。还有：任何 1B 参数以下、用一个小解码器就能以更高灵活性匹配质量的场景（Phi-3-Mini、Qwen2-1.5B）。
 
-## Ship It
+## 交付
 
-See `outputs/skill-bert-finetuner.md`. The skill scopes a BERT fine-tune (backbone choice, head spec, data, eval, stopping) for a new classification or extraction task.
+见 `outputs/skill-bert-finetuner.md`。这个 skill 为一个新的分类或抽取任务规划一次 BERT 微调（骨干选择、头规格、数据、评测、停止条件）。
 
-## Exercises
+## 练习
 
-1. **Easy.** Run `code/main.py` and print the mask distribution across 10,000 tokens. Confirm ~15% are selected, and of those ~80% become `[MASK]`.
-2. **Medium.** Implement whole-word masking: if a word is tokenized into subwords, mask all subwords together or none. Measure whether this improves MLM accuracy on a 500-sentence corpus.
-3. **Hard.** Train a tiny (2-layer, d=64) BERT on 10,000 sentences from a public dataset. Fine-tune the `[CLS]` token for SST-2 sentiment. Compare against a decoder-only baseline at matched params — which wins?
+1. **简单。** 跑 `code/main.py`，打印 10,000 个 token 上的掩码分布。确认约 15% 被选中，其中约 80% 变成 `[MASK]`。
+2. **中等。** 实现整词掩码：如果一个词被分成多个子词，要么把所有子词一起掩掉，要么都不掩。在一个 500 句的语料上测一测这是否提升 MLM 准确率。
+3. **困难。** 在一个公开数据集的 10,000 个句子上训练一个极小（2 层，d=64）的 BERT。为 SST-2 情感微调 `[CLS]` token。在同等参数下和一个纯解码器基线对比——谁赢？
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 实际是什么意思 |
 |------|-----------------|-----------------------|
-| MLM | "Masked language modeling" | Training signal: randomly replace 15% of tokens with `[MASK]`, predict the originals. |
-| Bidirectional | "Looks both ways" | Encoder attention has no causal mask — every position sees every other position. |
-| `[CLS]` | "The pooler token" | A special token prepended to every sequence; its final embedding is used as the sentence-level representation. |
-| `[SEP]` | "Segment separator" | Separates paired sequences (e.g. query/doc, sentence A/B). |
-| NSP | "Next sentence prediction" | BERT's second pretraining task; shown to be useless in RoBERTa, dropped after 2019. |
-| Fine-tuning | "Adapt to a task" | Keep the encoder mostly frozen; train a small head on top for the downstream task. |
-| Cross-encoder | "A reranker" | A BERT that takes both query and doc as input, outputs a relevance score. |
-| ModernBERT | "2024 refresh" | Encoder rebuilt with RoPE, RMSNorm, GeGLU, alternating local/global attention, 8K context. |
+| MLM | "掩码语言建模" | 训练信号：随机把 15% 的 token 换成 `[MASK]`，预测原词。 |
+| 双向 | "两边都看" | 编码器注意力没有因果掩码——每个位置都看到其他每个位置。 |
+| `[CLS]` | "池化 token" | 加在每个序列前的特殊 token；它的最终嵌入用作句子级表示。 |
+| `[SEP]` | "段分隔符" | 分隔配对序列（如 query/doc、句子 A/B）。 |
+| NSP | "下一句预测" | BERT 的第二个预训练任务；RoBERTa 证明它没用，2019 年后被砍。 |
+| 微调 | "适配到任务" | 编码器大体冻结；在上面训一个小头做下游任务。 |
+| 交叉编码器 | "一个重排器" | 把 query 和 doc 都作为输入、输出相关性分数的 BERT。 |
+| ModernBERT | "2024 年翻新" | 用 RoPE、RMSNorm、GeGLU、交替的局部/全局注意力、8K 上下文重建的编码器。 |
 
-## Further Reading
+## 延伸阅读
 
-- [Devlin et al. (2018). BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805) — original paper.
-- [Liu et al. (2019). RoBERTa: A Robustly Optimized BERT Pretraining Approach](https://arxiv.org/abs/1907.11692) — how to train BERT right; kills NSP.
-- [Clark et al. (2020). ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators](https://arxiv.org/abs/2003.10555) — replaced-token detection beats MLM at matched compute.
-- [Warner et al. (2024). Smarter, Better, Faster, Longer: A Modern Bidirectional Encoder](https://arxiv.org/abs/2412.13663) — ModernBERT paper.
-- [HuggingFace `modeling_bert.py`](https://github.com/huggingface/transformers/blob/main/src/transformers/models/bert/modeling_bert.py) — canonical encoder reference.
+- [Devlin et al. (2018). BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805) —— 原始论文。
+- [Liu et al. (2019). RoBERTa: A Robustly Optimized BERT Pretraining Approach](https://arxiv.org/abs/1907.11692) —— 怎么把 BERT 训对；干掉了 NSP。
+- [Clark et al. (2020). ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators](https://arxiv.org/abs/2003.10555) —— 在同等算力下，替换 token 检测胜过 MLM。
+- [Warner et al. (2024). Smarter, Better, Faster, Longer: A Modern Bidirectional Encoder](https://arxiv.org/abs/2412.13663) —— ModernBERT 论文。
+- [HuggingFace `modeling_bert.py`](https://github.com/huggingface/transformers/blob/main/src/transformers/models/bert/modeling_bert.py) —— 规范的编码器参考。

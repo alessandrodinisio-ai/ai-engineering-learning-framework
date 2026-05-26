@@ -1,110 +1,110 @@
-# TensorRT-LLM on Blackwell with FP8 and NVFP4
+# Blackwell 上的 TensorRT-LLM，搭配 FP8 与 NVFP4
 
-> TensorRT-LLM is NVIDIA-only but it wins on Blackwell. On GB200 NVL72 with Dynamo orchestration, SemiAnalysis InferenceX measured $0.012 per million tokens on a 120B model in Q1-Q2 2026, against $0.09/M on H100 + vLLM — a 7x economic gap. The stack is three floating-point regimes compounded: FP8 stays critical for KV cache and attention kernels because it has the dynamic range they need; NVFP4 (4-bit microscaling) handles weights and activations; multi-token prediction (MTP) and disaggregated prefill/decode add another 2-3x on top. Day-0 model support loads FP4 weights directly without post-training conversion. The catch for 2026 engineering teams: TRT-LLM is a closed NVIDIA stack, so adopting it trades portability for throughput. Run the math on your mix of models and hardware before committing.
+> TensorRT-LLM 只跑 NVIDIA，但它在 Blackwell 上赢。在带 Dynamo 编排的 GB200 NVL72 上，SemiAnalysis InferenceX 在 2026 年第一、二季度测得一个 120B 模型每百万 token 0.012 美元，对比 H100 + vLLM 的 $0.09/M —— 7 倍的经济差距。这套栈是三种浮点制度的叠加：FP8 对 KV cache 和注意力 kernel 仍然关键，因为它们需要 FP8 那种动态范围；NVFP4（4 比特微缩放）处理权重和激活；多 token 预测（MTP）和分离式 prefill/decode 又在上面叠了 2-3 倍。Day-0 模型支持直接加载 FP4 权重，不用训练后转换。2026 年工程团队的陷阱在于：TRT-LLM 是封闭的 NVIDIA 栈，所以采用它是拿可移植性换吞吐。在押注之前，对你那套模型和硬件的组合算一算账。
 
-**Type:** Learn
-**Languages:** Python (stdlib, toy FP8/NVFP4 memory and cost calculator)
-**Prerequisites:** Phase 17 · 04 (vLLM Serving Internals), Phase 10 · 13 (Quantization)
-**Time:** ~75 minutes
+**类型：** Learn
+**语言：** Python（标准库，一个玩具级 FP8/NVFP4 内存与成本计算器）
+**前置要求：** 阶段 17 · 04（vLLM 服务内部机制）、阶段 10 · 13（量化）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Explain why FP8 stays critical for KV cache and attention even when weights are in NVFP4.
-- Compute the HBM footprint of a frontier model under BF16, FP8, and NVFP4 and reason about where the savings come from.
-- Name the Blackwell-specific features TRT-LLM exploits (day-0 FP4, MTP, disaggregated serving, all-to-all primitives).
-- Decide when TRT-LLM's NVIDIA-lock is worth the 7x cost gap vs vLLM on Hopper.
+- 解释为什么即使权重是 NVFP4，FP8 对 KV cache 和注意力仍然关键。
+- 算出一个前沿模型在 BF16、FP8、NVFP4 下的 HBM 占用，并推理节省从哪来。
+- 说出 TRT-LLM 利用的 Blackwell 特有特性（day-0 FP4、MTP、分离式服务、all-to-all 原语）。
+- 判断 TRT-LLM 的 NVIDIA 锁定何时值得相对 Hopper 上 vLLM 的 7 倍成本差距。
 
-## The Problem
+## 问题所在
 
-The frontier of inference economics in 2026 is "how many tokens per dollar". The answer depends on four stacked choices: hardware generation (Hopper H100/H200 vs Blackwell B200/GB200), precision (BF16 → FP8 → NVFP4), serving engine (vLLM vs SGLang vs TRT-LLM), and orchestration (plain vs disaggregated vs Dynamo).
+2026 年推理经济学的前沿是"每美元多少 token"。答案取决于四个叠加的选择：硬件代际（Hopper H100/H200 vs Blackwell B200/GB200）、精度（BF16 → FP8 → NVFP4）、服务引擎（vLLM vs SGLang vs TRT-LLM）、编排（朴素 vs 分离式 vs Dynamo）。
 
-On Hopper with vLLM, a 120B MoE runs at ~$0.09 per million tokens. On Blackwell with TRT-LLM + Dynamo, the same model runs at ~$0.012 — 7x cheaper. Some of that gap is hardware (Blackwell is 11-15x per-GPU LLM throughput vs Hopper). Some is the stack: FP4 weights, MTP draft, disaggregated prefill/decode, and NVLink 5 all-to-all for MoE expert communication.
+在 Hopper 上用 vLLM，一个 120B MoE 跑到约每百万 token $0.09。在 Blackwell 上用 TRT-LLM + Dynamo，同一个模型跑到约 $0.012 —— 便宜 7 倍。这差距一部分来自硬件（Blackwell 单 GPU LLM 吞吐是 Hopper 的 11-15 倍）。一部分来自栈：FP4 权重、MTP 草稿、分离式 prefill/decode，以及给 MoE 专家通信用的 NVLink 5 all-to-all。
 
-You cannot replicate this outside NVIDIA's stack. That is the tradeoff — portability for economics. Understanding which stack choices give which share of the gap is the point of this lesson.
+你没法在 NVIDIA 栈之外复制这个。这就是权衡 —— 拿可移植性换经济性。理解哪些栈的选择贡献了这差距的哪一份，正是这一课的要点。
 
-## The Concept
+## 核心概念
 
-### Why FP8 is still the floor for KV cache
+### 为什么 FP8 仍是 KV cache 的底线
 
-A common mistake in 2026: assuming NVFP4 applies everywhere. It does not. KV cache needs FP8 (8-bit floating point) because it stores attention keys and values that span a wide dynamic range. Quantizing KV to FP4 causes catastrophic accuracy loss — the tail of the distribution drops off and attention scores collapse. FP8's exponent bits give KV cache the range it needs.
+2026 年一个常见错误：以为 NVFP4 处处适用。它不是。KV cache 需要 FP8（8 比特浮点），因为它存的注意力 key 和 value 跨越很宽的动态范围。把 KV 量化到 FP4 会导致灾难性的精度损失 —— 分布的尾巴掉没了，注意力分数崩塌。FP8 的指数位给了 KV cache 它需要的范围。
 
-NVFP4 (2025-2026) applies to weights and activations. Microscaling: each block of weights has its own scale factor so small blocks can span different dynamic ranges without per-tensor scale loss. For activations, FP4 holds up because activations are small-range within a layer.
+NVFP4（2025-2026）用于权重和激活。微缩放：每一 block 权重有自己的缩放因子，于是小 block 能跨越不同动态范围，不必承受按张量缩放的损失。对激活，FP4 顶得住，因为一层内激活的范围小。
 
-The typical Blackwell config:
+典型的 Blackwell 配置：
 
-- Weights: NVFP4 (4-bit microscaling).
-- Activations: NVFP4.
-- KV cache: FP8.
-- Attention accumulator: FP32 (softmax stability).
+- 权重：NVFP4（4 比特微缩放）。
+- 激活：NVFP4。
+- KV cache：FP8。
+- 注意力累加器：FP32（softmax 稳定性）。
 
-### The Blackwell-specific primitives TRT-LLM uses
+### TRT-LLM 用的 Blackwell 特有原语
 
-- **Day-0 FP4 weights**: model providers ship FP4 weights directly; TRT-LLM loads without post-training conversion. No AWQ / GPTQ step for FP4.
-- **Multi-token prediction (MTP)**: same idea as EAGLE (Phase 17 · 05) but integrated into the TRT-LLM build.
-- **Disaggregated serving**: prefill and decode on separate GPU pools, KV cache transferred over NVLink or InfiniBand. Same idea as Dynamo (Phase 17 · 20).
-- **All-to-all communication primitives**: NVLink 5 cut MoE expert communication latency by 3x vs Hopper. TRT-LLM's MoE kernels are tuned for this.
-- **NVFP4 + MXFP8 microscaling**: hardware-accelerated scale-factor handling on Blackwell Tensor Cores.
+- **Day-0 FP4 权重**：模型提供方直接发 FP4 权重；TRT-LLM 不用训练后转换就能加载。FP4 不需要 AWQ / GPTQ 这一步。
+- **多 token 预测（MTP）**：和 EAGLE（阶段 17 · 05）一个思路，但集成进了 TRT-LLM 的 build。
+- **分离式服务**：prefill 和 decode 在分开的 GPU 池上，KV cache 经 NVLink 或 InfiniBand 传输。和 Dynamo（阶段 17 · 20）一个思路。
+- **all-to-all 通信原语**：NVLink 5 把 MoE 专家通信延迟相比 Hopper 砍了 3 倍。TRT-LLM 的 MoE kernel 为此调优。
+- **NVFP4 + MXFP8 微缩放**：Blackwell Tensor Core 上硬件加速的缩放因子处理。
 
-### The numbers you should memorize
+### 你该背下来的数字
 
-- HGX B200 at $0.02/M tokens on GPT-OSS-120B via TRT-LLM.
-- GB200 NVL72 at $0.012/M tokens via Dynamo (orchestrating TRT-LLM).
-- H100 + vLLM ≈ $0.09/M tokens on comparable workload.
-- 2.8x throughput gain in three months of TRT-LLM updates (2026).
-- 11-15x per-GPU LLM throughput, Blackwell vs Hopper.
-- MLPerf Inference v6.0 (April 2026): Blackwell dominates every submitted task.
+- HGX B200 通过 TRT-LLM 在 GPT-OSS-120B 上每百万 token $0.02。
+- GB200 NVL72 通过 Dynamo（编排 TRT-LLM）每百万 token $0.012。
+- H100 + vLLM 在可比工作负载上 ≈ 每百万 token $0.09。
+- TRT-LLM 三个月更新带来 2.8 倍吞吐提升（2026）。
+- 单 GPU LLM 吞吐，Blackwell vs Hopper 为 11-15 倍。
+- MLPerf Inference v6.0（2026 年 4 月）：Blackwell 在每一个提交的任务上都碾压。
 
-### What FP4 actually costs in quality
+### FP4 实际在质量上的代价
 
-NVFP4 is aggressive. On reasoning-heavy workloads (chain-of-thought, math, code-gen with long context), FP4 weights degrade visibly. Per-block calibration mitigates but does not eliminate. Teams shipping reasoning models often use FP8 weights + FP4 activations as a compromise, or stick to H200 with FP8 throughout.
+NVFP4 很激进。在推理重的工作负载上（思维链、数学、带长上下文的代码生成），FP4 权重会肉眼可见地退化。按 block 校准能缓解但不能消除。交付推理模型的团队常用 FP8 权重 + FP4 激活作为折中，或者干脆全程留在 H200 + FP8 上。
 
-The rule: always validate task quality on your eval set before committing to NVFP4 weights.
+规律：在押注 NVFP4 权重之前，永远先在你的 eval 集上验证任务质量。
 
-### Why this is an NVIDIA-lock decision
+### 为什么这是个 NVIDIA 锁定的决策
 
-TRT-LLM is C++ + CUDA + closed-source kernels. Models need to be compiled for a specific GPU SKU. No AMD, no Intel, no ARM. If your infra strategy is multi-vendor, TRT-LLM is a non-starter for the TRT-LLM-served tier — you can still serve from vLLM on mixed hardware. If you are NVIDIA-only, the 7x gap pays for the lock.
+TRT-LLM 是 C++ + CUDA + 闭源 kernel。模型需要为特定 GPU SKU 编译。没有 AMD、没有 Intel、没有 ARM。如果你的基础设施策略是多厂商，那 TRT-LLM 对那一档 TRT-LLM 服务来说就不可行 —— 你仍然可以在混合硬件上用 vLLM 服务。如果你只用 NVIDIA，那 7 倍差距就为这份锁定买单。
 
-### 2026 practical recipe
+### 2026 年实战配方
 
-For a $100M+ annual inference bill, running on Hopper + vLLM leaves 7-10x on the table. Migrate cost-dominant workloads to Blackwell + TRT-LLM + Dynamo. Keep experimentation tier on H100 + vLLM for model iteration speed. Validate quality on each NVFP4-converted model before production.
+对一年 1 亿美元以上的推理账单，跑在 Hopper + vLLM 上等于把 7-10 倍留在桌上。把成本主导的工作负载迁到 Blackwell + TRT-LLM + Dynamo。为模型迭代速度，把实验档留在 H100 + vLLM。在每个 NVFP4 转换过的模型上线前验证质量。
 
-### The disaggregation bonus
+### 分离式的加成
 
-TRT-LLM's disaggregated serving (separate prefill and decode pools) is covered in depth in Phase 17 · 20. On Blackwell, the multiplier stacks: FP4 weights × MTP speedup × disaggregated placement × cache-aware routing. The 7x number assumes this full stack.
+TRT-LLM 的分离式服务（分开的 prefill 和 decode 池）在阶段 17 · 20 里深入讲。在 Blackwell 上，乘数叠加：FP4 权重 × MTP 加速 × 分离式放置 × 缓存感知路由。那个 7 倍数字假设的就是这整套栈。
 
-## Use It
+## 上手使用
 
-`code/main.py` computes HBM footprint, decode throughput (memory-bound regime), and $/M-tokens for a model across three stacks: H100 + BF16 + vLLM, H100 + FP8 + vLLM, B200 + NVFP4/FP8 + TRT-LLM. Run it to see the compounding effect and the share of the gap each change contributes.
+`code/main.py` 跨三套栈为一个模型算 HBM 占用、decode 吞吐（内存受限制度）和 $/M-token：H100 + BF16 + vLLM、H100 + FP8 + vLLM、B200 + NVFP4/FP8 + TRT-LLM。跑一下，看看叠加效应，以及每项改动贡献了差距的多少份。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-trtllm-blackwell-advisor.md`. Given a workload, model size, and annual token volume, it decides whether the Blackwell + TRT-LLM stack is worth the NVIDIA-lock.
+这一课产出 `outputs/skill-trtllm-blackwell-advisor.md`。给定一个工作负载、模型规模和年 token 量，它判断 Blackwell + TRT-LLM 这套栈是否值得 NVIDIA 锁定。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. On a 120B MoE with 30% active parameters, compute the memory-bandwidth-limited decode throughput on H100 BF16, H100 FP8, and B200 NVFP4/FP8. Where does the biggest jump come from?
-2. A customer spends $2M/year on H100 + vLLM. What is the break-even number of Blackwell GPUs they need to buy to amortize a migration to TRT-LLM in 12 months, given the 7x economic gap?
-3. You see accuracy drop 3 points on MATH after NVFP4 weight conversion. Name two recovery paths: one quality-first (keep FP8 weights), one cost-first (calibrate with in-domain data).
-4. Read the MLPerf v6.0 inference results. Which task has the smallest Blackwell-over-Hopper gap, and why?
-5. Compute the HBM needed for a 405B model at NVFP4 weights + FP8 KV cache at 128k context. Does it fit on a single GB200 NVL72 node?
+1. 跑 `code/main.py`。对一个 30% 激活参数的 120B MoE，算出 H100 BF16、H100 FP8、B200 NVFP4/FP8 上受内存带宽限制的 decode 吞吐。最大的跳跃来自哪？
+2. 一个客户每年在 H100 + vLLM 上花 200 万美元。给定 7 倍经济差距，他们要买多少块 Blackwell GPU 才能在 12 个月内摊平迁到 TRT-LLM 的成本，这个盈亏平衡数是多少？
+3. 你看到 NVFP4 权重转换后 MATH 上精度掉了 3 个点。说出两条恢复路径：一条质量优先（保留 FP8 权重），一条成本优先（用领域内数据校准）。
+4. 读 MLPerf v6.0 推理结果。哪个任务的 Blackwell 对 Hopper 的差距最小，为什么？
+5. 算一算一个 405B 模型在 NVFP4 权重 + FP8 KV cache、128k 上下文下需要的 HBM。它装得进单个 GB200 NVL72 节点吗？
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| FP8 | "eight-bit float" | 8-bit floating point; used for KV cache and attention due to dynamic range |
-| NVFP4 | "four-bit micro" | NVIDIA's 4-bit microscaling FP format; weights and activations on Blackwell |
-| MXFP8 | "MX eight" | Microscaling FP8 variant; hardware-accelerated on Blackwell Tensor Cores |
-| Day-0 FP4 | "ship FP4 weights" | Model providers release weights already in FP4; no post-train conversion step |
-| MTP | "multi-token prediction" | TRT-LLM's integrated speculative-decoding draft (Phase 17 · 05) |
-| Disaggregated serving | "split prefill/decode" | Prefill and decode on separate GPU pools; KV transferred over NVLink/IB |
-| All-to-all | "MoE expert comm" | Communication pattern routing tokens to expert GPUs; NVLink 5 cuts 3x |
-| InferenceX | "SemiAnalysis inference bench" | The 2026 industry-accepted cost-per-token benchmark |
+| FP8 | "八位浮点" | 8 比特浮点；因动态范围用于 KV cache 和注意力 |
+| NVFP4 | "四位微" | NVIDIA 的 4 比特微缩放 FP 格式；Blackwell 上用于权重和激活 |
+| MXFP8 | "MX 八" | 微缩放 FP8 变体；Blackwell Tensor Core 上硬件加速 |
+| Day-0 FP4 | "直接发 FP4 权重" | 模型提供方发布的权重已是 FP4；无训练后转换步骤 |
+| MTP | "多 token 预测" | TRT-LLM 集成的 speculative decoding 草稿（阶段 17 · 05） |
+| 分离式服务 | "拆开 prefill/decode" | prefill 和 decode 在分开的 GPU 池；KV 经 NVLink/IB 传输 |
+| all-to-all | "MoE 专家通信" | 把 token 路由到专家 GPU 的通信模式；NVLink 5 砍 3 倍 |
+| InferenceX | "SemiAnalysis 推理基准" | 2026 年业界公认的每 token 成本基准 |
 
-## Further Reading
+## 延伸阅读
 
-- [NVIDIA — Blackwell Ultra MLPerf Inference v6.0](https://developer.nvidia.com/blog/nvidia-blackwell-ultra-sets-new-inference-records-in-mlperf-debut/) — April 2026 MLPerf results.
-- [NVIDIA — MoE Inference on Blackwell](https://developer.nvidia.com/blog/delivering-massive-performance-leaps-for-mixture-of-experts-inference-on-nvidia-blackwell/) — NVLink 5 all-to-all and MoE kernels.
-- [TensorRT-LLM Overview](https://nvidia.github.io/TensorRT-LLM/overview.html) — official engine documentation.
-- [NVIDIA — Introducing Dynamo](https://developer.nvidia.com/blog/introducing-nvidia-dynamo-a-low-latency-distributed-inference-framework-for-scaling-reasoning-ai-models/) — disaggregated orchestration above TRT-LLM.
-- [MLPerf Inference](https://mlcommons.org/benchmarks/inference-datacenter/) — the benchmark suite that publishes Blackwell numbers.
+- [NVIDIA — Blackwell Ultra MLPerf Inference v6.0](https://developer.nvidia.com/blog/nvidia-blackwell-ultra-sets-new-inference-records-in-mlperf-debut/) —— 2026 年 4 月 MLPerf 结果。
+- [NVIDIA — MoE Inference on Blackwell](https://developer.nvidia.com/blog/delivering-massive-performance-leaps-for-mixture-of-experts-inference-on-nvidia-blackwell/) —— NVLink 5 all-to-all 与 MoE kernel。
+- [TensorRT-LLM Overview](https://nvidia.github.io/TensorRT-LLM/overview.html) —— 官方引擎文档。
+- [NVIDIA — Introducing Dynamo](https://developer.nvidia.com/blog/introducing-nvidia-dynamo-a-low-latency-distributed-inference-framework-for-scaling-reasoning-ai-models/) —— TRT-LLM 之上的分离式编排。
+- [MLPerf Inference](https://mlcommons.org/benchmarks/inference-datacenter/) —— 发布 Blackwell 数字的基准套件。

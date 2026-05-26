@@ -1,37 +1,37 @@
-# Sequence-to-Sequence Models
+# 序列到序列模型
 
-> Two RNNs pretending to be a translator. The bottleneck they hit is the reason attention exists.
+> 两个 RNN 假扮翻译官。它们撞上的瓶颈，正是注意力存在的理由。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 5 · 08 (CNNs + RNNs for Text), Phase 3 · 11 (PyTorch Intro)
-**Time:** ~75 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** Phase 5 · 08（用于文本的 CNN + RNN）、Phase 3 · 11（PyTorch 入门）
+**预计时间：** ~75 分钟
 
-## The Problem
+## 问题所在
 
-Classification maps a variable-length sequence to a single label. Translation maps a variable-length sequence to another variable-length sequence. The input and output live in different vocabularies, possibly different languages, with no guarantee of length parity.
+分类把一个变长序列映射到单个标签。翻译把一个变长序列映射到另一个变长序列。输入和输出活在不同的词表里，可能是不同的语言，长度也不保证对等。
 
-The seq2seq architecture (Sutskever, Vinyals, Le, 2014) cracked this with a deliberately simple recipe. Two RNNs. One reads the source sentence and produces a fixed-size context vector. The other reads that vector and generates the target sentence token by token. Same code you wrote for lesson 08, glued together differently.
+seq2seq 架构（Sutskever、Vinyals、Le，2014）用一套刻意做得简单的配方破解了这个。两个 RNN。一个读源句子，产出一个定长上下文向量。另一个读这个向量，逐个 token 生成目标句子。和你在第 08 课写的是同样的代码，只是粘法不同。
 
-This is worth studying for two reasons. First, the context-vector bottleneck is the most pedagogically useful failure in NLP. It motivates everything attention and transformers are good at. Second, the training recipe (teacher forcing, scheduled sampling, beam search at inference) still applies to every modern generation system including LLMs.
+值得研究有两个理由。第一，上下文向量瓶颈是 NLP 里教学价值最高的一次翻车。它能解释注意力和 transformer 擅长的一切。第二，那套训练配方（teacher forcing、scheduled sampling、推理时的 beam search）至今仍适用于每个现代生成系统，包括 LLM。
 
-## The Concept
+## 核心概念
 
-**Encoder.** An RNN that reads the source sentence. Its final hidden state is the **context vector** — a fixed-size summary of the entire input. Lose nothing but the source, supposedly.
+**编码器（Encoder）。** 一个读源句子的 RNN。它的最终隐藏状态就是**上下文向量**——整个输入的定长摘要。号称除了源句子之外什么都不丢。
 
-**Decoder.** Another RNN initialized from the context vector. At each step it takes the previously generated token as input and produces a distribution over the target vocabulary. Sample or argmax to pick the next token. Feed it back in. Repeat until an `<EOS>` token is produced or max length is hit.
+**解码器（Decoder）。** 另一个从上下文向量初始化的 RNN。每一步把上一步生成的 token 当输入，产出目标词表上的一个分布。采样或取 argmax 来挑下一个 token。把它喂回去。重复，直到产出 `<EOS>` token 或达到最大长度。
 
-**Training:** Cross-entropy loss at each decoder step, summed over the sequence. Standard backprop through time through both networks.
+**训练：** 解码器每一步的交叉熵损失，沿序列求和。在两个网络上做标准的随时间反向传播。
 
-**Teacher forcing.** During training, the decoder's input at step `t` is the *ground-truth* token at position `t-1`, not the decoder's own previous prediction. This stabilizes training; without it, early mistakes cascade and the model never learns. At inference, you have to use the model's own predictions, so there is always a train/inference distribution gap. That gap is called **exposure bias**.
+**Teacher forcing。** 训练时，解码器在第 `t` 步的输入是位置 `t-1` 上的*真实*token，而不是解码器自己上一步的预测。这稳住了训练；没有它，早期的错误会级联放大，模型永远学不会。推理时你只能用模型自己的预测，所以训练/推理之间总有一道分布鸿沟。这道鸿沟叫**暴露偏差（exposure bias）**。
 
-**The bottleneck.** Everything the encoder learned about the source must be squeezed into that one context vector. Long sentences lose detail. Rare words get blurred. Reordering (chat noir vs. black cat) has to be memorized, not computed.
+**瓶颈。** 编码器学到的关于源句子的一切，都得挤进那一个上下文向量。长句子丢细节。罕见词被糊掉。重新排序（chat noir vs. black cat）只能死记，没法算出来。
 
-Attention (lesson 10) fixes this by letting the decoder look at *every* encoder hidden state, not just the last one. That is the whole pitch.
+注意力（第 10 课）通过让解码器看到*每一个*编码器隐藏状态、而不只是最后一个，直接修了这个。整套卖点就这一句。
 
-## Build It
+## 动手构建
 
-### Step 1: an encoder
+### 第 1 步：一个编码器
 
 ```python
 import torch
@@ -50,9 +50,9 @@ class Encoder(nn.Module):
         return outputs, hidden
 ```
 
-`outputs` has shape `[batch, seq_len, hidden_dim]` — one hidden state per input position. `hidden` has shape `[1, batch, hidden_dim]` — the final step. Lesson 08 said "pool over outputs for classification." Here we keep the last hidden state as the context vector, and ignore the per-step outputs.
+`outputs` 的形状是 `[batch, seq_len, hidden_dim]`——每个输入位置一个隐藏状态。`hidden` 的形状是 `[1, batch, hidden_dim]`——最后一步。第 08 课说"做分类时在 outputs 上池化"。这里我们把最后的隐藏状态留作上下文向量，忽略逐步的 outputs。
 
-### Step 2: a decoder
+### 第 2 步：一个解码器
 
 ```python
 class Decoder(nn.Module):
@@ -69,9 +69,9 @@ class Decoder(nn.Module):
         return logits, hidden
 ```
 
-Decoder is called one step at a time. Input: a batch of single tokens and the current hidden state. Output: vocabulary logits for the next token and the updated hidden state.
+解码器一次只调一步。输入：一批单个 token 和当前隐藏状态。输出：下一个 token 的词表 logits 和更新后的隐藏状态。
 
-### Step 3: training loop with teacher forcing
+### 第 3 步：带 teacher forcing 的训练循环
 
 ```python
 def train_batch(encoder, decoder, src, tgt, bos_id, optimizer, teacher_forcing_ratio=0.9):
@@ -97,9 +97,9 @@ def train_batch(encoder, decoder, src, tgt, bos_id, optimizer, teacher_forcing_r
     return loss.item() / tgt_len
 ```
 
-Two knobs worth naming. `ignore_index=0` skips loss on padding tokens. `teacher_forcing_ratio` is the probability of using the true token vs. the model's prediction at each step. Start at 1.0 (full teacher forcing) and anneal down to ~0.5 over training to close the exposure-bias gap.
+两个值得点名的旋钮。`ignore_index=0` 跳过填充 token 上的损失。`teacher_forcing_ratio` 是每一步用真实 token 而非模型预测的概率。从 1.0（完全 teacher forcing）起步，在训练中退火到约 0.5，以弥合暴露偏差的鸿沟。
 
-### Step 4: inference loop (greedy)
+### 第 4 步：推理循环（贪心）
 
 ```python
 @torch.no_grad()
@@ -118,11 +118,11 @@ def greedy_decode(encoder, decoder, src, bos_id, eos_id, max_len=50):
     return torch.cat(output_ids, dim=1)
 ```
 
-Greedy decoding picks the highest-probability token at every step. It can wander off: once you commit to a token, you cannot unsay it. **Beam search** keeps the top-`k` partial sequences alive and picks the highest-scoring complete one at the end. Beam width 3-5 is standard.
+贪心解码每一步都挑概率最高的 token。它会跑偏：一旦你认定了一个 token，就收不回去了。**Beam search** 让 top-`k` 个部分序列同时存活，最后挑得分最高的那个完整序列。束宽 3-5 是标准。
 
-### Step 5: the bottleneck, demonstrated
+### 第 5 步：把瓶颈演示出来
 
-Train the model on a toy copy task: source `[a, b, c, d, e]`, target `[a, b, c, d, e]`. Increase sequence length. Observe accuracy.
+在一个玩具复制任务上训练模型：源 `[a, b, c, d, e]`，目标 `[a, b, c, d, e]`。增加序列长度，观察准确率。
 
 ```
 seq_len=5   copy accuracy: 98%
@@ -131,11 +131,11 @@ seq_len=20  copy accuracy: 62%
 seq_len=40  copy accuracy: 23%
 ```
 
-A single GRU hidden state cannot losslessly memorize a 40-token input. The information is there at every encoder step, but the decoder only sees the last state. Attention fixes this directly.
+单个 GRU 隐藏状态没法无损地记住一个 40-token 的输入。信息在每个编码器步骤里都在，但解码器只看到最后那个状态。注意力直接修了这个。
 
-## Use It
+## 上手使用
 
-PyTorch has `nn.Transformer` and `nn.LSTM`-based seq2seq templates. Hugging Face's `transformers` library ships full encoder-decoder models (BART, T5, mBART, NLLB) trained on billions of tokens.
+PyTorch 有基于 `nn.Transformer` 和 `nn.LSTM` 的 seq2seq 模板。Hugging Face 的 `transformers` 库提供在数十亿 token 上训练的完整编码器-解码器模型（BART、T5、mBART、NLLB）。
 
 ```python
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
@@ -148,27 +148,27 @@ out = model.generate(**src, max_new_tokens=50, num_beams=4)
 print(tok.decode(out[0], skip_special_tokens=True))
 ```
 
-Modern encoder-decoders dropped RNNs for transformers. The high-level shape (encoder, decoder, generate-token-by-token) is identical to the 2014 seq2seq paper. The mechanism inside each block is different.
+现代编码器-解码器把 RNN 换成了 transformer。高层形状（编码器、解码器、逐 token 生成）和 2014 年那篇 seq2seq 论文一模一样。每个块内部的机制不同了。
 
-### When to still reach for RNN-based seq2seq
+### 什么时候还会回头用基于 RNN 的 seq2seq
 
-Almost never, for new projects. Specific exceptions:
+对新项目来说，几乎从不。具体的例外：
 
-- Streaming translation where you consume input one token at a time with bounded memory.
-- On-device text generation where transformer memory cost is prohibitive.
-- Pedagogy. Understanding the encoder-decoder bottleneck is the fastest path to understanding why transformers won.
+- 流式翻译，你以有界内存一次消费一个 token 的输入。
+- 端侧文本生成，transformer 的内存成本承受不起。
+- 教学。理解编码器-解码器瓶颈是理解 transformer 为何胜出的最快路径。
 
-### Exposure bias and its mitigations
+### 暴露偏差及其缓解
 
-- **Scheduled sampling.** Anneal teacher forcing ratio during training so the model learns to recover from its own mistakes.
-- **Minimum risk training.** Train on sentence-level BLEU score instead of token-level cross-entropy. Closer to what you actually want.
-- **Reinforcement learning fine-tuning.** Reward the sequence generator with a metric. Used in modern LLM RLHF.
+- **Scheduled sampling。** 训练中退火 teacher forcing 比例，让模型学会从自己的错误里恢复。
+- **最小风险训练。** 在句子级 BLEU 分数上训练，而不是 token 级交叉熵。更贴近你真正想要的。
+- **强化学习微调。** 用一个指标奖励序列生成器。用在现代 LLM 的 RLHF 里。
 
-All three still apply to transformer-based generation.
+三者至今都适用于基于 transformer 的生成。
 
-## Ship It
+## 交付
 
-Save as `outputs/prompt-seq2seq-design.md`:
+存为 `outputs/prompt-seq2seq-design.md`：
 
 ```markdown
 ---
@@ -188,26 +188,26 @@ Given a task (translation, summarization, paraphrase, question rewrite), output:
 Refuse to recommend training a seq2seq from scratch for under a million parallel examples. Flag any pipeline that uses greedy decoding for user-facing content as fragile (greedy repeats and loops).
 ```
 
-## Exercises
+## 练习
 
-1. **Easy.** Implement the toy copy task. Train a GRU seq2seq on input-output pairs where the target equals the source. Measure accuracy at lengths 5, 10, 20. Reproduce the bottleneck.
-2. **Medium.** Add beam search decoding with beam width 3. Measure BLEU on a small parallel corpus against greedy. Document where beam search wins (usually last tokens) and where it makes no difference.
-3. **Hard.** Fine-tune `facebook/bart-base` on a 10k-pair paraphrase dataset. Compare the fine-tuned model's beam-4 output to the base model's on held-out inputs. Report BLEU and pick 10 qualitative examples.
+1. **简单。** 实现玩具复制任务。在目标等于源的输入-输出对上训练一个 GRU seq2seq。测量长度 5、10、20 处的准确率。复现这个瓶颈。
+2. **中等。** 加上束宽为 3 的 beam search 解码。在一个小平行语料上测 BLEU，和贪心对比。记录 beam search 在哪里胜出（通常是末尾 token），在哪里没有差别。
+3. **困难。** 在一个 10k 对的复述数据集上微调 `facebook/bart-base`。在留出输入上把微调模型的 beam-4 输出和基座模型对比。报告 BLEU 并挑 10 个定性例子。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 人们怎么说 | 它实际是什么 |
 |------|-----------------|-----------------------|
-| Encoder | Input RNN | Reads source. Produces per-step hidden states and a final context vector. |
-| Decoder | Output RNN | Initialized from context vector. Generates target tokens one at a time. |
-| Context vector | The summary | Final encoder hidden state. Fixed size. The bottleneck attention solves. |
-| Teacher forcing | Use true tokens | Feed the ground-truth previous token at training time. Stabilizes learning. |
-| Exposure bias | Train/test gap | Model trained on true tokens never practiced recovering from its own mistakes. |
-| Beam search | Better decoding | Keep top-k partial sequences alive at each step instead of committing greedily. |
+| 编码器（Encoder） | 输入 RNN | 读源句子。产出逐步隐藏状态和一个最终上下文向量。 |
+| 解码器（Decoder） | 输出 RNN | 从上下文向量初始化。一次生成一个目标 token。 |
+| 上下文向量 | 那个摘要 | 编码器最终隐藏状态。定长。注意力要解决的那个瓶颈。 |
+| Teacher forcing | 用真实 token | 训练时喂入真实的上一个 token。稳住学习。 |
+| 暴露偏差 | 训练/测试鸿沟 | 在真实 token 上训练的模型，从没练过从自己的错误里恢复。 |
+| Beam search | 更好的解码 | 每一步让 top-k 个部分序列存活，而不是贪心地一锤定音。 |
 
-## Further Reading
+## 延伸阅读
 
-- [Sutskever, Vinyals, Le (2014). Sequence to Sequence Learning with Neural Networks](https://arxiv.org/abs/1409.3215) — the original seq2seq paper. Four pages.
-- [Cho et al. (2014). Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation](https://arxiv.org/abs/1406.1078) — introduced the GRU and the encoder-decoder framing.
-- [Bahdanau, Cho, Bengio (2014). Neural Machine Translation by Jointly Learning to Align and Translate](https://arxiv.org/abs/1409.0473) — the attention paper. Read immediately after this lesson.
-- [PyTorch NLP from Scratch tutorial](https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html) — buildable seq2seq + attention code.
+- [Sutskever, Vinyals, Le (2014). Sequence to Sequence Learning with Neural Networks](https://arxiv.org/abs/1409.3215) —— 原始 seq2seq 论文。四页。
+- [Cho et al. (2014). Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation](https://arxiv.org/abs/1406.1078) —— 引入了 GRU 和编码器-解码器框架。
+- [Bahdanau, Cho, Bengio (2014). Neural Machine Translation by Jointly Learning to Align and Translate](https://arxiv.org/abs/1409.0473) —— 注意力论文。学完这一课立刻读。
+- [PyTorch NLP from Scratch tutorial](https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html) —— 可上手构建的 seq2seq + attention 代码。

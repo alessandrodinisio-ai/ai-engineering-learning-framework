@@ -1,93 +1,93 @@
-# Evaluation — FID, CLIP Score, Human Preference
+# 评测 —— FID、CLIP 分数、人类偏好
 
-> Every generative model leaderboard cites FID, CLIP score, and a win rate from a human-preference arena. Each number has a failure mode a determined researcher can game. If you do not know the failure modes, you cannot tell a real improvement from a gaming run.
+> 每一个生成模型排行榜都引用 FID、CLIP 分数，以及来自人类偏好竞技场的胜率。每个数字都有一个执着的研究者能刷的失效模式。如果你不懂这些失效模式，你就分不清一次真正的提升和一次刷分的运行。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 8 · 01 (Taxonomy), Phase 2 · 04 (Evaluation Metrics)
-**Time:** ~45 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 阶段 8 · 01（分类）、阶段 2 · 04（评测指标）
+**预计时间：** ~45 分钟
 
-## The Problem
+## 问题所在
 
-A generative model is judged on *sample quality* and *conditioning adherence*. Neither has a closed-form measure. Your model has to render 10,000 images; something has to assign them numbers; you have to trust the numbers across model families, across resolutions, across architectures. Three metrics survived the 2014-2026 gauntlet:
+一个生成模型按*样本质量*和*条件遵循度*来评判。两者都没有闭式的度量。你的模型得渲染 1 万张图；得有东西给它们打上数字；你得跨模型家族、跨分辨率、跨架构地信任这些数字。三个指标熬过了 2014-2026 这场严酷考验：
 
-- **FID (Fréchet Inception Distance).** A distance between two distributions — real and generated — in an Inception network's feature space. Lower is better.
-- **CLIP score.** Cosine similarity between a generated image's CLIP-image embedding and a prompt's CLIP-text embedding. Higher is better. Measures prompt adherence.
-- **Human preference.** Pit two models head-to-head on the same prompt, have humans (or a GPT-4-class model) pick the better one, aggregate to an Elo score.
+- **FID（Fréchet Inception Distance）。** 真实分布和生成分布在一个 Inception 网络特征空间里的距离。越低越好。
+- **CLIP 分数。** 生成图像的 CLIP 图像嵌入和一段 prompt 的 CLIP 文本嵌入之间的余弦相似度。越高越好。衡量 prompt 遵循度。
+- **人类偏好。** 在同一个 prompt 上让两个模型正面对决，让人（或一个 GPT-4 级模型）挑出更好的那个，聚合成一个 Elo 分。
 
-You will also see: IS (inception score, largely retired), KID, CMMD, ImageReward, PickScore, HPSv2, MJHQ-30k. Each corrects for one failure of the previous.
+你还会看到：IS（inception 分数，基本退役了）、KID、CMMD、ImageReward、PickScore、HPSv2、MJHQ-30k。每个都纠正前一个的某个缺陷。
 
-## The Concept
+## 核心概念
 
-![FID, CLIP, and preference: three axes, different failure modes](../assets/evaluation.svg)
+![FID、CLIP 和偏好：三个维度，不同的失效模式](../assets/evaluation.svg)
 
-### FID — sample quality
+### FID —— 样本质量
 
-Heusel et al. (2017). Steps:
+Heusel et al. (2017)。步骤：
 
-1. Extract Inception-v3 features (2048-D) for N real images and N generated.
-2. Fit a Gaussian to each pool: compute mean `μ_r, μ_g` and covariance `Σ_r, Σ_g`.
-3. FID = `||μ_r - μ_g||² + Tr(Σ_r + Σ_g - 2 · (Σ_r · Σ_g)^0.5)`.
+1. 为 N 张真实图和 N 张生成图提取 Inception-v3 特征（2048 维）。
+2. 给每一池拟合一个高斯：算均值 `μ_r, μ_g` 和协方差 `Σ_r, Σ_g`。
+3. FID = `||μ_r - μ_g||² + Tr(Σ_r + Σ_g - 2 · (Σ_r · Σ_g)^0.5)`。
 
-Interpretation: Fréchet distance between two multivariate Gaussians in feature space. Lower = more similar distributions.
+解读：特征空间里两个多元高斯之间的 Fréchet 距离。越低 = 分布越相似。
 
-Failure modes:
-- **Biased on small N.** FID is mean-squared over the feature distribution — small N under-estimates covariance, gives falsely low FID. Always use N ≥ 10,000.
-- **Inception-dependent.** Inception-v3 was trained on ImageNet. Domains far from ImageNet (faces, art, text images) produce meaningless FID. Use a domain-specific feature extractor.
-- **Gaming.** Overfitting to the Inception prior gives low FID without visual quality improvement. Beat it with CMMD (below).
+失效模式：
+- **小 N 上有偏。** FID 是在特征分布上的均方——小 N 会低估协方差，给出假性偏低的 FID。永远用 N ≥ 10,000。
+- **依赖 Inception。** Inception-v3 是在 ImageNet 上训的。离 ImageNet 很远的领域（人脸、艺术、文字图像）算出来的 FID 毫无意义。用一个领域专属的特征提取器。
+- **刷分。** 过拟合 Inception 先验能在没有视觉质量提升的情况下拿到低 FID。用 CMMD（下文）来对付它。
 
-### CLIP score — prompt adherence
+### CLIP 分数 —— prompt 遵循度
 
-Radford et al. (2021). For a generated image + prompt:
+Radford et al. (2021)。对一张生成图 + prompt：
 
 ```
 clip_score = cos_sim( CLIP_image(x_gen), CLIP_text(prompt) )
 ```
 
-Average across 30k generated images → a scalar comparable between models.
+在 3 万张生成图上取平均 → 一个模型之间可比的标量。
 
-Failure modes:
-- **CLIP's own blind spots.** CLIP has weak compositional reasoning ("a red cube on a blue sphere" often fails). Models can rank well on CLIP score without really following complex prompts.
-- **Short prompt bias.** Short prompts have more CLIP-image matches in the wild. Longer prompts have lower CLIP scores mechanically.
-- **Prompt gaming.** Including "high quality, 4k, masterpiece" in the prompt inflates CLIP score without improving image-text binding.
+失效模式：
+- **CLIP 自身的盲区。** CLIP 的组合推理很弱（「蓝球上的红方块」常常失败）。模型可以在 CLIP 分数上排得很高，却没真正遵循复杂 prompt。
+- **短 prompt 偏好。** 短 prompt 在野外有更多 CLIP 图像匹配。长 prompt 机械地拿到更低的 CLIP 分数。
+- **prompt 刷分。** 在 prompt 里塞「high quality, 4k, masterpiece」会抬高 CLIP 分数，却不改善图文绑定。
 
-CMMD (Jayasumana et al., 2024) fixes some of these: uses CLIP features instead of Inception, maximum-mean discrepancy instead of Fréchet. Better at detecting subtle quality differences.
+CMMD（Jayasumana et al., 2024）修了其中一些：用 CLIP 特征而非 Inception，用最大均值差异而非 Fréchet。在检测细微质量差异上更好。
 
-### Human preference — the ground truth
+### 人类偏好 —— 那个真值
 
-Pick a pool of prompts. Generate with model A and model B. Show pairs to humans (or a strong LLM judge). Aggregate wins into an Elo or Bradley-Terry score. Benchmarks:
+挑一池 prompt。用模型 A 和模型 B 生成。把成对结果给人看（或一个强 LLM 裁判）。把胜负聚合成一个 Elo 或 Bradley-Terry 分。基准：
 
-- **PartiPrompts (Google)**: 1,600 diverse prompts, 12 categories.
-- **HPSv2**: 107k human annotations, widely used as automated proxy.
-- **ImageReward**: 137k prompt-image preference pairs, MIT-licensed.
-- **PickScore**: trained on Pick-a-Pic 2.6M preferences.
-- **Chatbot-Arena-style image arenas**: https://imagearena.ai/ and others.
+- **PartiPrompts（Google）**：1,600 个多样 prompt，12 个类别。
+- **HPSv2**：10.7 万条人类标注，被广泛用作自动化代理。
+- **ImageReward**：13.7 万对 prompt-图像偏好，MIT 许可。
+- **PickScore**：在 Pick-a-Pic 的 260 万偏好上训练。
+- **Chatbot-Arena 风格的图像竞技场**：https://imagearena.ai/ 等。
 
-Failure modes:
-- **Judge variance.** Non-experts have different preferences than experts. Use both.
-- **Prompt distribution.** Cherry-picked prompts favor one family. Always document.
-- **LLM-judge reward hacking.** GPT-4-judge gets fooled by pretty-but-wrong outputs. Triangulate with human.
+失效模式：
+- **裁判方差。** 非专家和专家的偏好不同。两者都用。
+- **prompt 分布。** 精挑细选的 prompt 偏向某个家族。永远记录在案。
+- **LLM 裁判的奖励黑客。** GPT-4 裁判会被「好看但错」的输出骗到。用人类来三角验证。
 
-## Use together
+## 一起用
 
-A production eval report should include:
+一份生产评测报告应该包含：
 
-1. FID on 10-30k samples against a held-out real distribution (sample quality).
-2. CLIP score / CMMD on the same samples vs their prompts (adherence).
-3. Win rate in a blinded arena vs the previous model (overall preference).
-4. Failure mode analysis: 50 randomly sampled outputs, flagged for known issues (hand anatomy, text rendering, consistent object count).
+1. 在 1-3 万个样本上、相对一个留出真实分布的 FID（样本质量）。
+2. 在同一批样本上、相对它们 prompt 的 CLIP 分数 / CMMD（遵循度）。
+3. 在一个盲测竞技场里相对上一个模型的胜率（整体偏好）。
+4. 失效模式分析：随机抽 50 个输出，按已知问题标记（手部解剖、文字渲染、物体数量一致性）。
 
-Any single metric is a lie. Three corroborating metrics + qualitative review are a claim.
+任何单个指标都是个谎。三个互相印证的指标 + 定性审阅才是一个主张。
 
-## Build It
+## 动手构建
 
-`code/main.py` implements FID, CLIP-score-like, and Elo aggregation on synthetic "feature vectors" (we use 4-D vectors as stand-ins for Inception features). You see:
+`code/main.py` 在合成的「特征向量」上实现 FID、类 CLIP 分数和 Elo 聚合（我们用 4 维向量代替 Inception 特征）。你看到：
 
-- FID computation on a small N and on a large N — the bias.
-- "CLIP score" as cosine similarity between feature pools.
-- Elo update rule from a synthetic preference stream.
+- 小 N 和大 N 上的 FID 计算——那个偏差。
+- 「CLIP 分数」作为特征池之间的余弦相似度。
+- 来自一条合成偏好流的 Elo 更新规则。
 
-### Step 1: FID in four lines
+### 第 1 步：四行写出 FID
 
 ```python
 def fid(real_features, gen_features):
@@ -98,7 +98,7 @@ def fid(real_features, gen_features):
     return mean_diff + trace_term
 ```
 
-### Step 2: CLIP-style cosine-similarity
+### 第 2 步：CLIP 风格的余弦相似度
 
 ```python
 def clip_like(image_feat, text_feat):
@@ -107,7 +107,7 @@ def clip_like(image_feat, text_feat):
     return dot / max(norm, 1e-8)
 ```
 
-### Step 3: Elo aggregation
+### 第 3 步：Elo 聚合
 
 ```python
 def elo_update(r_a, r_b, winner, k=32):
@@ -118,66 +118,66 @@ def elo_update(r_a, r_b, winner, k=32):
     return r_a_new, r_b_new
 ```
 
-## Pitfalls
+## 坑
 
-- **FID at N=1000.** Heuristic is unreliable under N=10k. Papers reporting low-N FID are gaming.
-- **Comparing FID across resolutions.** Inception's 299×299 resize changes the feature distribution. Compare at matched resolution only.
-- **Reporting one seed.** Run 3 seeds minimum. Report std.
-- **CLIP score inflation via negative prompts.** Some pipelines boost CLIP by over-fitting the prompt. Check for visual saturation.
-- **Elo bias from prompt overlap.** If both models saw a benchmark prompt during training, Elo is meaningless. Use held-out prompt sets.
-- **Human eval paid-crowd skew.** Prolific, MTurk annotators skew younger / tech-friendly. Mix with recruited art/design experts.
+- **N=1000 时的 FID。** 在 N=10k 以下这个启发式不可靠。报告低 N FID 的论文在刷分。
+- **跨分辨率比 FID。** Inception 的 299×299 缩放改变了特征分布。只在匹配的分辨率下比较。
+- **只报一个种子。** 至少跑 3 个种子。报告标准差。
+- **通过负面 prompt 抬高 CLIP 分数。** 有些流水线靠过拟合 prompt 来抬 CLIP。检查视觉饱和度。
+- **prompt 重叠造成的 Elo 偏差。** 如果两个模型训练时都见过一个基准 prompt，Elo 就毫无意义。用留出的 prompt 集。
+- **付费众包人评的偏斜。** Prolific、MTurk 标注者偏年轻 / 偏技术友好。和招募来的艺术/设计专家混着用。
 
-## Use It
+## 上手使用
 
-Production eval protocol in 2026:
+2026 年的生产评测流程：
 
-| Pillar | Minimum | Recommended |
+| 支柱 | 最低要求 | 推荐 |
 |--------|---------|-------------|
-| Sample quality | FID on 10k vs held-out real | + CMMD on 5k + FID on subset per category |
-| Prompt adherence | CLIP score on 30k | + HPSv2 + ImageReward + VQA-style question answering |
-| Preference | 200 blinded pairs vs baseline | + 2000 paired human + LLM-judge + Chatbot Arena |
-| Failure analysis | 50 hand-flagged | 500 hand-flagged + automated safety classifier |
+| 样本质量 | 在 1 万张上相对留出真实集的 FID | + 5 千张上的 CMMD + 每类子集上的 FID |
+| prompt 遵循度 | 3 万张上的 CLIP 分数 | + HPSv2 + ImageReward + VQA 式问答 |
+| 偏好 | 相对基线的 200 对盲测 | + 2000 对人评 + LLM 裁判 + Chatbot Arena |
+| 失效分析 | 50 个手工标记 | 500 个手工标记 + 自动化安全分类器 |
 
-All four pillars in one report = claim. Any one alone = marketing.
+一份报告里四个支柱齐全 = 主张。任何单独一个 = 营销。
 
-## Ship It
+## 交付
 
-Save `outputs/skill-eval-report.md`. Skill takes a new model checkpoint + baseline and outputs a full eval plan: sample sizes, metrics, failure-mode probes, sign-off criteria.
+存为 `outputs/skill-eval-report.md`。技能接受一个新模型检查点 + 基线，输出一份完整评测计划：样本量、指标、失效模式探针、放行标准。
 
-## Exercises
+## 练习
 
-1. **Easy.** Run `code/main.py`. Compare FID at N=100 vs N=1000 on the same synthetic distributions. Report bias magnitude.
-2. **Medium.** Implement CMMD from synthetic CLIP-style features (see Jayasumana et al., 2024 for the formula). Compare sensitivity to quality differences vs FID.
-3. **Hard.** Replicate the HPSv2 setup: take 1000 image-prompt pairs from a subset of Pick-a-Pic, fine-tune a small CLIP-based scorer on the preferences, and measure its agreement with a held-out set.
+1. **简单。** 跑 `code/main.py`。在同样的合成分布上比较 N=100 vs N=1000 的 FID。报告偏差量级。
+2. **中等。** 从合成的 CLIP 风格特征实现 CMMD（公式见 Jayasumana et al., 2024）。比较它对质量差异的敏感度与 FID。
+3. **困难。** 复现 HPSv2 的设置：从 Pick-a-Pic 的一个子集取 1000 对图像-prompt，在这些偏好上微调一个基于 CLIP 的小评分器，测量它与一个留出集的一致性。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际指什么 |
 |------|-----------------|-----------------------|
-| FID | "Fréchet Inception Distance" | Fréchet distance of Gaussian fits to real vs gen Inception features. |
-| CLIP score | "Text-image similarity" | Cosine similarity between CLIP image and text embeddings. |
-| CMMD | "FID's replacement" | CLIP-feature MMD; less biased, no Gaussian assumption. |
-| IS | "Inception score" | Exp KL(p(y|x) || p(y)); correlates poorly on modern models, retired. |
-| HPSv2 / ImageReward / PickScore | "Learned preference proxies" | Small models trained on human preferences; used as automatic judges. |
-| Elo | "Chess rating" | Bradley-Terry aggregation of pairwise wins. |
-| PartiPrompts | "The benchmark prompt set" | 1,600 Google-curated prompts across 12 categories. |
-| FD-DINO | "Self-sup replacement" | FD using DINOv2 features; better for out-of-ImageNet domains. |
+| FID | 「Fréchet Inception Distance」 | 真实 vs 生成的 Inception 特征高斯拟合之间的 Fréchet 距离。 |
+| CLIP 分数 | 「图文相似度」 | CLIP 图像和文本嵌入之间的余弦相似度。 |
+| CMMD | 「FID 的替代」 | CLIP 特征的 MMD；偏差更小，无高斯假设。 |
+| IS | 「Inception 分数」 | Exp KL(p(y|x) || p(y))；在现代模型上相关性差，退役。 |
+| HPSv2 / ImageReward / PickScore | 「学出来的偏好代理」 | 在人类偏好上训的小模型；用作自动裁判。 |
+| Elo | 「国际象棋评分」 | 成对胜负的 Bradley-Terry 聚合。 |
+| PartiPrompts | 「那个基准 prompt 集」 | Google 精选的 1,600 个 prompt，跨 12 个类别。 |
+| FD-DINO | 「自监督替代」 | 用 DINOv2 特征的 FD；对 ImageNet 之外的领域更好。 |
 
-## Production note: evaluation is an inference workload too
+## 生产笔记：评测也是一种推理负载
 
-Running FID on 10k samples means generating 10k images. For a 50-step SDXL base at 1024² on a single L4, that is ~11 hours of single-request inference. Evaluation budgets are real, and the framing is exactly the offline-inference scenario (maximize throughput, ignore TTFT):
+在 1 万个样本上跑 FID 意味着生成 1 万张图。对单块 L4 上 1024² 的 50 步 SDXL base，那是约 11 小时的单请求推理。评测预算是真金白银，而这个框架恰好是离线推理场景（最大化吞吐，忽略 TTFT）：
 
-- **Batch hard, forget latency.** Offline eval = static batching at the largest size that fits in memory. `pipe(...).images` with `num_images_per_prompt=8` on an 80GB H100 runs 4-6× faster wall-clock than single-request.
-- **Cache the real features.** The Inception (FID) or CLIP (CLIP-score, CMMD) feature extraction over the real reference set is run *once*, stored as a `.npz`. Do not recompute per eval.
+- **狠狠批处理，忘掉延迟。** 离线评测 = 在内存装得下的最大尺寸上做静态批处理。在 80GB H100 上用 `num_images_per_prompt=8` 跑 `pipe(...).images` 的墙钟比单请求快 4-6 倍。
+- **缓存真实特征。** 在真实参考集上的 Inception（FID）或 CLIP（CLIP 分数、CMMD）特征提取只跑*一次*，存成一个 `.npz`。别每次评测都重算。
 
-For CI / regression gates: run FID + CLIP score on a 500-sample subset per PR (~30 min); run full 10k FID + HPSv2 + Elo nightly.
+CI / 回归门禁：每个 PR 在 500 样本子集上跑 FID + CLIP 分数（约 30 分钟）；每晚跑完整的 1 万 FID + HPSv2 + Elo。
 
-## Further Reading
+## 延伸阅读
 
-- [Heusel et al. (2017). GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium (FID)](https://arxiv.org/abs/1706.08500) — FID paper.
-- [Jayasumana et al. (2024). Rethinking FID: Towards a Better Evaluation Metric for Image Generation (CMMD)](https://arxiv.org/abs/2401.09603) — CMMD.
-- [Radford et al. (2021). Learning Transferable Visual Models from Natural Language Supervision (CLIP)](https://arxiv.org/abs/2103.00020) — CLIP.
-- [Wu et al. (2023). HPSv2: A Comprehensive Human Preference Score](https://arxiv.org/abs/2306.09341) — HPSv2.
-- [Xu et al. (2023). ImageReward: Learning and Evaluating Human Preferences for Text-to-Image Generation](https://arxiv.org/abs/2304.05977) — ImageReward.
-- [Yu et al. (2023). Scaling Autoregressive Models for Content-Rich Text-to-Image Generation (Parti + PartiPrompts)](https://arxiv.org/abs/2206.10789) — PartiPrompts.
-- [Stein et al. (2023). Exposing flaws of generative model evaluation metrics](https://arxiv.org/abs/2306.04675) — failure-mode survey.
+- [Heusel et al. (2017). GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium (FID)](https://arxiv.org/abs/1706.08500) —— FID 那篇论文。
+- [Jayasumana et al. (2024). Rethinking FID: Towards a Better Evaluation Metric for Image Generation (CMMD)](https://arxiv.org/abs/2401.09603) —— CMMD。
+- [Radford et al. (2021). Learning Transferable Visual Models from Natural Language Supervision (CLIP)](https://arxiv.org/abs/2103.00020) —— CLIP。
+- [Wu et al. (2023). HPSv2: A Comprehensive Human Preference Score](https://arxiv.org/abs/2306.09341) —— HPSv2。
+- [Xu et al. (2023). ImageReward: Learning and Evaluating Human Preferences for Text-to-Image Generation](https://arxiv.org/abs/2304.05977) —— ImageReward。
+- [Yu et al. (2023). Scaling Autoregressive Models for Content-Rich Text-to-Image Generation (Parti + PartiPrompts)](https://arxiv.org/abs/2206.10789) —— PartiPrompts。
+- [Stein et al. (2023). Exposing flaws of generative model evaluation metrics](https://arxiv.org/abs/2306.04675) —— 失效模式综述。

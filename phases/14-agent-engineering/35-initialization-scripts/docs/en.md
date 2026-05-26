@@ -1,26 +1,26 @@
-# Initialization Scripts for Agents
+# Agent 初始化脚本
 
-> Every session that starts cold pays a tax. The agent reads the same files, retries the same probes, and rediscovers the same paths. An init script pays the tax once and writes the answers into state.
+> 每个冷启动的会话都要交税。agent 读同样的文件、重试同样的探测、重新发现同样的路径。一个 init 脚本把税交一次，把答案写进状态。
 
-**Type:** Build
-**Languages:** Python (stdlib)
-**Prerequisites:** Phase 14 · 32 (Minimal Workbench), Phase 14 · 34 (Repo Memory)
-**Time:** ~45 minutes
+**类型：** Build
+**语言：** Python（标准库）
+**前置要求：** 阶段 14 · 32（最小工作台）、阶段 14 · 34（仓库记忆）
+**预计时间：** ~45 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Identify the work an agent should never have to redo per session.
-- Build a deterministic init script that probes runtime, dependencies, and repo health.
-- Persist the probe result so the agent reads it instead of re-running checks.
-- Fail loud, fast, and with one place to look when initialization fails.
+- 认清 agent 每会话绝不该重做的工作。
+- 构建一个确定性的 init 脚本，探测运行时、依赖和仓库健康。
+- 持久化探测结果，让 agent 读它而不是重跑检查。
+- 在初始化失败时失败得大声、迅速，且只有一个地方可看。
 
-## The Problem
+## 问题所在
 
-Open a session. The agent guesses the Python version. Guesses the test command. Lists the repo root five times to find the entry point. Tries to import a package that is not installed. Asks the user where the config file lives. By the time it makes a real edit, ten thousand tokens have gone to setup work that should have been a single script.
+打开一个会话。agent 猜 Python 版本。猜测试命令。把仓库根列五遍来找入口点。试图 import 一个没装的包。问用户配置文件在哪。等它做出一次真实编辑时，一万个 token 已经花在了本该是一个脚本的 setup 工作上。
 
-The fix is one initialization script that runs before the agent does anything else and writes a `init_report.json` the agent reads at startup.
+修法是一个初始化脚本，它在 agent 做任何其他事之前运行，并写一份 agent 在启动时读的 `init_report.json`。
 
-## The Concept
+## 核心概念
 
 ```mermaid
 flowchart TD
@@ -32,96 +32,96 @@ flowchart TD
   Decision -- no --> Halt[fail loud, halt, surface to human]
 ```
 
-### What the init script probes
+### init 脚本探测什么
 
-| Probe | Why it matters |
+| 探测 | 为什么重要 |
 |-------|----------------|
-| Runtime versions | Wrong Python or Node version means silent wrong-version bugs |
-| Dependency availability | A missing package later costs ten times the cost of catching it now |
-| Test command | The agent must know how to verify; if the command is missing the workbench is broken |
-| Repo paths | Hard-coded paths drift; resolve them once and pin |
-| Environment variables | Missing `OPENAI_API_KEY` is a failure surface, not a runtime mystery |
-| State + board freshness | Stale state from a crashed session is a footgun |
-| Last-known-good commit | Anchor for the handoff diff at the end of the session |
+| 运行时版本 | 错误的 Python 或 Node 版本意味着静默的版本错误 bug |
+| 依赖可用性 | 一个缺失的包到后面才发现，代价是现在抓到的十倍 |
+| 测试命令 | agent 必须知道如何验证；命令缺失则工作台坏了 |
+| 仓库路径 | 硬编码路径会漂移；一次性解析它们并钉住 |
+| 环境变量 | 缺 `OPENAI_API_KEY` 是个失败接触面，不是个运行时谜题 |
+| 状态 + 看板新鲜度 | 来自崩溃会话的过时状态是个自伤工具 |
+| 上一次已知良好 commit | 会话结束时交接 diff 的锚点 |
 
-### Fail loud, fail fast, fail in one place
+### 失败得大声、迅速、且只有一处
 
-A probe failure means halt and surface to the human. No "the agent will figure it out." The whole point of init is to refuse to start when the workbench is broken.
+一次探测失败意味着停下并暴露给人。没有「agent 会想办法的」。init 的全部意义就是在工作台坏了时拒绝启动。
 
-### Idempotent
+### 幂等
 
-Run it twice in a row. The second run should be a no-op except for a fresh timestamp. Idempotency is what lets you wire the script into CI, hooks, or a pre-task slash command.
+连跑两次。第二次除了一个新鲜时间戳外应该是 no-op。幂等性正是让你能把脚本接进 CI、hook 或一个任务前斜杠命令的东西。
 
-### Init versus startup rules
+### init vs 启动规则
 
-Rules (Phase 14 · 33) describe what must be true to act. Init is the script that establishes that those rules can be checked. Rules without init become "be careful." Init without rules becomes a polished failure.
+规则（阶段 14 · 33）描述行动前什么必须为真。init 是建立「那些规则能被检查」的脚本。没有 init 的规则变成「小心点」。没有规则的 init 变成一次精致的失败。
 
-## Build It
+## 动手构建
 
-`code/main.py` implements `init_agent.py`:
+`code/main.py` 实现 `init_agent.py`：
 
-- Five probes: Python version, listed dependencies via `importlib.util.find_spec`, test command resolvability, required env vars, state file freshness.
-- Each probe returns `(name, status, detail)`.
-- The script writes `init_report.json` with the full probe set and exits non-zero if any block-severity probe fails.
+- 五个探测：Python 版本、通过 `importlib.util.find_spec` 列出依赖、测试命令可解析性、必需环境变量、状态文件新鲜度。
+- 每个探测返回 `(name, status, detail)`。
+- 脚本写 `init_report.json`，含完整探测集，若任何 block 严重度的探测失败则以非零退出。
 
-Run it:
+运行它：
 
 ```
 python3 code/main.py
 ```
 
-The script prints the table of probes, writes `init_report.json`, and exits zero on the happy path or non-zero with a list of failed probes.
+脚本打印探测表，写 `init_report.json`，在顺利路径上以零退出，或带一份失败探测列表以非零退出。
 
-## Production patterns in the wild
+## 野外的生产模式
 
-Three patterns separate a useful init script from a ceremony.
+三个模式区分了一个有用的 init 脚本和一个仪式。
 
-**Last-known-good commit anchoring.** Probe the current commit against a `LKG` file written on the last successful merge. If the diff exceeds a budget (default 50 files), refuse to start and require a human to ratify the new baseline. This is what Cloudflare's AI Code Review uses to scope reviewer agents: every review session anchors against the same last-known-good and never compounds drift across sessions.
+**上一次已知良好 commit 锚定。** 把当前 commit 对照一个在上次成功合并时写的 `LKG` 文件做探测。如果 diff 超过一个预算（默认 50 个文件），拒绝启动并要求人来批准这个新基线。这就是 Cloudflare 的 AI Code Review 用来限定审查者 agent 范围的办法：每个审查会话都对着同一个上一次已知良好锚定，绝不跨会话叠加漂移。
 
-**Lock files with TTL.** Write a `prereqs.lock` after the first successful probe pass. Subsequent runs trust the lock for N hours (24h default) and skip the expensive probes. The init script reads the lock first; if it is fresh and the dependency manifest hash matches, it short-circuits. This is the same pattern Docker uses for layer caches: idempotent probe + content hash = skip.
+**带 TTL 的锁文件。** 第一次成功的探测通过后写一个 `prereqs.lock`。后续运行在 N 小时内（默认 24h）信任这个锁，跳过昂贵的探测。init 脚本先读锁；如果它新鲜且依赖清单哈希匹配，就短路。这和 Docker 用于层缓存的是同一个模式：幂等探测 + 内容哈希 = 跳过。
 
-**No network, no LLM, no surprises in the hot path.** Init probes are deterministic plumbing. A probe that calls an LLM to classify a failure or that hits an external service to check a license is not a probe; it is a workflow. If a probe takes longer than three seconds in a dry run, treat that as a workbench smell and either move it out of init or cache its result.
+**热路径里无网络、无 LLM、无意外。** init 探测是确定性的管道。一个调 LLM 去分类失败、或访问外部服务去检查许可证的探测不是探测；它是一个工作流。如果一个探测在干跑里超过三秒，把那当成工作台的异味，要么把它移出 init，要么缓存它的结果。
 
-## Use It
+## 上手使用
 
-In production:
+在生产中：
 
-- **Claude Code hooks.** `pre-task` hook calls the init script and refuses to launch the agent if it fails.
-- **GitHub Actions.** A `setup-agent` job runs the init script; the agent job depends on it.
-- **Docker entrypoint.** The agent container runs the init script before exec-ing the agent runtime; logs surface on failure.
+- **Claude Code hook。** `pre-task` hook 调用 init 脚本，若失败则拒绝启动 agent。
+- **GitHub Actions。** 一个 `setup-agent` 作业跑 init 脚本；agent 作业依赖它。
+- **Docker entrypoint。** agent 容器在 exec agent 运行时之前跑 init 脚本；失败时日志暴露。
 
-The init script is portable because it makes no calls to a specific framework. Bash, Make, or a tasks file can all wrap it.
+init 脚本可移植，因为它不调用任何特定框架。Bash、Make 或一个 tasks 文件都能包它。
 
-## Ship It
+## 交付
 
-`outputs/skill-init-script.md` interviews the project, classifies its setup work into probes, and emits a project-specific `init_agent.py` plus a CI workflow that runs it before any agent step.
+`outputs/skill-init-script.md` 访谈项目，把它的 setup 工作分类成探测，并产出一个项目专属的 `init_agent.py` 加一个在任何 agent 步骤前跑它的 CI 工作流。
 
-## Exercises
+## 练习
 
-1. Add a probe that diffs the current commit against the last-known-good commit and refuses to start if more than 50 files changed.
-2. Wire the script to write a `prereqs.lock` file and refuse to start if the lock is older than seven days.
-3. Add a `--fix` flag that auto-installs missing dev dependencies but never modifies runtime dependencies without approval.
-4. Move probes from hardcoded functions to a YAML registry. Defend the trade-off.
-5. Add a timing budget per probe. A probe that runs longer than three seconds is a workbench smell.
+1. 加一个探测，把当前 commit 与上一次已知良好 commit 做 diff，若超过 50 个文件变化就拒绝启动。
+2. 把脚本接成写一个 `prereqs.lock` 文件，若锁超过七天旧就拒绝启动。
+3. 加一个 `--fix` 标志，自动安装缺失的开发依赖，但绝不在没审批时修改运行时依赖。
+4. 把探测从硬编码函数挪到一个 YAML 注册表。为这个取舍辩护。
+5. 给每个探测加一个时间预算。一个跑超过三秒的探测是工作台异味。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| Probe | "A check" | A deterministic function returning `(name, status, detail)` |
-| Init report | "Setup output" | JSON written next to state with the probe results |
-| Idempotent | "Safe to re-run" | Two runs in a row produce identical reports modulo timestamp |
-| Fail loud | "Don't swallow" | Halt and surface to the human; no silent fallback |
-| Setup tax | "Bootstrap cost" | The tokens the agent spends per session rediscovering the obvious |
+| Probe | 「一个检查」 | 一个返回 `(name, status, detail)` 的确定性函数 |
+| Init report | 「setup 输出」 | 写在状态旁边、带探测结果的 JSON |
+| Idempotent | 「可安全重跑」 | 连跑两次除时间戳外产出一致的报告 |
+| Fail loud | 「别吞掉」 | 停下并暴露给人；无静默兜底 |
+| Setup tax | 「引导成本」 | agent 每会话花在重新发现显而易见之事上的 token |
 
-## Further Reading
+## 延伸阅读
 
 - [Anthropic, Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
 - [GitHub Actions, composite actions for setup](https://docs.github.com/en/actions/sharing-automations/creating-actions/creating-a-composite-action)
-- [microservices.io, GenAI dev platform: guardrails](https://microservices.io/post/architecture/2026/03/09/genai-development-platform-part-1-development-guardrails.html) — pre-commit + CI checks as init
-- [Augment Code, How to Build Your AGENTS.md (2026)](https://www.augmentcode.com/guides/how-to-build-agents-md) — init expectations
-- [Codex Blog, Codex CLI Context Compaction](https://codex.danielvaughan.com/2026/03/31/codex-cli-context-compaction-architecture/) — session start as compaction-aware init
-- Phase 14 · 33 — the rule set this script enables
-- Phase 14 · 34 — the state file this script seeds
-- Phase 14 · 38 — the verification gate the init script feeds
-- Phase 14 · 40 — the handoff that consumes the init report's last-known-good
+- [microservices.io, GenAI dev platform: guardrails](https://microservices.io/post/architecture/2026/03/09/genai-development-platform-part-1-development-guardrails.html) —— 把 pre-commit + CI 检查当 init
+- [Augment Code, How to Build Your AGENTS.md (2026)](https://www.augmentcode.com/guides/how-to-build-agents-md) —— init 预期
+- [Codex Blog, Codex CLI Context Compaction](https://codex.danielvaughan.com/2026/03/31/codex-cli-context-compaction-architecture/) —— 把会话开始当成压实感知的 init
+- 阶段 14 · 33 —— 这个脚本使之成为可能的规则集
+- 阶段 14 · 34 —— 这个脚本播种的状态文件
+- 阶段 14 · 38 —— init 脚本喂给的验证关卡
+- 阶段 14 · 40 —— 消费 init 报告里上一次已知良好的交接

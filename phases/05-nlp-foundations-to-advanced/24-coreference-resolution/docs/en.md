@@ -1,85 +1,85 @@
-# Coreference Resolution
+# 共指消解
 
-> "She called him. He did not answer. The doctor was at lunch." Three references to two people and nobody is named. Coreference resolution figures out who is who.
+> "She called him. He did not answer. The doctor was at lunch." 三处指代两个人，谁都没被点名。共指消解弄清谁是谁。
 
-**Type:** Learn
-**Languages:** Python
-**Prerequisites:** Phase 5 · 06 (NER), Phase 5 · 07 (POS & Parsing)
-**Time:** ~60 minutes
+**类型：** Learn
+**语言：** Python
+**前置要求：** Phase 5 · 06（NER）、Phase 5 · 07（词性与句法分析）
+**预计时间：** ~60 分钟
 
-## The Problem
+## 问题所在
 
-Extract every mention of Apple Inc. from a 300-word article. Easy when the article says "Apple." Hard when it says "the company," "they," "Cupertino's technology giant," or "Jobs's firm." Without resolving these mentions to the same entity, your NER pipeline misses 60-80% of the mentions.
+从一篇 300 字的文章里抽出 Apple Inc. 的每一次提及。文章说 "Apple" 时很简单。说 "the company"、"they"、"Cupertino's technology giant" 或 "Jobs's firm" 时就难了。不把这些提及消解到同一个实体上，你的 NER 流水线会漏掉 60-80% 的提及。
 
-Coreference resolution links every expression that refers to the same real-world entity into one cluster. It is the glue between surface-level NLP (NER, parsing) and downstream semantics (IE, QA, summarization, KG).
+共指消解把所有指向同一个真实世界实体的表达，链接进一个簇。它是表层 NLP（NER、句法分析）和下游语义（IE、QA、摘要、KG）之间的黏合剂。
 
-Why it matters in 2026:
+它在 2026 年为什么要紧：
 
-- Summarization: "The CEO announced..." vs "Tim Cook announced..." — the summary should name the CEO.
-- Question answering: "Who did she call?" requires resolving "she."
-- Information extraction: a knowledge graph with "PER1 founded Apple" and "Jobs founded Apple" as separate entries is wrong.
-- Multi-document IE: merging mentions across articles about the same event is cross-document coreference.
+- 摘要："The CEO announced..." vs "Tim Cook announced..."——摘要应当点出 CEO 的名字。
+- 问答："Who did she call?" 需要消解 "she"。
+- 信息抽取：一张知识图谱里把 "PER1 founded Apple" 和 "Jobs founded Apple" 当成两条独立条目，就错了。
+- 多文档 IE：跨多篇讲同一事件的文章合并提及，就是跨文档共指。
 
-## The Concept
+## 核心概念
 
-![Coreference clustering: mentions → entities](../assets/coref.svg)
+![共指聚类：提及 → 实体](../assets/coref.svg)
 
-**The task.** Input: a document. Output: a clustering of mentions (spans) where each cluster refers to one entity.
+**任务。** 输入：一篇文档。输出：提及（span）的一个聚类，每个簇指向一个实体。
 
-**Mention types.**
+**提及类型。**
 
-- **Named entity.** "Tim Cook"
-- **Nominal.** "the CEO", "the company"
-- **Pronominal.** "he", "she", "they", "it"
-- **Appositive.** "Tim Cook, Apple's CEO,"
+- **命名实体。** "Tim Cook"
+- **名词性。** "the CEO"、"the company"
+- **代词性。** "he"、"she"、"they"、"it"
+- **同位语。** "Tim Cook, Apple's CEO,"
 
-**Architectures.**
+**架构。**
 
-1. **Rule-based (Hobbs, 1978).** Syntactic-tree-based pronoun resolution using grammar rules. Good baseline. Surprisingly hard to beat on pronouns.
-2. **Mention-pair classifier.** For every pair of mentions (m_i, m_j), predict whether they corefer. Cluster by transitive closure. Standard pre-2016.
-3. **Mention-ranking.** For each mention, rank candidate antecedents (including "no antecedent"). Pick the top.
-4. **Span-based end-to-end (Lee et al., 2017).** Transformer encoder. Enumerate all candidate spans up to a length cap. Predict mention scores. Predict antecedent-probability for each span. Cluster greedily. The modern default.
-5. **Generative (2024+).** Prompt an LLM: "List every pronoun in this text and its antecedent." Works well on easy cases, struggles on long documents and rare referents.
+1. **基于规则（Hobbs，1978）。** 基于句法树、用语法规则做代词消解。好基线。在代词上出奇地难被打败。
+2. **提及对分类器。** 对每一对提及 (m_i, m_j)，预测它们是否共指。按传递闭包聚类。2016 年前的标准。
+3. **提及排序。** 对每个提及，给候选先行词（包括"无先行词"）排序，挑最靠前的。
+4. **基于 span 的端到端（Lee et al., 2017）。** transformer 编码器。枚举所有不超过长度上限的候选 span。预测提及分数。为每个 span 预测先行词概率。贪心聚类。现代默认。
+5. **生成式（2024+）。** 给 LLM 下 prompt："List every pronoun in this text and its antecedent."。在简单情况上效果好，在长文档和罕见指称上吃力。
 
-**The evaluation metrics.** Five standard metrics (MUC, B³, CEAF, BLANC, LEA) because no single metric captures clustering quality. Report the average of the first three as CoNLL F1. State-of-the-art in 2026 on CoNLL-2012: ~83 F1.
+**评估指标。** 五个标准指标（MUC、B³、CEAF、BLANC、LEA），因为没有单一指标能捕捉聚类质量。把前三个的平均报为 CoNLL F1。2026 年 CoNLL-2012 上的最前沿：~83 F1。
 
-**Known hard cases.**
+**已知的难例。**
 
-- Definite descriptions referring to entities introduced pages earlier.
-- Bridging anaphora ("the wheels" → a previously mentioned car).
-- Zero anaphora in languages like Chinese and Japanese.
-- Cataphora (pronoun before referent): "When **she** walked in, Mary smiled."
+- 指向几页之前引入的实体的定指描述。
+- 桥接回指（"the wheels" → 前面提过的一辆车）。
+- 中文、日语等语言里的零回指。
+- 前指（代词在指称之前）："When **she** walked in, Mary smiled."
 
-## Build It
+## 动手构建
 
-### Step 1: pretrained neural coreference (AllenNLP / spaCy-experimental)
+### 第 1 步：预训练的神经共指（AllenNLP / spaCy-experimental）
 
 ```python
 import spacy
-nlp = spacy.load("en_coreference_web_trf")   # experimental model
+nlp = spacy.load("en_coreference_web_trf")   # 实验性模型
 doc = nlp("Apple announced new products. The company said they would ship soon.")
 for cluster in doc._.coref_clusters:
     print(cluster, "->", [m.text for m in cluster])
 ```
 
-On a longer document, you get something like:
-- Cluster 1: [Apple, The company, they]
-- Cluster 2: [new products]
+在一篇更长的文档上，你会得到类似这样的东西：
+- 簇 1：[Apple, The company, they]
+- 簇 2：[new products]
 
-### Step 2: rule-based pronoun resolver (teaching)
+### 第 2 步：基于规则的代词消解器（教学）
 
-See `code/main.py` for a stdlib-only implementation:
+仅标准库的实现见 `code/main.py`：
 
-1. Extract mentions: named entities (capitalized spans), pronouns (dict lookup), definite descriptions ("the X").
-2. For each pronoun, look at the previous K mentions and score them by:
-   - gender/number agreement (heuristic)
-   - recency (closer wins)
-   - syntactic role (subjects preferred)
-3. Link the highest-scoring antecedent.
+1. 抽取提及：命名实体（首字母大写的 span）、代词（查字典）、定指描述（"the X"）。
+2. 对每个代词，看前面 K 个提及，按以下给它们打分：
+   - 性别/数一致（启发式）
+   - 就近（更近的赢）
+   - 句法角色（偏好主语）
+3. 链接得分最高的先行词。
 
-Not competitive with neural models. But it shows the search space and the decisions an end-to-end model must make.
+比不过神经模型。但它展示了搜索空间，以及一个端到端模型必须做的那些决策。
 
-### Step 3: using LLMs for coreference
+### 第 3 步：用 LLM 做共指
 
 ```python
 prompt = f"""Text: {text}
@@ -90,36 +90,36 @@ Cluster them by what they refer to. Output JSON:
 """
 ```
 
-Two failure modes to watch. First, LLMs over-merge ("him" and "her" referring to two distinct people). Second, LLMs silently drop mentions in long documents. Always verify with span-offset checks.
+两个要盯着的翻车方式。第一，LLM 过度合并（指向两个不同人的 "him" 和 "her"）。第二，LLM 在长文档里默默丢掉提及。永远用 span 偏移检查来核验。
 
-### Step 4: evaluation
+### 第 4 步：评估
 
-The standard conll-2012 script computes MUC, B³, CEAF-φ4 and reports the average. For an in-house eval, start with span-level precision and recall on your annotated test set, then add mention-linking F1.
+标准的 conll-2012 脚本计算 MUC、B³、CEAF-φ4 并报告平均值。做内部评估，先从你标注测试集上的 span 级精确率和召回率起步，再加上提及链接 F1。
 
-## Pitfalls
+## 坑
 
-- **Singleton explosion.** Some systems report every mention as its own cluster. B³ is lenient. MUC punishes this. Always check all three metrics.
-- **Pronouns in long context.** Performance drops ~15 F1 on documents over 2,000 tokens. Chunk carefully.
-- **Gender assumptions.** Hard-coded gender rules break on non-binary referents, organizations, animals. Use learned models or neutral scoring.
-- **LLM drift on long docs.** A single API call cannot reliably cluster mentions across 50+ paragraphs. Use sliding-window + merge.
+- **单例爆炸。** 有些系统把每个提及都报成它自己的簇。B³ 宽容，MUC 惩罚这个。永远三个指标都查。
+- **长上下文里的代词。** 在超过 2000 token 的文档上性能掉约 15 F1。小心分块。
+- **性别假设。** 硬编码的性别规则在非二元指称、组织、动物上崩。用学出来的模型或中性打分。
+- **LLM 在长文档上漂移。** 单次 API 调用没法可靠地跨 50+ 段聚类提及。用滑动窗口 + 合并。
 
-## Use It
+## 上手使用
 
-The 2026 stack:
+2026 年的栈：
 
-| Situation | Pick |
+| 场景 | 选择 |
 |-----------|------|
-| English, single document | `en_coreference_web_trf` (spaCy-experimental) or AllenNLP neural coref |
-| Multilingual | SpanBERT / XLM-R trained on OntoNotes or Multilingual CoNLL |
-| Cross-document event coref | Specialized end-to-end models (2025–26 SOTA) |
-| Quick LLM baseline | GPT-4o / Claude with structured-output coref prompt |
-| Production dialog systems | Rule-based fallback + neural primary + manual review for critical slots |
+| 英语、单文档 | `en_coreference_web_trf`（spaCy-experimental）或 AllenNLP 神经共指 |
+| 多语言 | 在 OntoNotes 或多语言 CoNLL 上训练的 SpanBERT / XLM-R |
+| 跨文档事件共指 | 专门的端到端模型（2025–26 SOTA） |
+| 快速 LLM 基线 | 配结构化输出共指 prompt 的 GPT-4o / Claude |
+| 生产对话系统 | 基于规则的兜底 + 神经为主 + 关键槽位人工复核 |
 
-The integration pattern that ships in 2026: run NER first, run coref, merge coref clusters into NER entities. Downstream tasks see one entity per cluster, not one entity per mention.
+2026 年上线的集成模式：先跑 NER，再跑共指，把共指簇合并进 NER 实体。下游任务看到的是每簇一个实体，而非每提及一个实体。
 
-## Ship It
+## 交付
 
-Save as `outputs/skill-coref-picker.md`:
+存为 `outputs/skill-coref-picker.md`：
 
 ```markdown
 ---
@@ -141,28 +141,28 @@ Given a use case (single-doc / multi-doc, domain, language), output:
 Refuse LLM-only coref for documents over 2,000 tokens without sliding-window merge. Refuse any pipeline that runs coref without a mention-level precision-recall report. Flag gender-heuristic systems deployed in demographically diverse text.
 ```
 
-## Exercises
+## 练习
 
-1. **Easy.** Run the rule-based resolver in `code/main.py` on 5 hand-crafted paragraphs. Measure mention-link accuracy against ground truth.
-2. **Medium.** Use a pretrained neural coref model on a news article. Compare clusters against your own manual annotation. Where did it fail?
-3. **Hard.** Build a coref-enhanced NER pipeline: NER first, then merge via coref clusters. Measure entity-coverage improvement vs NER-only on 100 articles.
+1. **简单。** 在 5 个手工编写的段落上跑 `code/main.py` 里的基于规则消解器。对照标准答案测量提及链接准确率。
+2. **中等。** 在一篇新闻文章上用一个预训练神经共指模型。把簇和你自己的手工标注对比。它在哪里失败了？
+3. **困难。** 搭一条共指增强的 NER 流水线：先 NER，再通过共指簇合并。在 100 篇文章上测量相对纯 NER 的实体覆盖提升。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 人们怎么说 | 它实际是什么 |
 |------|-----------------|-----------------------|
-| Mention | A reference | A span of text that refers to an entity (name, pronoun, noun phrase). |
-| Antecedent | What "it" refers to | The earlier mention a later one corefers with. |
-| Cluster | The entity's mentions | Set of mentions that all refer to the same real-world entity. |
-| Anaphora | Backward reference | Later mention refers to earlier ("he" → "John"). |
-| Cataphora | Forward reference | Earlier mention refers to later ("When he arrived, John..."). |
-| Bridging | Implicit reference | "I bought a car. The wheels were bad." (wheels of THAT car.) |
-| CoNLL F1 | The number on leaderboards | Average of MUC, B³, CEAF-φ4 F1 scores. |
+| 提及（Mention） | 一处指代 | 指向某实体的一段文本（名字、代词、名词短语）。 |
+| 先行词（Antecedent） | "it" 指的是什么 | 后一个提及与之共指的那个更早的提及。 |
+| 簇（Cluster） | 实体的各处提及 | 全都指向同一真实世界实体的提及集合。 |
+| 回指（Anaphora） | 向后指代 | 后一个提及指向更早的（"he" → "John"）。 |
+| 前指（Cataphora） | 向前指代 | 更早的提及指向后面的（"When he arrived, John..."）。 |
+| 桥接（Bridging） | 隐式指代 | "I bought a car. The wheels were bad."（是那辆车的轮子。） |
+| CoNLL F1 | 排行榜上的那个数 | MUC、B³、CEAF-φ4 F1 分数的平均值。 |
 
-## Further Reading
+## 延伸阅读
 
-- [Jurafsky & Martin, SLP3 Ch. 26 — Coreference Resolution and Entity Linking](https://web.stanford.edu/~jurafsky/slp3/26.pdf) — canonical textbook chapter.
-- [Lee et al. (2017). End-to-end Neural Coreference Resolution](https://arxiv.org/abs/1707.07045) — span-based end-to-end.
-- [Joshi et al. (2020). SpanBERT](https://arxiv.org/abs/1907.10529) — pretraining that improves coref.
-- [Pradhan et al. (2012). CoNLL-2012 Shared Task](https://aclanthology.org/W12-4501/) — the benchmark.
-- [Hobbs (1978). Resolving Pronoun References](https://www.sciencedirect.com/science/article/pii/0024384178900064) — the rule-based classic.
+- [Jurafsky & Martin, SLP3 Ch. 26 — Coreference Resolution and Entity Linking](https://web.stanford.edu/~jurafsky/slp3/26.pdf) —— 经典教科书章节。
+- [Lee et al. (2017). End-to-end Neural Coreference Resolution](https://arxiv.org/abs/1707.07045) —— 基于 span 的端到端。
+- [Joshi et al. (2020). SpanBERT](https://arxiv.org/abs/1907.10529) —— 提升共指的预训练。
+- [Pradhan et al. (2012). CoNLL-2012 Shared Task](https://aclanthology.org/W12-4501/) —— 那个基准。
+- [Hobbs (1978). Resolving Pronoun References](https://www.sciencedirect.com/science/article/pii/0024384178900064) —— 基于规则的经典。

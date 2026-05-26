@@ -1,38 +1,38 @@
-# Few-Shot, Chain-of-Thought, Tree-of-Thought
+# Few-Shot、Chain-of-Thought、Tree-of-Thought
 
-> Telling a model what to do is prompting. Showing it how to think is engineering. The gap between 78% and 91% accuracy on the same model, same task, same data is not a better model. It is a better reasoning strategy.
+> 告诉模型该做什么，那是 prompting。教它该怎么想，那是工程。同一个模型、同一个任务、同一份数据上，78% 和 91% 准确率之间的差距，靠的不是更好的模型，而是更好的推理策略。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Lesson 11.01 (Prompt Engineering)
-**Time:** ~45 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 第 11.01 课（Prompt Engineering）
+**预计时间：** ~45 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Implement few-shot prompting by selecting and formatting example demonstrations that maximize task accuracy
-- Apply chain-of-thought (CoT) reasoning to improve accuracy on multi-step problems like math word problems
-- Build a tree-of-thought prompt that explores multiple reasoning paths and selects the best one
-- Measure the accuracy improvement from zero-shot vs few-shot vs CoT on a standard benchmark
+- 实现 few-shot prompting：挑选并格式化示例演示，把任务准确率拉满
+- 套用思维链（CoT）推理，提升数学应用题这类多步问题的准确率
+- 构建一个 tree-of-thought prompt，探索多条推理路径并选出最佳的那条
+- 在标准基准上测量 zero-shot、few-shot 和 CoT 各自带来的准确率提升
 
-## The Problem
+## 问题所在
 
-You build a math tutoring app. Your prompt says: "Solve this word problem." GPT-5 gets it right 94% of the time on GSM8K, the standard grade-school math benchmark. You think you already peaked. You do not — chain-of-thought still adds 3-4 points.
+你在做一个数学辅导应用。你的 prompt 写着："解这道应用题。"在标准的小学数学基准 GSM8K 上，GPT-5 有 94% 的时候答对。你以为已经到顶了，其实没有——思维链还能再加 3-4 个点。
 
-Add five words -- "Let's think step by step" -- and accuracy jumps to 91%. Add a few worked examples and it reaches 95%. Same model. Same temperature. Same API cost. The only difference is that you gave the model scratch paper.
+加上五个词——"Let's think step by step"——准确率就跳到 91%。再放几个做过的例子，它达到 95%。同一个模型，同样的温度，同样的 API 成本。唯一的差别是，你给了模型一张草稿纸。
 
-This is not a hack. It is how reasoning works. Humans do not solve multi-step problems in one mental leap. Neither do transformers. When you force a model to generate intermediate tokens, those tokens become part of the context for the next token. Each reasoning step feeds the next. The model literally computes its way to the answer.
+这不是 hack，这就是推理的运作方式。人类不会一个念头就跳着解完多步问题，transformer 也不会。当你逼模型生成中间 token 时，这些 token 就成了下一个 token 的上下文的一部分。每一步推理喂给下一步。模型是真的一步步算到答案的。
 
-But "think step by step" is the beginning, not the end. What if you sampled five reasoning paths and took a majority vote? What if you let the model explore a tree of possibilities, evaluating and pruning branches? What if you interleaved reasoning with tool use? These are not hypotheticals. They are published techniques with measured improvements, and you will build all of them in this lesson.
+但"一步步思考"是起点，不是终点。如果你采样五条推理路径再做多数表决呢？如果你让模型探索一棵可能性的树，评估并剪掉分支呢？如果你把推理和工具调用交错起来呢？这些都不是假设。它们是有论文、有实测提升的技术，本课你会把它们全部构建出来。
 
-## The Concept
+## 核心概念
 
-### Zero-Shot vs Few-Shot: When Examples Beat Instructions
+### Zero-Shot 与 Few-Shot：示例什么时候胜过指令
 
-Zero-shot prompting gives the model a task and nothing else. Few-shot prompting gives it examples first.
+Zero-shot prompting 只给模型一个任务，别的什么都不给。Few-shot prompting 先给它示例。
 
-Wei et al. (2022) measured this across 8 benchmarks. For simple tasks like sentiment classification, zero-shot and few-shot performed within 2% of each other. For complex tasks like multi-step arithmetic and symbolic reasoning, few-shot improved accuracy by 10-25%.
+Wei et al.（2022）在 8 个基准上做了测量。对于情感分类这类简单任务，zero-shot 和 few-shot 的表现相差不到 2%。对于多步算术、符号推理这类复杂任务，few-shot 把准确率提升了 10-25%。
 
-The intuition: examples are compressed instructions. Instead of describing the output format, you show it. Instead of explaining the reasoning process, you demonstrate it. The model pattern-matches on the examples more reliably than it interprets abstract instructions.
+直觉是：示例是被压缩过的指令。与其描述输出格式，不如直接展示它。与其解释推理过程，不如直接演示它。模型在示例上做模式匹配，比解读抽象指令要可靠得多。
 
 ```mermaid
 graph TD
@@ -48,23 +48,23 @@ graph TD
     style F fill:#1a1a2e,stroke:#51cf66,color:#fff
 ```
 
-**When few-shot wins:** format-sensitive tasks, classification, structured extraction, domain-specific jargon, any task where the model needs to match a specific pattern.
+**Few-shot 占优时：** 对格式敏感的任务、分类、结构化抽取、领域专属术语，以及任何需要模型匹配特定模式的任务。
 
-**When zero-shot wins:** simple factual questions, creative tasks where examples constrain creativity, tasks where finding good examples is harder than writing good instructions.
+**Zero-shot 占优时：** 简单的事实性问题、示例会限制创造力的创意任务，以及找好示例比写好指令还难的任务。
 
-### Example Selection: Similar Beats Random
+### 示例选择：相似胜过随机
 
-Not all examples are equal. Choosing examples similar to the target input outperforms random selection by 5-15% on classification tasks (Liu et al., 2022). Three principles:
+并非所有示例都一样好。挑选与目标输入相似的示例，在分类任务上比随机选择高出 5-15%（Liu et al., 2022）。三条原则：
 
-1. **Semantic similarity**: pick examples closest to the input in embedding space
-2. **Label diversity**: cover all output categories in your examples
-3. **Difficulty matching**: match the complexity level of the target problem
+1. **语义相似**：挑选在 embedding 空间里与输入最接近的示例
+2. **标签多样**：让你的示例覆盖所有输出类别
+3. **难度匹配**：匹配目标问题的复杂度
 
-The optimal number of examples for most tasks is 3-5. Below 3, the model does not have enough signal to extract the pattern. Above 5, you hit diminishing returns and waste context window tokens. For classification with many labels, use one example per label.
+大多数任务的最优示例数是 3-5 个。少于 3 个，模型没有足够的信号去提取模式。多于 5 个，你会撞上收益递减，还白白浪费上下文窗口的 token。对于标签很多的分类，每个标签用一个示例。
 
-### Chain-of-Thought: Giving Models Scratch Paper
+### 思维链：给模型一张草稿纸
 
-Chain-of-Thought (CoT) prompting was introduced by Wei et al. (2022) at Google Brain. The idea is simple: instead of asking the model for just the answer, ask it to show its reasoning steps first.
+思维链（CoT）prompting 由 Google Brain 的 Wei et al.（2022）提出。想法很简单：与其只问模型要答案，不如让它先把推理步骤写出来。
 
 ```mermaid
 graph LR
@@ -83,11 +83,11 @@ graph LR
     style A2 fill:#1a1a2e,stroke:#51cf66,color:#fff
 ```
 
-Why does this work mechanically? Each token a transformer generates becomes context for the next token. Without CoT, the model must compress all reasoning into the hidden state of a single forward pass. With CoT, the model externalizes intermediate computations as tokens. Each reasoning token extends the effective computation depth.
+从机制上讲，为什么这管用？transformer 生成的每个 token 都会成为下一个 token 的上下文。没有 CoT 时，模型必须把所有推理压缩进一次前向传播的隐藏状态里。有了 CoT，模型把中间计算以 token 的形式外化出来。每一个推理 token 都延展了有效的计算深度。
 
-**GSM8K benchmarks (grade-school math, 8.5K problems):**
+**GSM8K 基准（小学数学，8.5K 道题）：**
 
-| Model | Zero-Shot | Zero-Shot CoT | Few-Shot CoT |
+| 模型 | Zero-Shot | Zero-Shot CoT | Few-Shot CoT |
 |-------|-----------|---------------|--------------|
 | GPT-4o | 78% | 91% | 95% |
 | GPT-5 | 94% | 97% | 98% |
@@ -97,19 +97,19 @@ Why does this work mechanically? Each token a transformer generates becomes cont
 | Llama 4 70B | 80% | 89% | 94% |
 | DeepSeek-V3.1 | 89% | 94% | 96% |
 
-**Note on reasoning models.** Models like OpenAI's o-series (o3, o4-mini) and DeepSeek-R1 run chain-of-thought internally before emitting their answer. Adding "Let's think step by step" to a reasoning model is redundant and sometimes counterproductive — they have already done it.
+**关于推理模型的说明。** OpenAI 的 o 系列（o3、o4-mini）和 DeepSeek-R1 这类模型，会在给出答案之前在内部跑思维链。给推理模型加"Let's think step by step"是多余的，有时甚至帮倒忙——它们已经做过这件事了。
 
-Two flavors of CoT:
+CoT 有两种口味：
 
-**Zero-shot CoT**: append "Let's think step by step" to the prompt. No examples needed. Kojima et al. (2022) showed this single sentence improves accuracy across arithmetic, commonsense, and symbolic reasoning tasks.
+**Zero-shot CoT**：在 prompt 后面追加"Let's think step by step"。不需要示例。Kojima et al.（2022）证明了这一句话就能在算术、常识和符号推理任务上提升准确率。
 
-**Few-shot CoT**: provide examples that include reasoning steps. More effective than zero-shot CoT because the model sees the exact reasoning format you expect.
+**Few-shot CoT**：提供带推理步骤的示例。比 zero-shot CoT 更有效，因为模型看到了你期望的确切推理格式。
 
-**When CoT hurts**: simple factual recall ("What is the capital of France?"), single-step classification, tasks where speed matters more than accuracy. CoT adds 50-200 tokens of reasoning overhead per query. For high-throughput, low-complexity tasks, that is wasted cost.
+**CoT 帮倒忙时**：简单的事实回忆（"法国的首都是哪？"）、单步分类，以及速度比准确率更重要的任务。CoT 每次查询会多出 50-200 token 的推理开销。对于高吞吐、低复杂度的任务，那就是白花的成本。
 
-### Self-Consistency: Sample Many, Vote Once
+### Self-Consistency：多采样，一次表决
 
-Wang et al. (2023) introduced self-consistency. The insight: a single CoT path might contain reasoning errors. But if you sample N independent reasoning paths (using temperature > 0) and take the majority vote on the final answer, errors cancel out.
+Wang et al.（2023）提出了 self-consistency。洞见在于：单条 CoT 路径可能含有推理错误。但如果你采样 N 条独立的推理路径（用 temperature > 0），再对最终答案做多数表决，错误就会相互抵消。
 
 ```mermaid
 graph TD
@@ -136,13 +136,13 @@ graph TD
     style V fill:#1a1a2e,stroke:#51cf66,color:#fff
 ```
 
-Self-consistency improved GSM8K accuracy from 56.5% (single CoT) to 74.4% with N=40 on the original PaLM 540B experiments. On GPT-5 the improvement is small (97% to 98%) because base accuracy is already saturated. The technique shines most on models with 60-85% base CoT accuracy -- the sweet spot where single-path errors are frequent but not systematic. For reasoning models (o-series, R1) self-consistency is subsumed by the built-in internal sampling.
+在最初的 PaLM 540B 实验里，self-consistency 把 GSM8K 准确率从 56.5%（单条 CoT）提升到 N=40 时的 74.4%。在 GPT-5 上提升很小（97% 到 98%），因为基础准确率已经饱和了。这项技术在基础 CoT 准确率 60-85% 的模型上最出彩——这是单路径错误频繁但不成系统的甜区。对于推理模型（o 系列、R1），self-consistency 已被内置的内部采样所涵盖。
 
-The tradeoff: N samples means Nx the API cost and latency. In practice, N=5 captures most of the benefit. N=3 is the minimum for a meaningful vote. N > 10 has diminishing returns for most tasks.
+代价是：N 个采样意味着 N 倍的 API 成本和延迟。实践中，N=5 就能抓住大部分收益。N=3 是有意义表决的下限。对大多数任务来说，N > 10 收益递减。
 
-### Tree-of-Thought: Branching Exploration
+### Tree-of-Thought：分叉探索
 
-Yao et al. (2023) introduced Tree-of-Thought (ToT). Where CoT follows one linear reasoning path, ToT explores multiple branches and evaluates which are most promising before continuing.
+Yao et al.（2023）提出了 Tree-of-Thought（ToT）。CoT 走的是一条线性推理路径，而 ToT 会探索多个分支，并在继续之前评估哪些最有希望。
 
 ```mermaid
 graph TD
@@ -183,19 +183,19 @@ graph TD
     style E4 fill:#1a1a2e,stroke:#808080,color:#fff
 ```
 
-ToT has three components:
+ToT 有三个组成部分：
 
-1. **Thought generation**: produce multiple candidate next-steps
-2. **State evaluation**: score each candidate (can use the LLM itself as evaluator)
-3. **Search algorithm**: BFS or DFS through the tree, pruning low-scoring branches
+1. **想法生成**：产出多个候选的下一步
+2. **状态评估**：给每个候选打分（可以用 LLM 自己当评估器）
+3. **搜索算法**：在树上做 BFS 或 DFS，剪掉低分分支
 
-On the Game of 24 task (combine 4 numbers using arithmetic to make 24), GPT-4 with standard prompting solves 7.3% of problems. With CoT, 4.0% (CoT actually hurts here because the search space is wide). With ToT, 74%.
+在 Game of 24 任务上（用四个数字做算术凑出 24），GPT-4 用标准 prompting 解出 7.3% 的题。用 CoT 是 4.0%（这里 CoT 反而帮倒忙，因为搜索空间太宽）。用 ToT 是 74%。
 
-ToT is expensive. Each node in the tree requires an LLM call. A tree with branching factor 3 and depth 3 requires up to 39 LLM calls. Use it only for problems where the search space is large but evaluatable -- planning, puzzle solving, creative problem-solving with constraints.
+ToT 很贵。树上每个节点都要一次 LLM 调用。一棵分支因子 3、深度 3 的树最多要 39 次 LLM 调用。只在搜索空间大但可评估的问题上用它——规划、解谜、带约束的创意问题求解。
 
-### ReAct: Thinking + Doing
+### ReAct：思考 + 行动
 
-Yao et al. (2022) combined reasoning traces with actions. The model alternates between thinking (generating reasoning) and acting (calling tools, searching, computing).
+Yao et al.（2022）把推理轨迹和动作结合了起来。模型在思考（生成推理）和行动（调用工具、搜索、计算）之间交替。
 
 ```mermaid
 graph LR
@@ -222,15 +222,15 @@ graph LR
     style F fill:#1a1a2e,stroke:#51cf66,color:#fff
 ```
 
-ReAct outperforms pure CoT on knowledge-intensive tasks because it can ground its reasoning in real data. On HotpotQA (multi-hop question answering), ReAct with GPT-4 achieves 35.1% exact match vs 29.4% for CoT alone. The real power is that reasoning errors get corrected by observations -- the model can update its plan mid-execution.
+在知识密集型任务上，ReAct 胜过纯 CoT，因为它能把推理建立在真实数据之上。在 HotpotQA（多跳问答）上，GPT-4 配合 ReAct 达到 35.1% 的精确匹配，而单用 CoT 是 29.4%。真正的威力在于推理错误会被观测结果纠正——模型可以在执行途中更新自己的计划。
 
-ReAct is the foundation of modern AI agents. Every agent framework (LangChain, CrewAI, AutoGen) implements some variant of the Thought-Action-Observation loop. You will build full agents in Phase 14. This lesson covers the prompting pattern.
+ReAct 是现代 AI agent 的基石。每个 agent 框架（LangChain、CrewAI、AutoGen）都实现了某种 Thought-Action-Observation 循环的变体。你会在阶段 14 构建完整的 agent。本课讲的是这个 prompting 模式。
 
-### Structured Prompting: XML Tags, Delimiters, Headers
+### 结构化 prompting：XML 标签、分隔符、标题
 
-As prompts get complex, structure prevents the model from confusing sections. Three approaches:
+随着 prompt 变复杂，结构能防止模型混淆各个部分。三种做法：
 
-**XML tags** (works best with Claude, solid everywhere):
+**XML 标签**（配 Claude 最好，到哪都靠谱）：
 ```
 <context>
 You are reviewing a pull request.
@@ -250,7 +250,7 @@ List each issue with: file, line, severity (critical/warning/info), description.
 </output_format>
 ```
 
-**Markdown headers** (universal):
+**Markdown 标题**（通用）：
 ```
 ## Role
 Senior security engineer at a fintech company.
@@ -267,7 +267,7 @@ Analyze this API endpoint for vulnerabilities.
 - Include remediation steps
 ```
 
-**Delimiters** (minimal but effective):
+**分隔符**（极简但有效）：
 ```
 ---INPUT---
 {user_text}
@@ -278,9 +278,9 @@ Summarize the above in 3 bullet points.
 ---END INSTRUCTIONS---
 ```
 
-### Prompt Chaining: Sequential Decomposition
+### Prompt 链：顺序分解
 
-Some tasks are too complex for a single prompt. Prompt chaining breaks them into steps, where the output of one prompt becomes the input of the next.
+有些任务对单个 prompt 来说太复杂了。Prompt 链把它们拆成多个步骤，一个 prompt 的输出成为下一个的输入。
 
 ```mermaid
 graph LR
@@ -300,37 +300,37 @@ graph LR
     style F fill:#1a1a2e,stroke:#51cf66,color:#fff
 ```
 
-Chaining beats single-prompt for three reasons:
+链式胜过单 prompt，有三个原因：
 
-1. **Each step is simpler**: the model handles one focused task instead of juggling everything
-2. **Intermediate outputs are inspectable**: you can validate and correct between steps
-3. **Different steps can use different models**: use a cheap model for extraction, an expensive one for reasoning
+1. **每一步都更简单**：模型处理一个聚焦的任务，而不是同时兼顾一切
+2. **中间输出可检查**：你可以在步骤之间做校验和纠正
+3. **不同步骤可以用不同模型**：抽取用便宜的模型，推理用贵的模型
 
-### Performance Comparison
+### 性能对比
 
-| Technique | Best For | GSM8K Accuracy (GPT-5) | API Calls | Token Overhead | Complexity |
+| 技术 | 最适合 | GSM8K 准确率（GPT-5） | API 调用次数 | Token 开销 | 复杂度 |
 |-----------|----------|------------------------|-----------|----------------|------------|
-| Zero-Shot | Simple tasks | 94% | 1 | None | Trivial |
-| Few-Shot | Format matching | 96% | 1 | 200-500 tokens | Low |
-| Zero-Shot CoT | Quick reasoning boost | 97% | 1 | 50-200 tokens | Trivial |
-| Few-Shot CoT | Maximum single-call accuracy | 98% | 1 | 300-600 tokens | Low |
-| Self-Consistency (N=5) | High-stakes reasoning | 98.5% | 5 | 5x token cost | Medium |
-| Reasoning model (o4-mini) | Drop-in CoT replacement | 97% | 1 | hidden (2-10x internal) | Trivial |
-| Tree-of-Thought | Search/planning problems | N/A (74% on Game of 24) | 10-40+ | 10-40x token cost | High |
-| ReAct | Knowledge-grounded reasoning | N/A (35.1% on HotpotQA) | 3-10+ | Variable | High |
-| Prompt Chaining | Complex multi-step tasks | 96% (pipeline) | 2-5 | 2-5x token cost | Medium |
+| Zero-Shot | 简单任务 | 94% | 1 | 无 | 极低 |
+| Few-Shot | 格式匹配 | 96% | 1 | 200-500 token | 低 |
+| Zero-Shot CoT | 快速提升推理 | 97% | 1 | 50-200 token | 极低 |
+| Few-Shot CoT | 单次调用准确率拉满 | 98% | 1 | 300-600 token | 低 |
+| Self-Consistency（N=5） | 高风险推理 | 98.5% | 5 | 5 倍 token 成本 | 中 |
+| 推理模型（o4-mini） | 直接替换 CoT | 97% | 1 | 隐藏（内部 2-10 倍） | 极低 |
+| Tree-of-Thought | 搜索/规划问题 | 不适用（Game of 24 上 74%） | 10-40+ | 10-40 倍 token 成本 | 高 |
+| ReAct | 知识接地的推理 | 不适用（HotpotQA 上 35.1%） | 3-10+ | 不定 | 高 |
+| Prompt 链 | 复杂多步任务 | 96%（流水线） | 2-5 | 2-5 倍 token 成本 | 中 |
 
-The right technique depends on three factors: accuracy requirement, latency budget, and cost tolerance. For most production systems, few-shot CoT with a 3-sample self-consistency fallback covers 90% of use cases.
+选对技术取决于三个因素：准确率要求、延迟预算和成本容忍度。对大多数生产系统来说，few-shot CoT 配上 3 采样的 self-consistency 兜底，能覆盖 90% 的用例。
 
-## Build It
+## 动手构建
 
-We will build a math problem solver that combines few-shot prompting, chain-of-thought reasoning, and self-consistency voting into a single pipeline. Then we will add tree-of-thought for hard problems.
+我们要构建一个数学解题器，把 few-shot prompting、思维链推理和 self-consistency 表决合进单条流水线。然后再为难题加上 tree-of-thought。
 
-The full implementation is in `code/advanced_prompting.py`. Here are the key components.
+完整实现在 `code/advanced_prompting.py`。下面是关键组件。
 
-### Step 1: Few-Shot Example Store
+### 第 1 步：Few-Shot 示例库
 
-The first component manages few-shot examples and selects the most relevant ones for a given problem.
+第一个组件管理 few-shot 示例，并为给定问题挑出最相关的那些。
 
 ```python
 GSM8K_EXAMPLES = [
@@ -343,11 +343,11 @@ GSM8K_EXAMPLES = [
 ]
 ```
 
-Each example has three parts: the question, the reasoning chain, and the final answer. The reasoning chain is what transforms a regular few-shot example into a CoT few-shot example.
+每个示例有三部分：问题、推理链和最终答案。推理链正是把一个普通 few-shot 示例变成 CoT few-shot 示例的关键。
 
-### Step 2: Chain-of-Thought Prompt Builder
+### 第 2 步：思维链 prompt 构建器
 
-The prompt builder assembles a system message, few-shot examples with reasoning chains, and the target question into a single prompt.
+prompt 构建器把 system message、带推理链的 few-shot 示例和目标问题组装成单个 prompt。
 
 ```python
 def build_cot_prompt(question, examples, num_examples=3):
@@ -367,11 +367,11 @@ def build_cot_prompt(question, examples, num_examples=3):
     return system, user
 ```
 
-The format constraint ("The answer is [number]") is critical. Without it, self-consistency cannot extract and compare answers across samples.
+那个格式约束（"The answer is [number]"）至关重要。没有它，self-consistency 就无法跨采样抽取并比较答案。
 
-### Step 3: Self-Consistency Voting
+### 第 3 步：Self-Consistency 表决
 
-Sample N reasoning paths and take the majority answer.
+采样 N 条推理路径，取多数答案。
 
 ```python
 def self_consistency_solve(question, examples, client, model, n_samples=5):
@@ -401,11 +401,11 @@ def self_consistency_solve(question, examples, client, model, n_samples=5):
     return best_answer, confidence, reasonings, vote_counts
 ```
 
-Temperature 0.7 is important. At temperature 0.0, all N samples would be identical, defeating the purpose. You need enough randomness for diverse reasoning paths but not so much that the model produces gibberish.
+Temperature 0.7 很重要。在 temperature 0.0 下，N 个采样会完全相同，那就失去了意义。你需要足够的随机性来产生多样的推理路径，但又不能多到模型开始胡言乱语。
 
-### Step 4: Tree-of-Thought Solver
+### 第 4 步：Tree-of-Thought 解题器
 
-For problems where linear reasoning fails, ToT explores multiple approaches and evaluates which direction is most promising.
+对于线性推理失效的问题，ToT 探索多种思路，并评估哪个方向最有希望。
 
 ```python
 def tree_of_thought_solve(question, client, model, breadth=3, depth=3):
@@ -426,11 +426,11 @@ def tree_of_thought_solve(question, client, model, breadth=3, depth=3):
     return extract_answer(best_thought), best_thought
 ```
 
-The evaluator is itself an LLM call. You ask the model: "On a scale of 0.0 to 1.0, how promising is this reasoning path for solving the problem?" This is the key insight of ToT -- the model evaluates its own partial solutions.
+评估器本身就是一次 LLM 调用。你问模型："在 0.0 到 1.0 的尺度上，这条推理路径对解决问题有多大希望？"这是 ToT 的关键洞见——模型评估自己的部分解。
 
-### Step 5: Full Pipeline
+### 第 5 步：完整流水线
 
-The pipeline combines all techniques with an escalation strategy.
+流水线把所有技术配上一套升级策略组合起来。
 
 ```python
 def solve_with_escalation(question, examples, client, model):
@@ -449,13 +449,13 @@ def solve_with_escalation(question, examples, client, model):
     return tot_answer, "tree_of_thought", None
 ```
 
-The escalation logic: try cheap (single CoT) first. If self-consistency confidence is below 0.8 (less than 4 of 5 samples agree), escalate to ToT. This balances cost and accuracy -- most problems are solved cheaply, hard problems get more compute.
+升级逻辑是：先试便宜的（单条 CoT）。如果 self-consistency 的置信度低于 0.8（5 个采样里不到 4 个一致），就升级到 ToT。这在成本和准确率之间取得平衡——大多数问题廉价解决，难题分到更多算力。
 
-## Use It
+## 上手使用
 
-### With LangChain
+### 配合 LangChain
 
-LangChain provides built-in support for prompt templates and output parsing that simplify few-shot and CoT patterns:
+LangChain 内置了对 prompt 模板和输出解析的支持，能简化 few-shot 和 CoT 模式：
 
 ```python
 from langchain_core.prompts import FewShotPromptTemplate, PromptTemplate
@@ -478,7 +478,7 @@ chain = few_shot_prompt | llm
 result = chain.invoke({"input": "If a train travels 120 km in 2 hours..."})
 ```
 
-LangChain also has `ExampleSelector` classes for semantic similarity selection:
+LangChain 还有用于语义相似度选择的 `ExampleSelector` 类：
 
 ```python
 from langchain_core.example_selectors import SemanticSimilarityExampleSelector
@@ -491,9 +491,9 @@ selector = SemanticSimilarityExampleSelector.from_examples(
 )
 ```
 
-### With DSPy
+### 配合 DSPy
 
-DSPy treats prompting strategies as optimizable modules. Instead of handcrafting CoT prompts, you define a signature and let DSPy optimize the prompt:
+DSPy 把 prompting 策略当成可优化的模块。你不再手工打磨 CoT prompt，而是定义一个 signature，让 DSPy 去优化 prompt：
 
 ```python
 import dspy
@@ -511,7 +511,7 @@ solver = MathSolver()
 result = solver(question="Janet's ducks lay 16 eggs per day...")
 ```
 
-DSPy's `ChainOfThought` automatically adds reasoning traces. `dspy.majority` implements self-consistency:
+DSPy 的 `ChainOfThought` 会自动加上推理轨迹。`dspy.majority` 实现了 self-consistency：
 
 ```python
 result = dspy.majority(
@@ -520,57 +520,57 @@ result = dspy.majority(
 )
 ```
 
-### Comparison: From-Scratch vs Frameworks
+### 对比：从零手写 vs 框架
 
-| Feature | From-Scratch (this lesson) | LangChain | DSPy |
+| 特性 | 从零手写（本课） | LangChain | DSPy |
 |---------|--------------------------|-----------|------|
-| Control over prompt format | Full | Template-based | Automatic |
-| Self-consistency | Manual voting | Manual | Built-in (`dspy.majority`) |
-| Example selection | Custom logic | `ExampleSelector` | `dspy.BootstrapFewShot` |
-| Tree-of-Thought | Custom tree search | Community chains | Not built-in |
-| Prompt optimization | Manual iteration | Manual | Automatic compilation |
-| Best for | Learning, custom pipelines | Standard workflows | Research, optimization |
+| 对 prompt 格式的控制 | 完全 | 基于模板 | 自动 |
+| Self-consistency | 手动表决 | 手动 | 内置（`dspy.majority`） |
+| 示例选择 | 自定义逻辑 | `ExampleSelector` | `dspy.BootstrapFewShot` |
+| Tree-of-Thought | 自定义树搜索 | 社区 chain | 未内置 |
+| Prompt 优化 | 手动迭代 | 手动 | 自动编译 |
+| 最适合 | 学习、定制流水线 | 标准工作流 | 研究、优化 |
 
-## Ship It
+## 交付
 
-This lesson produces two artifacts.
+本节课产出两个产物。
 
-**1. Reasoning Chain Prompt** (`outputs/prompt-reasoning-chain.md`): a production-ready prompt template for few-shot CoT with self-consistency. Plug in your examples and problem domain.
+**1. 推理链 prompt**（`outputs/prompt-reasoning-chain.md`）：一个生产可用的 few-shot CoT 加 self-consistency 的 prompt 模板。插入你自己的示例和问题领域即可。
 
-**2. CoT Pattern Selection Skill** (`outputs/skill-cot-patterns.md`): a decision framework for choosing the right reasoning technique based on task type, accuracy requirements, and cost constraints.
+**2. CoT 模式选择 skill**（`outputs/skill-cot-patterns.md`）：一套决策框架，根据任务类型、准确率要求和成本约束来挑选正确的推理技术。
 
-## Exercises
+## 练习
 
-1. **Measure the gap**: Take 10 GSM8K problems. Solve each with zero-shot, few-shot, zero-shot CoT, and few-shot CoT. Record accuracy for each. Which technique gives the biggest lift on your model?
+1. **测量差距**：取 10 道 GSM8K 题。每道分别用 zero-shot、few-shot、zero-shot CoT 和 few-shot CoT 解一遍。记录各自的准确率。在你的模型上，哪种技术带来的提升最大？
 
-2. **Example selection experiment**: For the same 10 problems, compare random example selection vs hand-picked similar examples. Measure accuracy difference. At what point does example quality matter more than example quantity?
+2. **示例选择实验**：对同样这 10 道题，对比随机选示例 vs 手挑相似示例。测量准确率差异。到什么程度，示例质量比示例数量更重要？
 
-3. **Self-consistency cost curve**: Run self-consistency with N=1, 3, 5, 7, 10 on 20 GSM8K problems. Plot accuracy vs cost (total tokens). Where is the knee of the curve for your model?
+3. **Self-consistency 成本曲线**：在 20 道 GSM8K 题上，用 N=1、3、5、7、10 跑 self-consistency。画出准确率 vs 成本（总 token 数）。在你的模型上，曲线的拐点在哪？
 
-4. **Build a ReAct loop**: Extend the pipeline with a calculator tool. When the model generates a math expression, execute it with Python's `eval()` (in a sandbox) and feed the result back. Measure if tool-grounded reasoning outperforms pure CoT.
+4. **构建一个 ReAct 循环**：给流水线扩展一个计算器工具。当模型生成一个数学表达式时，用 Python 的 `eval()`（在沙箱里）执行它，再把结果喂回去。测量工具接地的推理是否胜过纯 CoT。
 
-5. **ToT for creative tasks**: Adapt the Tree-of-Thought solver for a creative writing task: "Write a 6-word story that is both funny and sad." Use the LLM as evaluator. Does branching exploration produce better creative outputs than single-shot generation?
+5. **用 ToT 做创意任务**：把 Tree-of-Thought 解题器改造成一个创意写作任务："写一个既好笑又悲伤的六词故事。"用 LLM 当评估器。分叉探索是否比一次性生成产出更好的创意输出？
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家怎么说 | 它实际是什么 |
 |------|----------------|----------------------|
-| Few-shot prompting | "Give it some examples" | Including input-output demonstrations in the prompt to anchor the model's output format and behavior |
-| Chain-of-Thought | "Make it think step by step" | Eliciting intermediate reasoning tokens that extend the model's effective computation before producing a final answer |
-| Self-Consistency | "Run it multiple times" | Sampling N diverse reasoning paths at temperature > 0 and selecting the most common final answer by majority vote |
-| Tree-of-Thought | "Let it explore options" | Structured search over reasoning branches where each partial solution is evaluated and only promising paths are expanded |
-| ReAct | "Thinking + tool use" | Interleaving reasoning traces with external actions (search, compute, API calls) in a Thought-Action-Observation loop |
-| Prompt chaining | "Break it into steps" | Decomposing a complex task into sequential prompts where each output feeds the next input |
-| Zero-shot CoT | "Just add 'think step by step'" | Appending a reasoning trigger phrase to a prompt without any examples, relying on the model's latent reasoning capability |
+| Few-shot prompting | "给它几个例子" | 在 prompt 里放进输入-输出演示，锚定模型的输出格式和行为 |
+| 思维链 | "让它一步步想" | 引出中间推理 token，在产出最终答案之前延展模型的有效计算 |
+| Self-Consistency | "多跑几次" | 在 temperature > 0 下采样 N 条多样的推理路径，用多数表决选出最常见的最终答案 |
+| Tree-of-Thought | "让它探索选项" | 在推理分支上做结构化搜索，每个部分解都被评估，只扩展有希望的路径 |
+| ReAct | "思考 + 工具调用" | 在 Thought-Action-Observation 循环里，把推理轨迹和外部动作（搜索、计算、API 调用）交错起来 |
+| Prompt 链 | "拆成步骤" | 把复杂任务分解为顺序的 prompt，每个输出喂给下一个输入 |
+| Zero-shot CoT | "直接加上 think step by step" | 给 prompt 追加一句推理触发短语、不带任何示例，依靠模型潜在的推理能力 |
 
-## Further Reading
+## 延伸阅读
 
-- [Chain-of-Thought Prompting Elicits Reasoning in Large Language Models](https://arxiv.org/abs/2201.11903) -- Wei et al. 2022. The original CoT paper from Google Brain. Read sections 2-3 for the core results.
-- [Self-Consistency Improves Chain of Thought Reasoning in Language Models](https://arxiv.org/abs/2203.11171) -- Wang et al. 2023. The self-consistency paper. Table 1 has all the numbers you need.
-- [Tree of Thoughts: Deliberate Problem Solving with Large Language Models](https://arxiv.org/abs/2305.10601) -- Yao et al. 2023. ToT paper. The Game of 24 results in section 4 are the highlight.
-- [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629) -- Yao et al. 2022. The foundation of modern AI agents. Section 3 explains the Thought-Action-Observation loop.
-- [Large Language Models are Zero-Shot Reasoners](https://arxiv.org/abs/2205.11916) -- Kojima et al. 2022. The "Let's think step by step" paper. Surprisingly effective for how simple it is.
-- [DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines](https://arxiv.org/abs/2310.03714) -- Khattab et al. 2023. Treats prompting as a compilation problem. Read if you want to move beyond manual prompt engineering.
-- [OpenAI — Reasoning models guide](https://platform.openai.com/docs/guides/reasoning) -- vendor guidance on when chain-of-thought becomes an internal, priced-per-token "reasoning" mode versus a prompt-level trick.
-- [Lightman et al., "Let's Verify Step by Step" (2023)](https://arxiv.org/abs/2305.20050) -- process reward models (PRM) that grade each step of a chain; the reasoning supervision signal that succeeds outcome-only rewards.
-- [Snell et al., "Scaling LLM Test-Time Compute Optimally" (2024)](https://arxiv.org/abs/2408.03314) -- systematic study of CoT length, self-consistency sampling, and MCTS; where "think step by step" goes when accuracy matters more than latency.
+- [Chain-of-Thought Prompting Elicits Reasoning in Large Language Models](https://arxiv.org/abs/2201.11903)——Wei et al. 2022。Google Brain 最初的 CoT 论文。看第 2-3 节的核心结果。
+- [Self-Consistency Improves Chain of Thought Reasoning in Language Models](https://arxiv.org/abs/2203.11171)——Wang et al. 2023。self-consistency 论文。表 1 有你需要的全部数字。
+- [Tree of Thoughts: Deliberate Problem Solving with Large Language Models](https://arxiv.org/abs/2305.10601)——Yao et al. 2023。ToT 论文。第 4 节的 Game of 24 结果是亮点。
+- [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629)——Yao et al. 2022。现代 AI agent 的基石。第 3 节讲解 Thought-Action-Observation 循环。
+- [Large Language Models are Zero-Shot Reasoners](https://arxiv.org/abs/2205.11916)——Kojima et al. 2022。"Let's think step by step"那篇论文。就它这么简单，效果好得出奇。
+- [DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines](https://arxiv.org/abs/2310.03714)——Khattab et al. 2023。把 prompting 当成一个编译问题。如果你想超越手工 prompt engineering，就读它。
+- [OpenAI — Reasoning models guide](https://platform.openai.com/docs/guides/reasoning)——厂商指南，讲思维链什么时候从一个 prompt 层面的小技巧变成内部的、按 token 计价的"推理"模式。
+- [Lightman et al., "Let's Verify Step by Step" (2023)](https://arxiv.org/abs/2305.20050)——过程奖励模型（PRM），给链上每一步打分；这种推理监督信号胜过只看结果的奖励。
+- [Snell et al., "Scaling LLM Test-Time Compute Optimally" (2024)](https://arxiv.org/abs/2408.03314)——对 CoT 长度、self-consistency 采样和 MCTS 的系统研究；当准确率比延迟更重要时，"一步步思考"会走向何方。

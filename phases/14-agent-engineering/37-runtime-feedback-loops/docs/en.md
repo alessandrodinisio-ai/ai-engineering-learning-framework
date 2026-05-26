@@ -1,26 +1,26 @@
-# Runtime Feedback Loops
+# 运行时反馈循环
 
-> Agents that do not see real command output guess. A feedback runner captures stdout, stderr, exit code, and timing into a structured record the next turn can read. Then the agent reacts to facts instead of to its own prediction of facts.
+> 看不到真实命令输出的 agent 在瞎猜。一个反馈运行器把 stdout、stderr、退出码和计时捕获进一条结构化记录，下一轮可以读。然后 agent 对事实做反应，而不是对自己对事实的预测做反应。
 
-**Type:** Build
-**Languages:** Python (stdlib)
-**Prerequisites:** Phase 14 · 32 (Minimal Workbench), Phase 14 · 35 (Init Script)
-**Time:** ~50 minutes
+**类型：** Build
+**语言：** Python（标准库）
+**前置要求：** 阶段 14 · 32（最小工作台）、阶段 14 · 35（Init 脚本）
+**预计时间：** ~50 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Distinguish runtime feedback from observability telemetry.
-- Build a feedback runner that wraps shell commands and persists structured records.
-- Truncate large outputs deterministically so the loop stays within token budget.
-- Refuse to advance the loop when feedback is missing.
+- 区分运行时反馈和可观测性遥测。
+- 构建一个反馈运行器，包裹 shell 命令并持久化结构化记录。
+- 确定性地截断大输出，让循环留在 token 预算内。
+- 反馈缺失时拒绝推进循环。
 
-## The Problem
+## 问题所在
 
-The agent says "running tests now." The next message says "all tests pass." The reality is that no test ran. The agent imagined the output, or it ran the command and never read the result, or it read the result and silently truncated the failure line.
+agent 说「现在跑测试」。下一条消息说「所有测试通过」。现实是没有测试跑过。agent 想象了输出，或者它跑了命令却从没读结果，或者它读了结果却悄悄截掉了那行失败。
 
-A feedback runner removes that gap. Every command goes through the runner. Every record carries the command, the captured stdout and stderr, the exit code, the wall-clock duration, and a one-line agent note. The agent reads the record at the next turn. The verification gate reads the records at the end of the task.
+一个反馈运行器消除那个缝隙。每个命令都过运行器。每条记录承载命令、捕获的 stdout 和 stderr、退出码、墙钟时长，以及一行 agent 笔记。agent 在下一轮读这条记录。验证关卡在任务结束时读这些记录。
 
-## The Concept
+## 核心概念
 
 ```mermaid
 flowchart LR
@@ -32,96 +32,96 @@ flowchart LR
   Record --> Gate[Verification Gate]
 ```
 
-### What goes in a feedback record
+### 反馈记录里放什么
 
-| Field | Why it matters |
+| 字段 | 为什么重要 |
 |-------|----------------|
-| `command` | Exact argv, no shell expansion surprises |
-| `stdout_tail` | Last N lines, deterministic truncation |
-| `stderr_tail` | Last N lines, separate from stdout |
-| `exit_code` | The unambiguous success signal |
-| `duration_ms` | Surfaces slow probes and runaway processes |
-| `started_at` | Timestamp for replay |
-| `agent_note` | One line the agent writes about what it expected |
+| `command` | 确切的 argv，没有 shell 展开的意外 |
+| `stdout_tail` | 最后 N 行，确定性截断 |
+| `stderr_tail` | 最后 N 行，与 stdout 分开 |
+| `exit_code` | 无歧义的成功信号 |
+| `duration_ms` | 暴露慢探测和失控进程 |
+| `started_at` | 用于重放的时间戳 |
+| `agent_note` | agent 写的一行，关于它预期什么 |
 
-### Truncation is deterministic
+### 截断是确定性的
 
-A 50 MB log destroys the loop. The runner truncates head and tail with a `...truncated N lines...` marker, deterministic so the same output always produces the same record. No sampling; the parts the agent needs to see (final error, final summary) live at the tail.
+一个 50 MB 的日志会毁掉循环。运行器用一个 `...truncated N lines...` 标记截断头和尾，是确定性的，于是同样的输出总是产出同样的记录。不采样；agent 需要看的部分（最后的错误、最后的汇总）住在尾部。
 
-### Feedback versus telemetry
+### 反馈 vs 遥测
 
-Telemetry (Phase 14 · 23, OTel GenAI conventions) is for human operators reviewing runs across time. Feedback is for the next turn of this run. They share fields but they live in different files with different retention.
+遥测（阶段 14 · 23，OTel GenAI 约定）是给人类运维跨时间审查运行用的。反馈是给这次运行的下一轮用的。它们共享字段，但住在不同文件里，有不同的保留策略。
 
-### Refuse to advance without feedback
+### 没有反馈就拒绝推进
 
-If the runner errors before capturing exit, the record carries `exit_code: null` and `error: <reason>`. The agent loop must refuse to claim success on a `null` exit. No exit, no progress.
+如果运行器在捕获退出之前出错，记录就带 `exit_code: null` 和 `error: <reason>`。agent 循环必须拒绝在 `null` 退出上声称成功。没有退出，就没有进展。
 
-## Build It
+## 动手构建
 
-`code/main.py` implements:
+`code/main.py` 实现：
 
-- `run_with_feedback(command, agent_note)` that wraps `subprocess.run`, captures stdout/stderr/exit/duration, truncates deterministically, appends to `feedback_record.jsonl`.
-- A small loader that streams the JSONL into a Python list.
-- A demo that runs three commands (success, failure, slow) and prints the last record per command.
+- `run_with_feedback(command, agent_note)`，包裹 `subprocess.run`，捕获 stdout/stderr/exit/duration，确定性截断，追加到 `feedback_record.jsonl`。
+- 一个小加载器，把 JSONL 流式读进一个 Python 列表。
+- 一个演示，跑三个命令（成功、失败、慢）并打印每个命令的最后一条记录。
 
-Run it:
+运行它：
 
 ```
 python3 code/main.py
 ```
 
-Output: three feedback records appended to `feedback_record.jsonl`, the last one of each printed inline. Tail the file across re-runs to see the loop accumulate.
+输出：三条反馈记录追加到 `feedback_record.jsonl`，每个的最后一条内联打印。跨重跑 tail 这个文件，看循环累积。
 
-## Production patterns in the wild
+## 野外的生产模式
 
-Three patterns harden the runner enough to ship.
+三个模式把运行器加固到足以上线。
 
-**Redact at write, not at read.** Any record that touches stdout or stderr can leak secrets. The runner ships a redaction pass before the JSONL append: strip lines matching `^Bearer `, `password=`, `api[_-]?key=`, `AKIA[0-9A-Z]{16}` (AWS), `xox[baprs]-` (Slack). Redaction at read time is a foot-gun; the file on disk is what an attacker reaches. Audit the redaction patterns quarterly against the production runtime's observed secret formats.
+**写入时脱敏，不是读取时。** 任何碰 stdout 或 stderr 的记录都可能泄露密钥。运行器在 JSONL 追加之前做一遍脱敏：剥掉匹配 `^Bearer `、`password=`、`api[_-]?key=`、`AKIA[0-9A-Z]{16}`（AWS）、`xox[baprs]-`（Slack）的行。读取时脱敏是个自伤工具；磁盘上的文件才是攻击者触达的。每季度对照生产运行时观察到的密钥格式审计脱敏模式。
 
-**Rotation policy, not a single file.** Cap `feedback_record.jsonl` at 1 MB per file; on overflow rotate to `.1`, `.2`, drop `.5`. The agent's loop only reads the current file, so the runtime cost is bounded. CI artifact storage gets the full rotated set. Without rotation the file becomes the bottleneck on every loader call.
+**轮转策略，而非单个文件。** 把 `feedback_record.jsonl` 每文件封顶 1 MB；溢出时轮转到 `.1`、`.2`，丢掉 `.5`。agent 循环只读当前文件，所以运行时成本有界。CI 产物存储拿完整的轮转集。没有轮转，这个文件就成了每次加载器调用的瓶颈。
 
-**Parent-command id for retry chains.** Every record gets `command_id`; retries carry `parent_command_id` pointing at the previous attempt. The reviewer's "failed attempts" list (Phase 14 · 40) and the verification gate's audit both follow the chain. Without this link, retries look like independent successes and the audit hides the failure history.
+**给重试链加父命令 id。** 每条记录拿一个 `command_id`；重试带一个指向上一次尝试的 `parent_command_id`。审查者的「失败尝试」列表（阶段 14 · 40）和验证关卡的审计都顺着这条链走。没有这个链接，重试看起来像独立的成功，审计就藏住了失败历史。
 
-## Use It
+## 上手使用
 
-Production patterns:
+生产模式：
 
-- **Claude Code Bash tool.** The tool already captures stdout, stderr, exit, and duration. The runner in this lesson is the framework-agnostic equivalent for any agent product.
-- **LangGraph nodes.** Wrap any shell node in the runner so the record persists outside graph state.
-- **CI logs.** Pipe the JSONL into your CI artifact store; reviewers can replay any command without rerunning the session.
+- **Claude Code Bash 工具。** 这个工具已经捕获 stdout、stderr、exit 和 duration。这一课的运行器是任意 agent 产品的框架无关等价物。
+- **LangGraph 节点。** 把任何 shell 节点包进运行器，让记录持久化在图状态之外。
+- **CI 日志。** 把 JSONL 灌进你的 CI 产物存储；审查者可以重放任何命令而不重跑会话。
 
-The runner is a thin wrapper that survives every framework migration because it owns the shape of the record.
+运行器是个薄包装，能挺过每次框架迁移，因为它掌管记录的形态。
 
-## Ship It
+## 交付
 
-`outputs/skill-feedback-runner.md` generates a project-specific `run_with_feedback.py` with the right truncation budget, a JSONL writer wired to the workbench, and a loader the agent reads at every turn.
+`outputs/skill-feedback-runner.md` 生成一个项目专属的 `run_with_feedback.py`，带正确的截断预算、一个接到工作台的 JSONL 写入器，以及一个 agent 每轮读的加载器。
 
-## Exercises
+## 练习
 
-1. Add a `cwd` field per record so the same command run from different directories is distinguishable.
-2. Add a `redaction` step that strips lines matching `^Bearer ` or `password=`. Test on a fixture record.
-3. Cap total `feedback_record.jsonl` size at 1 MB by rotating to `.1`, `.2` files. Defend the rotation policy.
-4. Add a `parent_command_id` so retry chains are visible: which command produced the input that the next command consumed.
-5. Pipe the JSONL into a tiny TUI that highlights the latest non-zero exit. Eight key features the TUI must show to be useful in a review.
+1. 给每条记录加一个 `cwd` 字段，让从不同目录跑的同一命令可区分。
+2. 加一个 `redaction` 步骤，剥掉匹配 `^Bearer ` 或 `password=` 的行。在一个固定记录上测试。
+3. 通过轮转到 `.1`、`.2` 文件把 `feedback_record.jsonl` 总大小封顶 1 MB。为轮转策略辩护。
+4. 加一个 `parent_command_id`，让重试链可见：哪个命令产出了下一个命令消费的输入。
+5. 把 JSONL 灌进一个小 TUI，高亮最新的非零退出。这个 TUI 必须展示哪八个关键特性才能在审查里有用。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| Feedback record | "Run log" | Structured JSONL entry with command, output, exit, duration |
-| Tail truncation | "Trim the log" | Deterministic head+tail capture so records fit in token budget |
-| Refuse-on-null | "Block on missing data" | The loop must not advance when `exit_code` is null |
-| Agent note | "Expectation tag" | The one-line prediction the agent writes before reading the result |
-| Telemetry split | "Two log files" | Feedback for the next turn, telemetry for the operator |
+| Feedback record | 「运行日志」 | 带命令、输出、退出、时长的结构化 JSONL 条目 |
+| Tail truncation | 「裁剪日志」 | 确定性的头+尾捕获，让记录装进 token 预算 |
+| Refuse-on-null | 「数据缺失时阻断」 | `exit_code` 为 null 时循环不得推进 |
+| Agent note | 「预期标签」 | agent 在读结果前写的一行预测 |
+| Telemetry split | 「两个日志文件」 | 反馈给下一轮，遥测给运维 |
 
-## Further Reading
+## 延伸阅读
 
 - [OpenTelemetry GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
 - [Anthropic, Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
-- [Guardrails AI x MLflow — deterministic safety, PII, quality validators](https://guardrailsai.com/blog/guardrails-mlflow) — redaction patterns as regression tests
-- [Aport.io, Best AI Agent Guardrails 2026: Pre-Action Authorization Compared](https://aport.io/blog/best-ai-agent-guardrails-2026-pre-action-authorization-compared/) — pre/post-tool capture
-- [Andrii Furmanets, AI Agents in 2026: Practical Architecture for Tools, Memory, Evals, Guardrails](https://andriifurmanets.com/blogs/ai-agents-2026-practical-architecture-tools-memory-evals-guardrails) — observability surfaces
-- Phase 14 · 23 — OTel GenAI conventions for the telemetry side
-- Phase 14 · 24 — agent observability platforms (Langfuse, Phoenix, Opik)
-- Phase 14 · 33 — the rule that demands feedback before declaring done
-- Phase 14 · 38 — the verification gate that reads the JSONL
+- [Guardrails AI x MLflow — deterministic safety, PII, quality validators](https://guardrailsai.com/blog/guardrails-mlflow) —— 把脱敏模式当回归测试
+- [Aport.io, Best AI Agent Guardrails 2026: Pre-Action Authorization Compared](https://aport.io/blog/best-ai-agent-guardrails-2026-pre-action-authorization-compared/) —— 工具前/后捕获
+- [Andrii Furmanets, AI Agents in 2026: Practical Architecture for Tools, Memory, Evals, Guardrails](https://andriifurmanets.com/blogs/ai-agents-2026-practical-architecture-tools-memory-evals-guardrails) —— 可观测性接触面
+- 阶段 14 · 23 —— 遥测侧的 OTel GenAI 约定
+- 阶段 14 · 24 —— agent 可观测性平台（Langfuse、Phoenix、Opik）
+- 阶段 14 · 33 —— 要求宣布完成前先有反馈的规则
+- 阶段 14 · 38 —— 读这个 JSONL 的验证关卡

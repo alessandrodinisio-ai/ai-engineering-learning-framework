@@ -1,158 +1,158 @@
-# Capstone — Build a Complete Tool Ecosystem
+# 综合项目——构建一套完整的工具生态
 
-> Phase 13 taught every piece. This capstone wires them into one production-shaped system: an MCP server with tools + resources + prompts + tasks + UI, OAuth 2.1 at the edge, an RBAC gateway, a multi-server client, an A2A sub-agent call, OTel tracing into a collector, tool-poisoning detection in CI, and an AGENTS.md + SKILL.md bundle. By the end you can defend every architectural choice.
+> 阶段 13 把每个零件都教了。这个综合项目把它们串成一个生产形状的系统：一个带 tools + resources + prompts + tasks + UI 的 MCP server、边缘处的 OAuth 2.1、一个 RBAC 网关、一个多 server client、一次 A2A 子 agent 调用、进入 collector 的 OTel 追踪、CI 里的工具投毒检测，以及一个 AGENTS.md + SKILL.md 包。到最后，你能为每一个架构选择做辩护。
 
-**Type:** Build
-**Languages:** Python (stdlib, end-to-end ecosystem harness)
-**Prerequisites:** Phase 13 · 01 through 21
-**Time:** ~120 minutes
+**类型：** Build
+**语言：** Python（标准库，端到端生态脚手架）
+**前置要求：** 阶段 13 · 01 到 21
+**预计时间：** ~120 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Compose an MCP server exposing tools, resources, prompts, and a task with a `ui://` app.
-- Front the server with an OAuth 2.1 gateway that enforces RBAC and pinned hashes.
-- Write a multi-server client that traces with OTel GenAI attributes end-to-end.
-- Delegate part of a workload to an A2A sub-agent; verify opacity is preserved.
-- Package the whole stack with AGENTS.md + SKILL.md so other agents can drive it.
+- 组合一个暴露 tools、resources、prompts，以及一个带 `ui://` app 的 task 的 MCP server。
+- 用一个强制 RBAC 和钉定哈希的 OAuth 2.1 网关罩住这个 server。
+- 写一个端到端用 OTel GenAI 属性追踪的多 server client。
+- 把一部分工作负载委派给一个 A2A 子 agent；验证不透明性得以保持。
+- 用 AGENTS.md + SKILL.md 把整个栈打包，让其他 agent 能驱动它。
 
-## The Problem
+## 问题所在
 
-Ship the "research and report" system:
+交付那个"研究并出报告"的系统：
 
-- User asks: "summarize the three most-cited 2026 arXiv papers on agent protocols."
-- System: search arXiv via MCP; delegate paper summarization to a specialized writer agent via A2A; aggregate results; render an interactive report as an MCP Apps `ui://` resource; log every step to OTel.
+- 用户问："总结 2026 年 arXiv 上关于 agent 协议、引用最多的三篇论文。"
+- 系统：经由 MCP 搜 arXiv；经由 A2A 把论文摘要委派给一个专门的写手 agent；聚合结果；把一份交互式报告渲染成一个 MCP Apps `ui://` 资源；把每一步记到 OTel。
 
-All the primitives from Phase 13 show up. This is not a toy — production research-assistant systems shipped in 2026 by Anthropic (the Claude Research product), OpenAI (GPTs with Apps SDK), and third parties have this exact shape.
+阶段 13 的所有基元都登场了。这不是玩具——2026 年 Anthropic（Claude Research 产品）、OpenAI（带 Apps SDK 的 GPT）和第三方交付的生产级研究助手系统，正是这个形状。
 
-## The Concept
+## 核心概念
 
-### Architecture
+### 架构
 
 ```
 [user] -> [client] -> [gateway (OAuth 2.1 + RBAC)] -> [research MCP server]
                                                       |
-                                                      +- MCP tool: arxiv_search (pure)
-                                                      +- MCP resource: notes://recent
+                                                      +- MCP 工具: arxiv_search (纯)
+                                                      +- MCP 资源: notes://recent
                                                       +- MCP prompt: /research_topic
-                                                      +- MCP task: generate_report (long)
+                                                      +- MCP 任务: generate_report (长)
                                                       +- MCP Apps UI: ui://report/current
-                                                      +- A2A call: writer-agent (tasks/send)
+                                                      +- A2A 调用: writer-agent (tasks/send)
                                                       |
-                                                      +- OTel GenAI spans
+                                                      +- OTel GenAI span
 ```
 
-### Trace hierarchy
+### trace 层级
 
 ```
 agent.invoke_agent
- ├── llm.chat (kick off)
+ ├── llm.chat (起手)
  ├── mcp.call -> tools/call arxiv_search
  ├── mcp.call -> resources/read notes://recent
  ├── mcp.call -> prompts/get research_topic
  ├── a2a.tasks/send -> writer-agent
- │    └── task transitions (opaque internals)
- ├── mcp.call -> tools/call generate_report (task-augmented)
- │    └── tasks/status polling
- │    └── tasks/result (completed, returns ui:// resource)
- └── llm.chat (final synthesis)
+ │    └── task 转移 (内部不透明)
+ ├── mcp.call -> tools/call generate_report (task 增强)
+ │    └── tasks/status 轮询
+ │    └── tasks/result (completed, 返回 ui:// 资源)
+ └── llm.chat (最终合成)
 ```
 
-One trace id. Every span has the right `gen_ai.*` attributes.
+一个 trace id。每个 span 都有正确的 `gen_ai.*` 属性。
 
-### Security posture
+### 安全态势
 
-- OAuth 2.1 + PKCE with resource indicator pinning audience to gateway.
-- Gateway holds upstream credentials; user never sees them.
-- RBAC: `alice` has `research:read`, `research:write`, can call all tools. `bob` has `research:read`, cannot call `generate_report`.
-- Pinned description manifest: dropped any server whose tool hashes changed.
-- Rule of Two audit: no tool combines untrusted input, sensitive data, and consequential action.
+- OAuth 2.1 + PKCE，配把受众钉到网关的 resource indicator。
+- 网关持有上游凭证；用户从不见它们。
+- RBAC：`alice` 有 `research:read`、`research:write`，能调所有工具。`bob` 有 `research:read`，不能调 `generate_report`。
+- 钉定描述清单：丢掉任何工具哈希变了的 server。
+- Rule of Two 审计：没有工具同时组合不可信输入、敏感数据和有后果的动作。
 
-### Rendering
+### 渲染
 
-The final `generate_report` task returns content blocks plus a `ui://report/current` resource. The client's host (Claude Desktop, etc.) renders the interactive dashboard in a sandbox iframe. The dashboard contains a sorted paper list, citation counts, and a button that calls `host.callTool('summarize_paper', {arxiv_id})` for any paper the user clicks.
+最终的 `generate_report` 任务返回内容 block 加一个 `ui://report/current` 资源。client 的宿主（Claude Desktop 等）把交互式仪表盘渲染在一个沙箱 iframe 里。仪表盘含一个排序的论文列表、引用计数，以及一个按钮，对用户点的任意论文调 `host.callTool('summarize_paper', {arxiv_id})`。
 
-### Packaging
+### 打包
 
-The whole thing ships as:
+整个东西作为以下交付：
 
 ```
 research-system/
-  AGENTS.md                     # project conventions
+  AGENTS.md                     # 项目约定
   skills/
     run-research/
-      SKILL.md                  # the top-level workflow
+      SKILL.md                  # 顶层工作流
   servers/
-    research-mcp/               # the MCP server
+    research-mcp/               # MCP server
       pyproject.toml
       src/
   agents/
-    writer/                     # the A2A agent
+    writer/                     # A2A agent
   gateway/
-    config.yaml                 # RBAC + pinned manifest
+    config.yaml                 # RBAC + 钉定清单
 ```
 
-Users deploy with `docker compose up`. Claude Code, Cursor, Codex, and opencode users can drive the system by invoking the `run-research` skill.
+用户用 `docker compose up` 部署。Claude Code、Cursor、Codex 和 opencode 的用户可以靠触发 `run-research` skill 来驱动这个系统。
 
-### What each Phase 13 lesson contributed
+### 阶段 13 每一课贡献了什么
 
-| Lesson | What the capstone uses |
+| 课 | 综合项目用上的 |
 |--------|------------------------|
-| 01-05 | Tool interface, provider-portability, parallel calls, schemas, linting |
-| 06-10 | MCP primitives, server, client, transports, resources + prompts |
-| 11-14 | Sampling, roots + elicitation, async tasks, `ui://` apps |
-| 15-17 | Tool poisoning, OAuth 2.1, gateway + registry |
-| 18 | A2A sub-agent delegation |
-| 19 | OTel GenAI tracing |
-| 20 | Routing gateway for the LLM layer |
-| 21 | SKILL.md + AGENTS.md packaging |
+| 01-05 | 工具接口、provider 可移植性、并行调用、schema、lint |
+| 06-10 | MCP 基元、server、client、传输、resources + prompts |
+| 11-14 | sampling、roots + elicitation、异步 tasks、`ui://` apps |
+| 15-17 | 工具投毒、OAuth 2.1、网关 + 注册表 |
+| 18 | A2A 子 agent 委派 |
+| 19 | OTel GenAI 追踪 |
+| 20 | LLM 层的路由网关 |
+| 21 | SKILL.md + AGENTS.md 打包 |
 
-## Use It
+## 上手使用
 
-`code/main.py` stitches the previous lessons' patterns into one runnable demo. All stdlib, all in-process so you can read it end to end. It runs the full flow for the research-and-report scenario: handshake with gateway, OAuth 2.1 simulated, tools/list merged, generate_report as a task, A2A call to writer, ui:// resource returned, OTel spans emitted.
+`code/main.py` 把前几课的模式缝成一个可运行的 demo。全标准库、全进程内，让你能端到端地读它。它跑研究并出报告场景的完整流程：和网关握手、OAuth 2.1 模拟、tools/list 合并、generate_report 作为一个 task、对 writer 的 A2A 调用、返回 ui:// 资源、发出 OTel span。
 
-What to look at:
+要看什么：
 
-- One trace id across every hop.
-- Gateway policy blocks a second user from writing.
-- Task lifecycle goes working → completed and returns both text and ui:// content.
-- A2A call's inner state is opaque to the orchestrator.
-- AGENTS.md and SKILL.md are the only files another agent needs to reproduce the workflow.
+- 贯穿每一跳的一个 trace id。
+- 网关策略拦住第二个用户写入。
+- task 生命周期走 working → completed，并同时返回 text 和 ui:// 内容。
+- A2A 调用的内部状态对编排器不透明。
+- AGENTS.md 和 SKILL.md 是另一个 agent 重现这个工作流唯一需要的文件。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-ecosystem-blueprint.md`. Given a product need (research, summarization, automation), the skill produces the full architecture: which MCP primitives, which gateway controls, which A2A calls, which telemetry, which packaging.
+本课产出 `outputs/skill-ecosystem-blueprint.md`。给定一个产品需求（研究、摘要、自动化），这个 skill 产出完整架构：用哪些 MCP 基元、哪些网关控制、哪些 A2A 调用、哪些遥测、哪种打包。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Note the single trace id and how spans nest. Count how many primitives from Phase 13 the demo touches.
+1. 跑 `code/main.py`。注意那个单一 trace id 以及 span 如何嵌套。数一数 demo 触及了阶段 13 的多少个基元。
 
-2. Extend the demo: add a second backend MCP server (e.g. `bibliography`) and confirm the gateway merges its tools into the same namespace.
+2. 扩展 demo：加第二个后端 MCP server（比如 `bibliography`），确认网关把它的工具合并进同一个命名空间。
 
-3. Replace the fake A2A writer agent with a real one running on a subprocess. Use the Lesson 19 harness.
+3. 把假的 A2A 写手 agent 换成一个跑在子进程上的真实的。用第 19 课的脚手架。
 
-4. Add a PII redaction step in the routing gateway between the orchestrator and the LLM. Confirm emails in the user query get scrubbed.
+4. 在编排器和 LLM 之间，给路由网关加一个 PII 脱敏步骤。确认用户查询里的邮箱被清洗掉。
 
-5. Write an AGENTS.md for a teammate who will maintain this system. It should take under five minutes to read and give them everything they need to drive the capstone in Cursor or Codex.
+5. 为一个将要维护这个系统的队友写一个 AGENTS.md。它应该不到五分钟就能读完，并给他们驱动这个综合项目（在 Cursor 或 Codex 里）所需的一切。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| Capstone | "Phase-13 integration demo" | End-to-end system using every primitive |
-| Research and report | "The scenario" | Search, summarize, render pattern |
-| Ecosystem | "All the pieces together" | Server + client + gateway + sub-agent + telemetry + package |
-| Trace hierarchy | "Single trace id" | Every hop's span shares the trace; parent-child via span ids |
-| Gateway-issued token | "Transitive auth" | Client sees only gateway's token; gateway holds upstream creds |
-| Merged namespace | "All tools in one flat list" | Multi-server merge at the gateway, prefix-on-collision |
-| Opacity boundary | "A2A call hides internals" | Sub-agent's reasoning invisible to orchestrator |
-| Three-layer stack | "AGENTS.md + SKILL.md + MCP" | Project context + workflow + tools |
-| Defense-in-depth | "Multiple security layers" | Pinned hashes, OAuth, RBAC, Rule of Two, audit log |
-| Spec compliance matrix | "What we ship that the spec requires" | Checklist mapping deliverables to 2025-11-25 requirements |
+| Capstone | "阶段 13 集成 demo" | 用上每个基元的端到端系统 |
+| Research and report | "那个场景" | 搜索、摘要、渲染模式 |
+| Ecosystem | "所有零件放一起" | server + client + 网关 + 子 agent + 遥测 + 包 |
+| Trace hierarchy | "单一 trace id" | 每跳的 span 共享 trace；父子经由 span id |
+| Gateway-issued token | "传递性鉴权" | client 只见网关的 token；网关持有上游凭证 |
+| Merged namespace | "所有工具在一个扁平列表里" | 网关处的多 server 合并，冲突时加前缀 |
+| Opacity boundary | "A2A 调用隐藏内部" | 子 agent 的推理对编排器不可见 |
+| Three-layer stack | "AGENTS.md + SKILL.md + MCP" | 项目上下文 + 工作流 + 工具 |
+| Defense-in-depth | "多个安全层" | 钉定哈希、OAuth、RBAC、Rule of Two、审计日志 |
+| Spec compliance matrix | "我们交付的对应规范所要求的" | 把交付物映射到 2025-11-25 要求的清单 |
 
-## Further Reading
+## 延伸阅读
 
-- [MCP — Specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25) — consolidated reference
-- [MCP blog — 2026 roadmap](https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/) — where the protocol is heading
-- [a2a-protocol.org](https://a2a-protocol.org/latest/) — A2A v1.0 reference
-- [OpenTelemetry — GenAI semconv](https://opentelemetry.io/docs/specs/semconv/gen-ai/) — canonical tracing conventions
-- [Anthropic — Claude Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview) — production agent runtime patterns
+- [MCP — Specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25) — 整合参考
+- [MCP blog — 2026 roadmap](https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/) — 协议的走向
+- [a2a-protocol.org](https://a2a-protocol.org/latest/) — A2A v1.0 参考
+- [OpenTelemetry — GenAI semconv](https://opentelemetry.io/docs/specs/semconv/gen-ai/) — 权威追踪约定
+- [Anthropic — Claude Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview) — 生产 agent 运行时模式

@@ -1,120 +1,120 @@
-# Optimizers
+# 优化器
 
-> Gradient descent tells you which direction to move. It says nothing about how far or how fast. SGD is a compass. Adam is GPS with traffic data.
+> 梯度下降告诉你该往哪个方向走。它对走多远、走多快只字不提。SGD 是一个指南针。Adam 是带路况数据的 GPS。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Lesson 03.05 (Loss Functions)
-**Time:** ~75 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 第 03.05 课（损失函数）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Implement SGD, SGD with momentum, Adam, and AdamW optimizers from scratch in Python
-- Explain how Adam's bias correction compensates for zero-initialized moment estimates in early training steps
-- Demonstrate why AdamW produces better generalization than Adam with L2 regularization on the same task
-- Select the appropriate optimizer and default hyperparameters for transformers, CNNs, GANs, and fine-tuning
+- 用 Python 从零实现 SGD、带动量的 SGD、Adam 和 AdamW 优化器
+- 解释 Adam 的偏差修正如何补偿训练初期那些初始化为零的矩估计
+- 演示为什么在同一个任务上，AdamW 比带 L2 正则化的 Adam 泛化得更好
+- 为 transformer、CNN、GAN 和微调选对优化器和默认超参数
 
-## The Problem
+## 问题所在
 
-You computed the gradients. You know that weight #4,721 should decrease by 0.003 to reduce the loss. But 0.003 in what units? Scaled by what? And should you move the same amount on step 1 as on step 1,000?
+你算出了梯度。你知道第 4721 号权重应该减小 0.003 来降低损失。但 0.003 是什么单位？以什么缩放？还有，第 1 步和第 1000 步应该走同样的幅度吗？
 
-Vanilla gradient descent applies the same learning rate to every parameter on every step: w = w - lr * gradient. This creates three problems that make training neural networks painful in practice.
+普通梯度下降在每一步对每个参数都施加同样的学习率：w = w - lr * gradient。这造成三个问题，让训练神经网络在实践中很痛苦。
 
-First, oscillation. The loss landscape is rarely shaped like a smooth bowl. It's more like a long, narrow valley. The gradient points across the valley (steep direction), not along it (shallow direction). Gradient descent bounces back and forth across the narrow dimension while making tiny progress along the useful one. You've seen this: loss drops fast then plateaus, not because the model converged but because it's oscillating.
+第一，振荡。损失曲面很少是个平滑的碗。它更像一条又长又窄的山谷。梯度指向横穿山谷的方向（陡的方向），而不是沿着山谷的方向（缓的方向）。梯度下降在那个窄维度上来回弹跳，却只在有用的那个方向上挪一点点。你见过这个：损失先快速下降然后停滞，不是因为模型收敛了，而是因为它在振荡。
 
-Second, one learning rate for all parameters is wrong. Some weights need large updates (they're in the early, underfitting stage). Others need tiny updates (they're near their optimal value). A learning rate that works for the former destroys the latter, and vice versa.
+第二，对所有参数用一个学习率是错的。有些权重需要大更新（它们还在早期、欠拟合的阶段）。另一些需要极小的更新（它们已经接近最优值）。一个对前者有效的学习率会毁掉后者，反之亦然。
 
-Third, saddle points. In high dimensions, the loss landscape has vast flat regions where the gradient is near zero. Vanilla SGD crawls through these at the speed of the gradient, which is effectively zero. The model looks stuck. It isn't stuck -- it's in a flat region with useful descent on the other side. But SGD has no mechanism to push through.
+第三，鞍点。在高维里，损失曲面有大片梯度接近零的平坦区域。普通 SGD 以梯度的速度爬过这些区域，而那速度实际上为零。模型看起来卡住了。它没卡住——它在一个平坦区域里，另一边有可用的下坡。但 SGD 没有机制推过去。
 
-Adam solves all three. It maintains two running averages per parameter -- the mean gradient (momentum, handles oscillation) and the mean squared gradient (adaptive rate, handles different scales). Combined with bias correction for the first few steps, it gives you a single optimizer that works on 80% of problems with default hyperparameters. This lesson builds it from scratch so you understand exactly when and why it fails on the other 20%.
+Adam 一并解决了这三个问题。它对每个参数维护两个滑动平均——梯度均值（动量，处理振荡）和梯度平方的均值（自适应速率，处理不同尺度）。再加上对前几步的偏差修正，它给了你一个用默认超参数就能搞定 80% 问题的优化器。本课从零把它搭出来，让你确切理解它在另外 20% 上何时、为何失败。
 
-## The Concept
+## 核心概念
 
-### Stochastic Gradient Descent (SGD)
+### 随机梯度下降（SGD）
 
-The simplest optimizer. Compute the gradient on a mini-batch and step in the opposite direction.
+最简单的优化器。在一个 mini-batch 上算梯度，往反方向走一步。
 
 ```
 w = w - lr * gradient
 ```
 
-The "stochastic" means you use a random subset (mini-batch) of data to estimate the gradient, rather than the full dataset. This noise is actually useful -- it helps escape sharp local minima. But the noise also causes oscillation.
+"随机"指的是你用数据的一个随机子集（mini-batch）来估计梯度，而不是整个数据集。这种噪声其实有用——它帮你逃离尖锐的局部极小值。但噪声也导致振荡。
 
-Learning rate is the only knob. Too high: the loss diverges. Too low: training takes forever. The optimal value depends on the architecture, the data, the batch size, and the current stage of training. For vanilla SGD on modern networks, typical values range from 0.01 to 0.1. But even within a single training run, the ideal learning rate changes.
+学习率是唯一的旋钮。太高：损失发散。太低：训练慢到天荒地老。最优值取决于架构、数据、批大小和当前训练阶段。对现代网络上的普通 SGD，典型值在 0.01 到 0.1 之间。但即便在一次训练里，理想的学习率也在变。
 
-### Momentum
+### 动量
 
-The ball-rolling-downhill analogy is overused but accurate. Instead of stepping by the gradient alone, you maintain a velocity that accumulates past gradients.
+球滚下坡的类比被用滥了，但确实准确。你不再只按梯度走一步，而是维护一个累积了过去梯度的速度。
 
 ```
 m_t = beta * m_{t-1} + gradient
 w = w - lr * m_t
 ```
 
-Beta (typically 0.9) controls how much history to keep. With beta = 0.9, the momentum is roughly the average of the last 10 gradients (1 / (1 - 0.9) = 10).
+Beta（通常 0.9）控制保留多少历史。beta = 0.9 时，动量大致是最近 10 个梯度的平均（1 / (1 - 0.9) = 10）。
 
-Why this fixes oscillation: gradients that point in the same direction accumulate. Gradients that flip direction cancel out. In that narrow valley, the "across" component flips sign each step and gets dampened. The "along" component stays consistent and gets amplified. The result is smooth acceleration in the useful direction.
+它为什么能修复振荡：指向同一方向的梯度会累积。来回翻转方向的梯度会抵消。在那条窄山谷里，"横穿"分量每步都翻号，被抑制掉了；"沿着"分量保持一致，被放大了。结果就是在有用方向上平滑加速。
 
-Real numbers: SGD alone on a badly conditioned loss landscape might take 10,000 steps. SGD with momentum (beta=0.9) typically takes 3,000-5,000 steps on the same problem. The speedup is not marginal.
+真实数字：单用 SGD 在一个病态损失曲面上可能要 10000 步。带动量的 SGD（beta=0.9）在同一个问题上通常 3000-5000 步。这个加速不是边际改善。
 
 ### RMSProp
 
-The first per-parameter adaptive learning rate method that actually worked. Proposed by Hinton in a Coursera lecture (never formally published).
+第一个真正管用的逐参数自适应学习率方法。Hinton 在一次 Coursera 讲座里提出（从未正式发表）。
 
 ```
 s_t = beta * s_{t-1} + (1 - beta) * gradient^2
 w = w - lr * gradient / (sqrt(s_t) + epsilon)
 ```
 
-s_t tracks the running average of squared gradients. Parameters with consistently large gradients get divided by a large number (smaller effective learning rate). Parameters with small gradients get divided by a small number (larger effective learning rate).
+s_t 追踪梯度平方的滑动平均。梯度一直很大的参数会被一个大数除（更小的有效学习率）。梯度很小的参数会被一个小数除（更大的有效学习率）。
 
-This solves the "one learning rate for all parameters" problem. A weight that's already been getting large updates is probably near its target -- slow it down. A weight that's been getting tiny updates might be undertrained -- speed it up.
+这解决了"对所有参数用一个学习率"的问题。一个已经在拿大更新的权重多半接近它的目标了——给它慢下来。一个一直在拿极小更新的权重可能训练不足——给它加速。
 
-Epsilon (typically 1e-8) prevents division by zero when a parameter hasn't been updated.
+Epsilon（通常 1e-8）防止某个参数还没更新过时除以零。
 
-### Adam: Momentum + RMSProp
+### Adam：动量 + RMSProp
 
-Adam combines both ideas. It maintains two exponential moving averages per parameter:
+Adam 把两个想法合起来。它对每个参数维护两个指数滑动平均：
 
 ```
 m_t = beta1 * m_{t-1} + (1 - beta1) * gradient        (first moment: mean)
 v_t = beta2 * v_{t-1} + (1 - beta2) * gradient^2       (second moment: variance)
 ```
 
-**Bias correction** is the key detail most explanations skip. At step 1, m_1 = (1 - beta1) * gradient. With beta1 = 0.9, that's 0.1 * gradient -- ten times too small. The moving average hasn't warmed up yet. Bias correction compensates:
+**偏差修正**是大多数讲解会跳过的关键细节。在第 1 步，m_1 = (1 - beta1) * gradient。beta1 = 0.9 时，那是 0.1 * gradient——小了十倍。滑动平均还没热起来。偏差修正补偿了这一点：
 
 ```
 m_hat = m_t / (1 - beta1^t)
 v_hat = v_t / (1 - beta2^t)
 ```
 
-At step 1 with beta1 = 0.9: m_hat = m_1 / (1 - 0.9) = m_1 / 0.1 = the actual gradient. At step 100: (1 - 0.9^100) is approximately 1.0, so the correction vanishes. Bias correction matters for the first ~10 steps and is irrelevant after ~50.
+第 1 步、beta1 = 0.9 时：m_hat = m_1 / (1 - 0.9) = m_1 / 0.1 = 实际梯度。第 100 步时：(1 - 0.9^100) 约等于 1.0，所以修正消失了。偏差修正对前 ~10 步重要，~50 步之后就无关紧要了。
 
-The update:
+更新：
 
 ```
 w = w - lr * m_hat / (sqrt(v_hat) + epsilon)
 ```
 
-Adam defaults: lr = 0.001, beta1 = 0.9, beta2 = 0.999, epsilon = 1e-8. These defaults work for 80% of problems. When they don't, change lr first. Then beta2. Almost never change beta1 or epsilon.
+Adam 默认值：lr = 0.001，beta1 = 0.9，beta2 = 0.999，epsilon = 1e-8。这些默认值适用于 80% 的问题。它们不灵时，先改 lr。然后是 beta2。几乎永远别改 beta1 或 epsilon。
 
-### AdamW: Weight Decay Done Right
+### AdamW：正确做权重衰减
 
-L2 regularization adds lambda * w^2 to the loss. In vanilla SGD, this is equivalent to weight decay (subtracting lambda * w from the weight at each step). In Adam, this equivalence breaks.
+L2 正则化往损失里加 lambda * w^2。在普通 SGD 里，这等价于权重衰减（每步从权重里减 lambda * w）。在 Adam 里，这个等价关系断了。
 
-The Loshchilov & Hutter insight: when you add L2 to the loss and then Adam processes the gradient, the adaptive learning rate scales the regularization term too. Parameters with large gradient variance get less regularization. Parameters with small variance get more. This is not what you want -- you want uniform regularization regardless of the gradient statistics.
+Loshchilov & Hutter 的洞见是：当你往损失里加 L2、然后 Adam 处理梯度时，自适应学习率把正则化项也缩放了。梯度方差大的参数得到的正则化更少，方差小的得到的更多。这不是你想要的——你想要的是不管梯度统计如何、都施加均匀的正则化。
 
-AdamW fixes this by applying weight decay directly to the weights, after the Adam update:
+AdamW 通过在 Adam 更新之后直接对权重施加权重衰减来修复这一点：
 
 ```
 w = w - lr * m_hat / (sqrt(v_hat) + epsilon) - lr * lambda * w
 ```
 
-The weight decay term (lr * lambda * w) is not scaled by Adam's adaptive factor. Every parameter gets the same proportional shrinkage.
+权重衰减项（lr * lambda * w）不被 Adam 的自适应因子缩放。每个参数都得到同样比例的收缩。
 
-This seems like a minor detail. It's not. AdamW converges to better solutions than Adam + L2 regularization on virtually every task. It's the default optimizer in PyTorch for training transformers, diffusion models, and most modern architectures. BERT, GPT, LLaMA, Stable Diffusion -- all trained with AdamW.
+这看起来像个小细节。它不是。在几乎每个任务上，AdamW 都比 Adam + L2 正则化收敛到更好的解。它是 PyTorch 里训练 transformer、扩散模型和大多数现代架构的默认优化器。BERT、GPT、LLaMA、Stable Diffusion——全是用 AdamW 训出来的。
 
-### Learning Rate: The Most Important Hyperparameter
+### 学习率：最重要的超参数
 
 ```mermaid
 graph TD
@@ -131,14 +131,14 @@ graph TD
     Schedule --> Decay["Decay: reduce over time<br/>Cosine or linear"]
 ```
 
-If you tune one hyperparameter, tune the learning rate. A 10x change in learning rate matters more than any architectural decision you'll make. Common defaults:
+如果你只调一个超参数，调学习率。学习率改变 10 倍，比你要做的任何架构决策都更重要。常见默认值：
 
-- SGD: lr = 0.01 to 0.1
-- Adam/AdamW: lr = 1e-4 to 3e-4
-- Fine-tuning pretrained models: lr = 1e-5 to 5e-5
-- Learning rate warmup: linear ramp over first 1-10% of steps
+- SGD：lr = 0.01 到 0.1
+- Adam/AdamW：lr = 1e-4 到 3e-4
+- 微调预训练模型：lr = 1e-5 到 5e-5
+- 学习率热身（warmup）：在前 1-10% 的步数里线性爬升
 
-### Optimizer Comparison
+### 优化器对比
 
 ```mermaid
 flowchart LR
@@ -151,7 +151,7 @@ flowchart LR
     SGD_P --> Mom_P --> Adam_P --> AdamW_P
 ```
 
-### When Each Optimizer Wins
+### 每个优化器何时胜出
 
 ```mermaid
 flowchart TD
@@ -164,9 +164,9 @@ flowchart TD
     Type -->|"Don't know yet"| Default["Start with AdamW<br/>lr=3e-4, wd=0.01"]
 ```
 
-## Build It
+## 动手构建
 
-### Step 1: Vanilla SGD
+### 第 1 步：普通 SGD
 
 ```python
 class SGD:
@@ -178,7 +178,7 @@ class SGD:
             params[i] -= self.lr * grads[i]
 ```
 
-### Step 2: SGD with Momentum
+### 第 2 步：带动量的 SGD
 
 ```python
 class SGDMomentum:
@@ -195,7 +195,7 @@ class SGDMomentum:
             params[i] -= self.lr * self.velocities[i]
 ```
 
-### Step 3: Adam
+### 第 3 步：Adam
 
 ```python
 import math
@@ -227,7 +227,7 @@ class Adam:
             params[i] -= self.lr * m_hat / (math.sqrt(v_hat) + self.epsilon)
 ```
 
-### Step 4: AdamW
+### 第 4 步：AdamW
 
 ```python
 class AdamW:
@@ -259,9 +259,9 @@ class AdamW:
             params[i] -= self.lr * self.weight_decay * params[i]
 ```
 
-### Step 5: Training Comparison
+### 第 5 步：训练对比
 
-Train the same two-layer network on the circle dataset from lesson 05 with all four optimizers. Compare convergence.
+用全部四个优化器，在第 05 课的圆形数据集上训练同一个两层网络。对比收敛情况。
 
 ```python
 import random
@@ -381,9 +381,9 @@ class OptimizerTestNetwork:
         return losses
 ```
 
-## Use It
+## 上手使用
 
-PyTorch optimizers handle parameter groups, gradient clipping, and learning rate scheduling:
+PyTorch 的优化器负责处理参数组、梯度裁剪和学习率调度：
 
 ```python
 import torch
@@ -409,45 +409,45 @@ for epoch in range(100):
     scheduler.step()
 ```
 
-The pattern is always: zero_grad, forward, loss, backward, (clip), step, (schedule). Memorize this order. Getting it wrong (e.g., calling scheduler.step() before optimizer.step()) is a common source of subtle bugs.
+套路永远是：zero_grad、forward、loss、backward、（clip）、step、（schedule）。把这个顺序记牢。搞错它（比如在 optimizer.step() 之前调 scheduler.step()）是一个常见的微妙 bug 来源。
 
-For CNNs, many practitioners still prefer SGD + momentum (lr=0.1, momentum=0.9, weight_decay=1e-4) with a step or cosine schedule. SGD finds flatter minima, which often generalize better. For transformers and LLMs, AdamW with warmup + cosine decay is the universal default. Don't fight the consensus without a measured reason.
+对 CNN，很多从业者仍然偏爱 SGD + 动量（lr=0.1，momentum=0.9，weight_decay=1e-4）配一个 step 或余弦调度。SGD 找到更平坦的极小值，往往泛化得更好。对 transformer 和 LLM，AdamW 配 warmup + 余弦衰减是通用默认选项。没有量化过的理由就别跟共识对着干。
 
-## Ship It
+## 交付
 
-This lesson produces:
-- `outputs/prompt-optimizer-selector.md` -- a decision prompt for choosing the right optimizer and learning rate for any architecture
+本课产出：
+- `outputs/prompt-optimizer-selector.md` —— 一个决策提示词，为任何架构选对优化器和学习率
 
-## Exercises
+## 练习
 
-1. Implement Nesterov momentum, where you compute the gradient at the "lookahead" position (w - lr * beta * v) instead of the current position. Compare convergence to standard momentum on the circle dataset.
+1. 实现 Nesterov 动量，在"前瞻"位置（w - lr * beta * v）而不是当前位置算梯度。在圆形数据集上和标准动量对比收敛情况。
 
-2. Implement a learning rate warmup schedule: linear ramp from 0 to max_lr over the first 10% of training steps, then cosine decay to 0. Train with Adam + warmup vs Adam without warmup. Measure how many epochs it takes to reach 90% accuracy on the circle dataset.
+2. 实现一个学习率热身调度：在前 10% 的训练步里从 0 线性爬到 max_lr，然后余弦衰减到 0。用 Adam + warmup 对比 Adam 不带 warmup 训练。测量在圆形数据集上达到 90% 准确率分别要多少 epoch。
 
-3. Track the effective learning rate for each parameter during Adam training. The effective rate is lr * m_hat / (sqrt(v_hat) + eps). Plot the distribution of effective rates after 10, 50, and 200 steps. Are all parameters being updated at the same speed?
+3. 在 Adam 训练时追踪每个参数的有效学习率。有效率是 lr * m_hat / (sqrt(v_hat) + eps)。画出第 10、50、200 步后有效率的分布。所有参数都在以同样的速度更新吗？
 
-4. Implement gradient clipping (clip by global norm). Set the max gradient norm to 1.0. Train with and without clipping using a high learning rate (lr=0.01 for Adam). Count how many runs diverge (loss goes to NaN) with and without clipping over 10 random seeds.
+4. 实现梯度裁剪（按全局范数裁剪）。把最大梯度范数设为 1.0。用一个高学习率（Adam 的 lr=0.01）分别在裁剪和不裁剪下训练。在 10 个随机种子上数有多少次运行发散（损失变成 NaN）。
 
-5. Compare Adam vs AdamW on a network with large weights. Initialize all weights to random values in [-5, 5] (much larger than normal). Train for 200 epochs with weight_decay=0.1. Plot the L2 norm of weights over training for both optimizers. AdamW should show faster weight shrinkage.
+5. 在一个权重很大的网络上对比 Adam 和 AdamW。把所有权重初始化为 [-5, 5] 里的随机值（比正常大得多）。用 weight_decay=0.1 训练 200 个 epoch。把两个优化器训练过程中权重的 L2 范数画出来。AdamW 应该表现出更快的权重收缩。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家怎么说 | 实际是什么 |
 |------|----------------|----------------------|
-| Learning rate | "Step size" | The scalar multiplier on the gradient update; the single most impactful hyperparameter in training |
-| SGD | "Basic gradient descent" | Stochastic gradient descent: update weights by subtracting lr * gradient, computed on a mini-batch |
-| Momentum | "Rolling ball analogy" | Exponential moving average of past gradients; dampens oscillation and accelerates consistent directions |
-| RMSProp | "Adaptive learning rate" | Divides each parameter's gradient by the running RMS of its recent gradients; equalizes learning rates |
-| Adam | "The default optimizer" | Combines momentum (first moment) and RMSProp (second moment) with bias correction for the initial steps |
-| AdamW | "Adam done right" | Adam with decoupled weight decay; applies regularization directly to weights rather than through the gradient |
-| Bias correction | "Warmup for running averages" | Dividing by (1 - beta^t) to compensate for the zero-initialization of Adam's moment estimates |
-| Weight decay | "Shrink the weights" | Subtracting a fraction of the weight value at each step; a regularizer that penalizes large weights |
-| Learning rate schedule | "Changing lr over time" | A function that adjusts the learning rate during training; warmup + cosine decay is the modern default |
-| Gradient clipping | "Capping the gradient norm" | Scaling down the gradient vector when its norm exceeds a threshold; prevents exploding gradient updates |
+| 学习率（Learning rate） | "步长" | 施加在梯度更新上的标量乘数；训练里影响最大的单个超参数 |
+| SGD | "基础梯度下降" | 随机梯度下降：在一个 mini-batch 上算梯度，用 w 减去 lr * gradient 来更新权重 |
+| 动量（Momentum） | "滚球类比" | 过去梯度的指数滑动平均；抑制振荡、加速一致的方向 |
+| RMSProp | "自适应学习率" | 把每个参数的梯度除以它近期梯度的滑动 RMS；拉平各参数的学习率 |
+| Adam | "默认优化器" | 把动量（一阶矩）和 RMSProp（二阶矩）结合，并对初始几步做偏差修正 |
+| AdamW | "正确版的 Adam" | 带解耦权重衰减的 Adam；直接对权重施加正则化，而不是通过梯度 |
+| 偏差修正（Bias correction） | "给滑动平均热身" | 除以 (1 - beta^t)，补偿 Adam 矩估计的零初始化 |
+| 权重衰减（Weight decay） | "收缩权重" | 每步从权重值里减去一小部分；一个惩罚大权重的正则化手段 |
+| 学习率调度（Learning rate schedule） | "随时间改 lr" | 一个在训练中调整学习率的函数；warmup + 余弦衰减是现代默认选项 |
+| 梯度裁剪（Gradient clipping） | "给梯度范数封顶" | 当梯度向量范数超过阈值时把它缩小；防止梯度爆炸式的更新 |
 
-## Further Reading
+## 延伸阅读
 
-- Kingma & Ba, "Adam: A Method for Stochastic Optimization" (2014) -- the original Adam paper with convergence analysis and the bias correction derivation
-- Loshchilov & Hutter, "Decoupled Weight Decay Regularization" (2017) -- proved that L2 regularization and weight decay are not equivalent in Adam, and proposed AdamW
-- Smith, "Cyclical Learning Rates for Training Neural Networks" (2017) -- introduced the LR range test and cyclical schedules that remove the need to tune a fixed learning rate
-- Ruder, "An Overview of Gradient Descent Optimization Algorithms" (2016) -- the best single survey of all optimizer variants, with clear comparisons and intuitions
+- Kingma & Ba，《Adam: A Method for Stochastic Optimization》（2014）—— Adam 原始论文，带收敛分析和偏差修正推导
+- Loshchilov & Hutter，《Decoupled Weight Decay Regularization》（2017）—— 证明 L2 正则化和权重衰减在 Adam 里不等价，并提出 AdamW
+- Smith，《Cyclical Learning Rates for Training Neural Networks》（2017）—— 引入 LR 范围测试和循环调度，省去调一个固定学习率的麻烦
+- Ruder，《An Overview of Gradient Descent Optimization Algorithms》（2016）—— 对所有优化器变体最好的单篇综述，对比和直觉都很清晰

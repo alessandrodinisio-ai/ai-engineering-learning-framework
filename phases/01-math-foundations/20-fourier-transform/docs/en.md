@@ -1,34 +1,34 @@
-# The Fourier Transform
+# 傅里叶变换
 
-> Every signal is a sum of sine waves. The Fourier transform tells you which ones.
+> 每个信号都是正弦波之和。傅里叶变换告诉你是哪些。
 
-**Type:** Build
-**Language:** Python
-**Prerequisites:** Phase 1, Lessons 01-04, 19 (complex numbers)
-**Time:** ~90 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 阶段 1，第 01-04 课、19 课（复数）
+**预计时间：** ~90 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Implement the DFT from scratch and verify it against the O(N log N) Cooley-Tukey FFT
-- Interpret frequency coefficients: extract amplitude, phase, and power spectrum from a signal
-- Apply the convolution theorem to perform convolution via FFT multiplication
-- Connect Fourier frequency decomposition to transformer positional encodings and CNN convolution layers
+- 从零实现 DFT，并对照 O(N log N) 的 Cooley-Tukey FFT 验证它
+- 解读频率系数：从信号中提取幅度、相位和功率谱
+- 应用卷积定理，用 FFT 乘法来做卷积
+- 把傅里叶频率分解和 transformer 位置编码、CNN 卷积层联系起来
 
-## The Problem
+## 问题所在
 
-An audio recording is a sequence of pressure measurements over time. A stock price is a sequence of values over days. An image is a grid of pixel intensities over space. All of these are data in the time domain (or space domain). You see values changing over some index.
+一段录音是随时间变化的一串气压测量值。一只股票价格是随天数变化的一串值。一张图像是随空间变化的一格像素强度。所有这些都是时域（或空间域）里的数据。你看到值随某个索引变化。
 
-But many patterns are invisible in the time domain. Is this audio signal a pure tone or a chord? Does this stock price have a weekly cycle? Does this image have a repeating texture? These questions are about frequency content, and the time domain hides it.
+但许多模式在时域里是不可见的。这段音频是纯音还是和弦？这只股价有没有周度周期？这张图有没有重复的纹理？这些问题关乎频率内容，而时域把它藏起来了。
 
-The Fourier transform converts data from the time domain to the frequency domain. It takes a signal and decomposes it into sine waves of different frequencies. Each sine wave has an amplitude (how strong it is) and a phase (where it starts). The Fourier transform tells you both.
+傅里叶变换把数据从时域转到频域。它拿一个信号，把它分解成不同频率的正弦波。每个正弦波有一个幅度（它有多强）和一个相位（它从哪开始）。傅里叶变换两个都告诉你。
 
-This matters for ML because frequency-domain thinking appears everywhere. Convolutional neural networks perform convolution, which is multiplication in the frequency domain. Transformer positional encodings use frequency decomposition to represent position. Audio models (speech recognition, music generation) operate on spectrograms -- frequency representations of sound. Time series models look for periodic patterns. Understanding the Fourier transform gives you the vocabulary to work with all of these.
+这对 ML 重要，因为频域思维无处不在。卷积神经网络做卷积，而卷积是频域里的乘法。Transformer 的位置编码用频率分解来表示位置。音频模型（语音识别、音乐生成）在声谱图——声音的频率表示——上工作。时间序列模型寻找周期模式。理解傅里叶变换给你与所有这些打交道的词汇。
 
-## The Concept
+## 核心概念
 
-### The DFT definition
+### DFT 的定义
 
-Given N samples x[0], x[1], ..., x[N-1], the Discrete Fourier Transform produces N frequency coefficients X[0], X[1], ..., X[N-1]:
+给定 N 个样本 x[0], x[1], ..., x[N-1]，离散傅里叶变换产出 N 个频率系数 X[0], X[1], ..., X[N-1]：
 
 ```
 X[k] = sum_{n=0}^{N-1} x[n] * e^(-2*pi*i*k*n/N)
@@ -36,27 +36,27 @@ X[k] = sum_{n=0}^{N-1} x[n] * e^(-2*pi*i*k*n/N)
 for k = 0, 1, ..., N-1
 ```
 
-Each X[k] is a complex number. Its magnitude |X[k]| tells you the amplitude of frequency k. Its phase angle(X[k]) tells you the phase offset of that frequency.
+每个 X[k] 是一个复数。它的模 |X[k]| 告诉你频率 k 的幅度。它的相位 angle(X[k]) 告诉你那个频率的相位偏移。
 
-The key insight: `e^(-2*pi*i*k*n/N)` is a rotating phasor at frequency k. The DFT computes the correlation between the signal and each of N equally-spaced frequencies. If the signal contains energy at frequency k, the correlation is large. If not, it is near zero.
+关键洞见：`e^(-2*pi*i*k*n/N)` 是一个频率为 k 的旋转相量。DFT 计算信号与 N 个等距频率每一个之间的相关。如果信号在频率 k 处含有能量，相关就大。如果没有，它就接近零。
 
-### What each coefficient means
+### 每个系数的含义
 
-**X[0]: the DC component.** This is the sum of all samples -- proportional to the mean. It represents the constant (zero-frequency) offset of the signal.
+**X[0]：直流分量。** 这是所有样本之和——正比于均值。它表示信号的恒定（零频率）偏移。
 
 ```
 X[0] = sum_{n=0}^{N-1} x[n] * e^0 = sum of all samples
 ```
 
-**X[k] for 1 <= k <= N/2: positive frequencies.** X[k] represents frequency k cycles per N samples. Higher k means higher frequency (faster oscillation).
+**1 <= k <= N/2 的 X[k]：正频率。** X[k] 表示频率为每 N 个样本 k 个周期。k 越高意味着频率越高（振荡越快）。
 
-**X[N/2]: the Nyquist frequency.** The highest frequency you can represent with N samples. Above this, you get aliasing -- high frequencies masquerading as low ones.
+**X[N/2]：奈奎斯特频率。** 你用 N 个样本能表示的最高频率。超过它，你就得到混叠——高频伪装成低频。
 
-**X[k] for N/2 < k < N: negative frequencies.** For real-valued signals, X[N-k] = conj(X[k]). The negative frequencies are mirror images of the positive ones. This is why the useful information is in the first N/2 + 1 coefficients.
+**N/2 < k < N 的 X[k]：负频率。** 对实值信号，X[N-k] = conj(X[k])。负频率是正频率的镜像。这就是为什么有用的信息在前 N/2 + 1 个系数里。
 
-### Inverse DFT
+### 逆 DFT
 
-The inverse DFT reconstructs the original signal from its frequency coefficients:
+逆 DFT 从频率系数重构原始信号：
 
 ```
 x[n] = (1/N) * sum_{k=0}^{N-1} X[k] * e^(2*pi*i*k*n/N)
@@ -64,21 +64,21 @@ x[n] = (1/N) * sum_{k=0}^{N-1} X[k] * e^(2*pi*i*k*n/N)
 for n = 0, 1, ..., N-1
 ```
 
-The only differences from the forward DFT: the sign in the exponent is positive (not negative), and there is a 1/N normalization factor.
+相对正向 DFT 唯一的区别：指数里的符号是正的（不是负的），并且有一个 1/N 的归一化因子。
 
-The inverse DFT is perfect reconstruction. No information is lost. You can go from time domain to frequency domain and back without any error. The DFT is a change of basis -- it re-expresses the same information in a different coordinate system.
+逆 DFT 是完美重构。没有信息丢失。你可以从时域到频域再回来，毫无误差。DFT 是一次基变换——它用不同的坐标系重新表达同样的信息。
 
-### The FFT: making it fast
+### FFT：让它变快
 
-The DFT as defined above is O(N^2): for each of N output coefficients, you sum over N input samples. For N = 1 million, that is 10^12 operations.
+上面定义的 DFT 是 O(N^2)：对 N 个输出系数中的每一个，你都要在 N 个输入样本上求和。对 N = 100 万，那是 10^12 次操作。
 
-The Fast Fourier Transform (FFT) computes the same result in O(N log N). For N = 1 million, that is about 20 million operations instead of a trillion. This is what makes frequency analysis practical.
+快速傅里叶变换（FFT）用 O(N log N) 算出同样的结果。对 N = 100 万，那大约是两千万次操作，而不是一万亿。这就是让频率分析变实用的东西。
 
-The Cooley-Tukey algorithm (the most common FFT) works by divide and conquer:
+Cooley-Tukey 算法（最常见的 FFT）靠分治工作：
 
-1. Split the signal into even-indexed and odd-indexed samples.
-2. Compute the DFT of each half recursively.
-3. Combine the two half-size DFTs using "twiddle factors" e^(-2*pi*i*k/N).
+1. 把信号分成偶数索引和奇数索引的样本。
+2. 递归地计算每一半的 DFT。
+3. 用"旋转因子"e^(-2*pi*i*k/N) 把两个半尺寸 DFT 合起来。
 
 ```
 X[k] = E[k] + e^(-2*pi*i*k/N) * O[k]          for k = 0, ..., N/2 - 1
@@ -88,7 +88,7 @@ where E = DFT of even-indexed samples
       O = DFT of odd-indexed samples
 ```
 
-The symmetry means each level of recursion does O(N) work, and there are log2(N) levels. Total: O(N log N).
+这种对称意味着每一层递归做 O(N) 工作，而有 log2(N) 层。总计：O(N log N)。
 
 ```mermaid
 graph TD
@@ -106,22 +106,22 @@ graph TD
     end
 ```
 
-The FFT requires the signal length to be a power of 2. In practice, signals are zero-padded to the next power of 2.
+FFT 要求信号长度是 2 的幂。实践中，信号被补零到下一个 2 的幂。
 
-### Spectral analysis
+### 谱分析
 
-The **power spectrum** is |X[k]|^2 -- the squared magnitude of each frequency coefficient. It shows how much energy is at each frequency.
+**功率谱**是 |X[k]|^2——每个频率系数的模的平方。它显示每个频率上有多少能量。
 
-The **phase spectrum** is angle(X[k]) -- the phase offset of each frequency. For most analysis tasks, you care about the power spectrum and ignore the phase.
+**相位谱**是 angle(X[k])——每个频率的相位偏移。对大多数分析任务，你关心功率谱、忽略相位。
 
 ```
 Power at frequency k:  P[k] = |X[k]|^2 = X[k].real^2 + X[k].imag^2
 Phase at frequency k:  phi[k] = atan2(X[k].imag, X[k].real)
 ```
 
-### Frequency resolution
+### 频率分辨率
 
-The frequency resolution of the DFT depends on the number of samples N and the sampling rate fs.
+DFT 的频率分辨率取决于样本数 N 和采样率 fs。
 
 ```
 Frequency of bin k:      f_k = k * fs / N
@@ -129,13 +129,13 @@ Frequency resolution:    delta_f = fs / N
 Maximum frequency:       f_max = fs / 2  (Nyquist)
 ```
 
-To resolve two frequencies that are close together, you need more samples. To capture high frequencies, you need a higher sampling rate.
+要分辨两个靠得很近的频率，你需要更多样本。要捕获高频，你需要更高的采样率。
 
-### The convolution theorem
+### 卷积定理
 
-This is one of the most important results in signal processing and directly relevant to CNNs.
+这是信号处理里最重要的结果之一，也和 CNN 直接相关。
 
-**Convolution in the time domain equals pointwise multiplication in the frequency domain.**
+**时域里的卷积等于频域里的逐点乘法。**
 
 ```
 x * h = IFFT(FFT(x) . FFT(h))
@@ -143,14 +143,14 @@ x * h = IFFT(FFT(x) . FFT(h))
 where * is convolution and . is element-wise multiplication
 ```
 
-Why this matters:
+它为什么重要：
 
-- Direct convolution of two signals of length N and M takes O(N*M) operations.
-- FFT-based convolution takes O(N log N): transform both, multiply, transform back.
-- For large kernels, FFT convolution is dramatically faster.
-- This is exactly what happens in convolutional layers with large receptive fields.
+- 两个长度 N 和 M 的信号的直接卷积花 O(N*M) 次操作。
+- 基于 FFT 的卷积花 O(N log N)：变换两者、相乘、变换回来。
+- 对大核，FFT 卷积快得多。
+- 这正是大感受野卷积层里发生的事。
 
-Note: the DFT computes circular convolution (the signal wraps around). For linear convolution (no wraparound), zero-pad both signals to length N + M - 1 before computing.
+注意：DFT 计算的是循环卷积（信号会绕回来）。对线性卷积（不绕回），在计算前把两个信号都补零到长度 N + M - 1。
 
 ```mermaid
 graph LR
@@ -168,76 +168,76 @@ graph LR
     FD -.->|"same result"| TC
 ```
 
-### Windowing
+### 加窗
 
-The DFT assumes the signal is periodic -- it treats the N samples as one period of an infinitely repeating signal. If the signal does not start and end at the same value, this creates a discontinuity at the boundary, which shows up as spurious high-frequency content. This is called spectral leakage.
+DFT 假设信号是周期的——它把这 N 个样本当作一个无限重复信号的一个周期。如果信号的起点和终点值不同，这就在边界处造出一个不连续，表现为虚假的高频内容。这叫频谱泄漏。
 
-Windowing reduces leakage by tapering the signal to zero at both ends before computing the DFT.
+加窗通过在计算 DFT 前把信号两端都收窄到零来减少泄漏。
 
-Common windows:
+常见窗：
 
-| Window | Shape | Main lobe width | Side lobe level | Use case |
+| 窗 | 形状 | 主瓣宽度 | 旁瓣电平 | 适用场景 |
 |--------|-------|----------------|-----------------|----------|
-| Rectangular | Flat (no window) | Narrowest | Highest (-13 dB) | When signal is exactly periodic in N samples |
-| Hann | Raised cosine | Moderate | Low (-31 dB) | General purpose spectral analysis |
-| Hamming | Modified cosine | Moderate | Lower (-42 dB) | Audio processing, speech analysis |
-| Blackman | Triple cosine | Wide | Very low (-58 dB) | When side lobe suppression is critical |
+| 矩形 | 平（不加窗） | 最窄 | 最高（-13 dB） | 信号在 N 个样本里恰好周期时 |
+| Hann | 升余弦 | 适中 | 低（-31 dB） | 通用谱分析 |
+| Hamming | 改进余弦 | 适中 | 更低（-42 dB） | 音频处理、语音分析 |
+| Blackman | 三重余弦 | 宽 | 很低（-58 dB） | 旁瓣抑制关键时 |
 
 ```
 Hann window:    w[n] = 0.5 * (1 - cos(2*pi*n / (N-1)))
 Hamming window: w[n] = 0.54 - 0.46 * cos(2*pi*n / (N-1))
 ```
 
-Apply the window by multiplying it element-wise with the signal before the DFT: `X = DFT(x * w)`.
+在 DFT 前把窗和信号逐元素相乘来应用它：`X = DFT(x * w)`。
 
-### DFT properties
+### DFT 性质
 
-| Property | Time Domain | Frequency Domain |
+| 性质 | 时域 | 频域 |
 |----------|-------------|-----------------|
-| Linearity | a*x + b*y | a*X + b*Y |
-| Time shift | x[n - k] | X[f] * e^(-2*pi*i*f*k/N) |
-| Frequency shift | x[n] * e^(2*pi*i*f0*n/N) | X[f - f0] |
-| Convolution | x * h | X * H (pointwise) |
-| Multiplication | x * h (pointwise) | X * H (circular convolution, scaled by 1/N) |
-| Parseval's theorem | sum \|x[n]\|^2 | (1/N) * sum \|X[k]\|^2 |
-| Conjugate symmetry (real input) | x[n] real | X[k] = conj(X[N-k]) |
+| 线性 | a*x + b*y | a*X + b*Y |
+| 时移 | x[n - k] | X[f] * e^(-2*pi*i*f*k/N) |
+| 频移 | x[n] * e^(2*pi*i*f0*n/N) | X[f - f0] |
+| 卷积 | x * h | X * H（逐点） |
+| 乘法 | x * h（逐点） | X * H（循环卷积，按 1/N 缩放） |
+| Parseval 定理 | sum \|x[n]\|^2 | (1/N) * sum \|X[k]\|^2 |
+| 共轭对称（实输入） | x[n] 实 | X[k] = conj(X[N-k]) |
 
-Parseval's theorem says the total energy is the same in both domains. Energy is conserved through the transform.
+Parseval 定理说总能量在两个域里相同。能量在变换中守恒。
 
-### Connection to positional encodings
+### 与位置编码的联系
 
-The original Transformer uses sinusoidal positional encodings:
+原始 Transformer 用正弦位置编码：
 
 ```
 PE(pos, 2i)   = sin(pos / 10000^(2i/d_model))
 PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
 ```
 
-Each dimension pair (2i, 2i+1) oscillates at a different frequency. The frequencies are geometrically spaced from high (dimension 0,1) to low (last dimensions). This gives each position a unique pattern across all frequency bands -- similar to how Fourier coefficients uniquely identify a signal.
+每对维度 (2i, 2i+1) 在不同频率上振荡。频率从高（维度 0,1）到低（最后那些维度）几何间距分布。这给每个位置一个跨所有频带的独特模式——类似傅里叶系数如何唯一标识一个信号。
 
-The key properties this provides:
+它提供的关键性质：
 
-- **Uniqueness:** No two positions have the same encoding.
-- **Bounded values:** sin and cos are always in [-1, 1].
-- **Relative position:** The encoding of position p+k can be expressed as a linear function of the encoding at position p. The model can learn to attend to relative positions.
+- **唯一性：** 没有两个位置有相同的编码。
+- **有界取值：** sin 和 cos 始终在 [-1, 1] 里。
+- **相对位置：** 位置 p+k 的编码可以表达为位置 p 处编码的线性函数。模型可以学会关注相对位置。
 
-### Connection to CNNs
+### 与 CNN 的联系
 
-A convolution layer applies a learned filter (kernel) to the input by sliding it across the signal or image. Mathematically, this is the convolution operation.
+卷积层把一个学到的滤波器（核）作用到输入上，办法是把它在信号或图像上滑动。在数学上，这就是卷积运算。
 
-By the convolution theorem, this is equivalent to:
-1. FFT the input
-2. FFT the kernel
-3. Multiply in frequency domain
-4. IFFT the result
+由卷积定理，这等价于：
+1. 对输入做 FFT
+2. 对核做 FFT
+3. 在频域里相乘
+4. 对结果做 IFFT
 
-Standard CNN implementations use direct convolution (faster for small 3x3 kernels). But for large kernels or global convolution, FFT-based approaches are significantly faster. Some architectures (like FNet) replace attention entirely with FFT, achieving competitive accuracy with O(N log N) instead of O(N^2) complexity.
+标准 CNN 实现用直接卷积（对小的 3x3 核更快）。但对大核或全局卷积，基于 FFT 的方法明显更快。有些架构（如 FNet）完全用 FFT 替换注意力，以 O(N log N) 而非 O(N^2) 的复杂度达到有竞争力的准确率。
 
-### Spectrograms and the Short-Time Fourier Transform
+### 声谱图和短时傅里叶变换
 
-A single FFT gives you the frequency content of the entire signal, but tells you nothing about when those frequencies occur. A chirp (a signal whose frequency increases over time) and a chord (all frequencies present simultaneously) can have the same magnitude spectrum.
+单次 FFT 给你整个信号的频率内容，但对那些频率何时出现一无所知。一个啁啾（频率随时间增加的信号）和一个和弦（所有频率同时出现）可以有相同的幅度谱。
 
-The Short-Time Fourier Transform (STFT) solves this by computing FFTs on overlapping windows of the signal. The result is a spectrogram: a 2D representation with time on one axis and frequency on the other. The intensity at each point shows the energy at that frequency at that time.
+短时傅里叶变换（STFT）通过在信号的重叠窗上计算 FFT 来解决这个问题。结果是一张声谱图：一个二维表示，一根轴是时间、另一根是频率。每点的强度显示那个时刻、那个频率上的能量。
 
 ```
 STFT procedure:
@@ -250,11 +250,11 @@ STFT procedure:
    d. Store the magnitude spectrum as one column of the spectrogram
 ```
 
-Spectrograms are the standard input representation for audio ML models. Speech recognition models (Whisper, DeepSpeech) operate on mel-spectrograms -- spectrograms with frequencies mapped to the mel scale, which better matches human pitch perception.
+声谱图是音频 ML 模型的标准输入表示。语音识别模型（Whisper、DeepSpeech）在梅尔声谱图上工作——把频率映射到梅尔标度的声谱图，这更贴合人类的音高感知。
 
-### Aliasing
+### 混叠
 
-If a signal contains frequencies above fs/2 (the Nyquist frequency), sampling at rate fs will create aliased copies. A 90 Hz signal sampled at 100 Hz looks identical to a 10 Hz signal. There is no way to distinguish them from the samples alone.
+如果信号含有高于 fs/2（奈奎斯特频率）的频率，以速率 fs 采样会造出混叠副本。一个 90 Hz 信号以 100 Hz 采样看起来和一个 10 Hz 信号一模一样。光从样本无法区分它们。
 
 ```
 Example:
@@ -267,19 +267,19 @@ Example:
   No amount of math can recover the original 90 Hz.
 ```
 
-This is why analog-to-digital converters include anti-aliasing filters that remove frequencies above Nyquist before sampling. In ML, aliasing appears when downsampling feature maps without proper low-pass filtering -- some architectures address this with anti-aliased pooling layers.
+这就是为什么模数转换器包含抗混叠滤波器，在采样前移除高于奈奎斯特的频率。在 ML 里，混叠出现在不做适当低通滤波就对特征图下采样时——有些架构用抗混叠的池化层来应对。
 
-### Zero-padding does not increase resolution
+### 补零不增加分辨率
 
-A common misconception: zero-padding a signal before FFT improves frequency resolution. It does not. Zero-padding interpolates between existing frequency bins, giving you a smoother-looking spectrum. But it cannot reveal frequency detail that was not present in the original samples.
+一个常见误解：在 FFT 前给信号补零会改善频率分辨率。它不会。补零在已有的频率 bin 之间插值，给你一个看起来更平滑的谱。但它无法揭示原始样本里不存在的频率细节。
 
-True frequency resolution depends only on the observation time T = N / fs. To resolve two frequencies separated by delta_f, you need at least T = 1 / delta_f seconds of data. No amount of zero-padding changes this fundamental limit.
+真正的频率分辨率只取决于观测时间 T = N / fs。要分辨相隔 delta_f 的两个频率，你至少需要 T = 1 / delta_f 秒的数据。再多补零也改变不了这个根本极限。
 
-## Build It
+## 动手构建
 
-### Step 1: DFT from scratch
+### 第 1 步：从零写 DFT
 
-The O(N^2) DFT follows directly from the definition.
+O(N^2) 的 DFT 直接从定义来。
 
 ```python
 import math
@@ -301,9 +301,9 @@ def dft(x):
     return result
 ```
 
-### Step 2: Inverse DFT
+### 第 2 步：逆 DFT
 
-Same structure, positive exponent, divide by N.
+同样的结构，正指数，除以 N。
 
 ```python
 def idft(X):
@@ -319,9 +319,9 @@ def idft(X):
     return result
 ```
 
-### Step 3: FFT (Cooley-Tukey)
+### 第 3 步：FFT（Cooley-Tukey）
 
-The recursive FFT requires power-of-2 length. Split into even and odd, recurse, combine with twiddle factors.
+递归 FFT 要求长度是 2 的幂。分成偶和奇，递归，用旋转因子合起来。
 
 ```python
 def fft(x):
@@ -344,7 +344,7 @@ def fft(x):
     return result
 ```
 
-### Step 4: Spectral analysis helpers
+### 第 4 步：谱分析辅助函数
 
 ```python
 def power_spectrum(X):
@@ -368,9 +368,9 @@ def convolve_fft(x, h):
     return [y[n].real for n in range(N)]
 ```
 
-## Use It
+## 上手使用
 
-For real work, use numpy's FFT which is backed by highly optimized C libraries.
+实际工作中，用 numpy 的 FFT，它由高度优化的 C 库支撑。
 
 ```python
 import numpy as np
@@ -385,7 +385,7 @@ positive_freqs = freqs[:len(freqs)//2]
 positive_power = power[:len(power)//2]
 ```
 
-For windowing and more advanced spectral analysis:
+加窗和更高级的谱分析：
 
 ```python
 from scipy.signal import windows, stft
@@ -395,7 +395,7 @@ windowed = signal * window
 spectrum = np.fft.fft(windowed)
 ```
 
-For convolution:
+卷积：
 
 ```python
 from scipy.signal import fftconvolve
@@ -403,7 +403,7 @@ from scipy.signal import fftconvolve
 result = fftconvolve(signal, kernel, mode='full')
 ```
 
-For spectrograms:
+声谱图：
 
 ```python
 from scipy.signal import stft
@@ -412,50 +412,50 @@ frequencies, times, Zxx = stft(signal, fs=sample_rate, nperseg=256)
 spectrogram = np.abs(Zxx) ** 2
 ```
 
-The spectrogram matrix has shape (n_frequencies, n_time_frames). Each column is the power spectrum at one time window. This is what audio ML models consume as input.
+声谱图矩阵的形状是 (n_frequencies, n_time_frames)。每一列是一个时间窗的功率谱。这就是音频 ML 模型作为输入消费的东西。
 
-## Ship It
+## 交付
 
-Run `code/fourier.py` to generate `outputs/prompt-spectral-analyzer.md`.
+运行 `code/fourier.py` 来生成 `outputs/prompt-spectral-analyzer.md`。
 
-## Exercises
+## 练习
 
-1. **Pure tone identification.** Create a signal with a single sine wave at an unknown frequency (between 1 and 50 Hz), sampled at 128 Hz for 1 second. Use your DFT to identify the frequency. Verify the answer matches. Now add Gaussian noise with standard deviation 0.5 and repeat. How does noise affect the spectrum?
+1. **纯音识别。** 创建一个单正弦波信号，频率未知（1 到 50 Hz 之间），以 128 Hz 采样 1 秒。用你的 DFT 识别频率。验证答案吻合。现在加入标准差 0.5 的高斯噪声重复一遍。噪声如何影响谱？
 
-2. **FFT vs DFT verification.** Generate a random signal of length 64. Compute both DFT (O(N^2)) and FFT. Verify that all coefficients match to within 1e-10. Time both functions on signals of length 256, 512, 1024, and 2048. Plot the ratio of DFT time to FFT time.
+2. **FFT vs DFT 验证。** 生成一个长度 64 的随机信号。同时计算 DFT（O(N^2)）和 FFT。验证所有系数吻合到 1e-10 以内。在长度 256、512、1024 和 2048 的信号上给两个函数计时。画出 DFT 时间与 FFT 时间之比。
 
-3. **Convolution theorem proof by example.** Create signal x = [1, 2, 3, 4, 0, 0, 0, 0] and filter h = [1, 1, 1, 0, 0, 0, 0, 0]. Compute their circular convolution directly (nested loop). Then compute it via FFT (transform, multiply, inverse transform). Verify the results match. Now do linear convolution by zero-padding appropriately.
+3. **用例子证明卷积定理。** 创建信号 x = [1, 2, 3, 4, 0, 0, 0, 0] 和滤波器 h = [1, 1, 1, 0, 0, 0, 0, 0]。直接（嵌套循环）计算它们的循环卷积。然后通过 FFT（变换、相乘、逆变换）计算它。验证结果吻合。现在适当补零做线性卷积。
 
-4. **Windowing effects.** Create a signal that is the sum of two sine waves at 10 Hz and 12 Hz (very close). Sample at 128 Hz for 1 second. Compute the power spectrum with no window, Hann window, and Hamming window. Which window makes it easiest to distinguish the two peaks? Why?
+4. **加窗效应。** 创建一个信号，它是 10 Hz 和 12 Hz（很近）两个正弦波之和。以 128 Hz 采样 1 秒。计算不加窗、Hann 窗和 Hamming 窗的功率谱。哪个窗最容易区分这两个峰？为什么？
 
-5. **Positional encoding analysis.** Generate the sinusoidal positional encodings for d_model = 128 and max_pos = 512. For each pair of positions (p1, p2), compute the dot product of their encodings. Show that the dot product depends only on |p1 - p2|, not on the absolute positions. What happens to the dot product as the distance increases?
+5. **位置编码分析。** 为 d_model = 128、max_pos = 512 生成正弦位置编码。对每对位置 (p1, p2)，计算它们编码的点积。证明点积只取决于 |p1 - p2|，不取决于绝对位置。随着距离增加，点积会怎样？
 
-## Key Terms
+## 关键术语
 
-| Term | What it means |
+| 术语 | 它的意思 |
 |------|---------------|
-| DFT (Discrete Fourier Transform) | Converts N time-domain samples into N frequency-domain coefficients. Each coefficient is the correlation with a complex sinusoid at that frequency |
-| FFT (Fast Fourier Transform) | An O(N log N) algorithm to compute the DFT. The Cooley-Tukey algorithm splits even/odd indices recursively |
-| Inverse DFT | Reconstructs the time-domain signal from frequency coefficients. Same formula as DFT with flipped exponent sign and 1/N scaling |
-| Frequency bin | Each index k in the DFT output represents frequency k*fs/N Hz. The "bin" is the discrete frequency slot |
-| DC component | X[0], the zero-frequency coefficient. Proportional to the signal mean |
-| Nyquist frequency | fs/2, the maximum frequency representable at sampling rate fs. Frequencies above this alias |
-| Power spectrum | \|X[k]\|^2, the squared magnitude of each frequency coefficient. Shows energy distribution across frequencies |
-| Phase spectrum | angle(X[k]), the phase offset of each frequency component. Often ignored in analysis |
-| Spectral leakage | Spurious frequency content caused by treating a non-periodic signal as periodic. Reduced by windowing |
-| Window function | A tapering function (Hann, Hamming, Blackman) applied before DFT to reduce spectral leakage |
-| Twiddle factor | The complex exponential e^(-2*pi*i*k/N) used to combine sub-DFTs in the FFT butterfly computation |
-| Convolution theorem | Convolution in time domain equals pointwise multiplication in frequency domain. Fundamental to signal processing and CNNs |
-| Circular convolution | Convolution where the signal wraps around. This is what the DFT naturally computes |
-| Linear convolution | Standard convolution without wraparound. Achieved by zero-padding before DFT |
-| Parseval's theorem | Total energy is preserved through the Fourier transform. sum \|x[n]\|^2 = (1/N) sum \|X[k]\|^2 |
-| Aliasing | When frequencies above Nyquist appear as lower frequencies due to insufficient sampling rate |
+| DFT（离散傅里叶变换） | 把 N 个时域样本转成 N 个频域系数。每个系数是与该频率复正弦的相关 |
+| FFT（快速傅里叶变换） | 计算 DFT 的 O(N log N) 算法。Cooley-Tukey 算法递归地拆分偶/奇索引 |
+| 逆 DFT | 从频率系数重构时域信号。和 DFT 同公式，翻转指数符号并按 1/N 缩放 |
+| 频率 bin | DFT 输出里每个索引 k 表示频率 k*fs/N Hz。"bin"是离散的频率槽 |
+| 直流分量 | X[0]，零频率系数。正比于信号均值 |
+| 奈奎斯特频率 | fs/2，采样率 fs 下可表示的最高频率。高于它的频率会混叠 |
+| 功率谱 | \|X[k]\|^2，每个频率系数模的平方。显示能量在各频率上的分布 |
+| 相位谱 | angle(X[k])，每个频率分量的相位偏移。分析中常被忽略 |
+| 频谱泄漏 | 把非周期信号当周期对待造成的虚假频率内容。靠加窗减少 |
+| 窗函数 | 在 DFT 前应用的收窄函数（Hann、Hamming、Blackman），用来减少频谱泄漏 |
+| 旋转因子 | 复指数 e^(-2*pi*i*k/N)，用在 FFT 蝶形计算里合并子 DFT |
+| 卷积定理 | 时域卷积等于频域逐点乘法。信号处理和 CNN 的基础 |
+| 循环卷积 | 信号会绕回来的卷积。这是 DFT 天然计算的东西 |
+| 线性卷积 | 不绕回的标准卷积。通过在 DFT 前补零实现 |
+| Parseval 定理 | 总能量在傅里叶变换中守恒。sum \|x[n]\|^2 = (1/N) sum \|X[k]\|^2 |
+| 混叠 | 因采样率不足，高于奈奎斯特的频率表现为更低频率 |
 
-## Further Reading
+## 延伸阅读
 
-- [Cooley & Tukey: An Algorithm for the Machine Calculation of Complex Fourier Series (1965)](https://www.ams.org/journals/mcom/1965-19-090/S0025-5718-1965-0178586-1/) - the original FFT paper that changed computing
-- [3Blue1Brown: But what is the Fourier Transform?](https://www.youtube.com/watch?v=spUNpyF58BY) - the best visual introduction to Fourier transforms
-- [Lee-Thorp et al.: FNet: Mixing Tokens with Fourier Transforms (2021)](https://arxiv.org/abs/2105.03824) - replaces self-attention with FFT in transformers
-- [Smith: The Scientist and Engineer's Guide to Digital Signal Processing](http://www.dspguide.com/) - free online textbook covering FFT, windowing, and spectral analysis in depth
-- [Vaswani et al.: Attention Is All You Need (2017)](https://arxiv.org/abs/1706.03762) - sinusoidal positional encodings derived from Fourier frequency decomposition
-- [Radford et al.: Whisper (2022)](https://arxiv.org/abs/2212.04356) - speech recognition using mel-spectrograms as input representation
+- [Cooley & Tukey: An Algorithm for the Machine Calculation of Complex Fourier Series (1965)](https://www.ams.org/journals/mcom/1965-19-090/S0025-5718-1965-0178586-1/) - 改变了计算的 FFT 原始论文
+- [3Blue1Brown: But what is the Fourier Transform?](https://www.youtube.com/watch?v=spUNpyF58BY) - 对傅里叶变换最好的可视化引入
+- [Lee-Thorp et al.: FNet: Mixing Tokens with Fourier Transforms (2021)](https://arxiv.org/abs/2105.03824) - 在 transformer 里用 FFT 替换自注意力
+- [Smith: The Scientist and Engineer's Guide to Digital Signal Processing](http://www.dspguide.com/) - 深入讲 FFT、加窗和谱分析的免费在线教材
+- [Vaswani et al.: Attention Is All You Need (2017)](https://arxiv.org/abs/1706.03762) - 从傅里叶频率分解推导出的正弦位置编码
+- [Radford et al.: Whisper (2022)](https://arxiv.org/abs/2212.04356) - 用梅尔声谱图作为输入表示的语音识别

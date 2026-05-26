@@ -1,121 +1,121 @@
-# Constitutional AI and Rule Overrides
+# Constitutional AI 与规则覆盖
 
-> Anthropic's January 22, 2026 Claude Constitution runs 79 pages and is CC0. It moves from rule-based to reason-based alignment and establishes a four-tier priority hierarchy: (1) safety and supporting human oversight, (2) ethics, (3) Anthropic guidelines, (4) helpfulness. Behaviours split into hardcoded prohibitions (bioweapons uplift, CSAM) that operators and users cannot override and soft-coded defaults that operators can adjust within defined bounds. The 2022 original (Bai et al.) trained harmlessness via self-critique and RLAIF against a constitution. The honest caveat: reason-based alignment relies on the model generalising principles to unanticipated situations. Anthropic's own 2023 participatory experiment showed ~50% divergence between public-sourced and corporate principles; the 2026 version did not incorporate those findings.
+> Anthropic 2026 年 1 月 22 日的 Claude Constitution 长达 79 页，以 CC0 发布。它从基于规则的对齐转向基于推理的对齐，并确立了一套四层优先级层级：(1) 安全与支持人类监督，(2) 伦理，(3) Anthropic 指南，(4) 有用性。行为分成硬编码禁令（生物武器赋能、CSAM）——operator 和用户都无法覆盖——以及软编码默认——operator 可在划定的界限内调整。2022 年的原版（Bai 等人）通过自我批判和针对一部章程的 RLAIF 来训练无害性。诚实的告诫是：基于推理的对齐依赖模型把原则泛化到未预料的情况。Anthropic 自己 2023 年的参与式实验显示，公众来源的原则和公司来源的原则之间约有 50% 的分歧；2026 年版没有纳入那些发现。
 
-**Type:** Learn
-**Languages:** Python (stdlib, four-tier priority resolver)
-**Prerequisites:** Phase 15 · 06 (Automated alignment research), Phase 15 · 10 (Permission modes)
-**Time:** ~60 minutes
+**类型：** Learn
+**语言：** Python（标准库，四层优先级解析器）
+**前置要求：** 阶段 15 · 06（自动化对齐研究），阶段 15 · 10（权限模式）
+**预计时间：** ~60 分钟
 
-## The Problem
+## 问题所在
 
-A fielded agent sees inputs that its designers never saw. No rule list is long enough to cover them. No rule list is short enough to apply quickly under compute pressure. The practical question: how do you align an agent to principles that survive both a long tail of cases and fast inference?
+一个上线的 agent 看到设计者从没见过的输入。没有一份规则清单长到能覆盖它们。也没有一份规则清单短到能在算力压力下快速套用。实际的问题是：你怎么把一个 agent 对齐到那些既能扛过长尾案例、又能扛过快速推理的原则上？
 
-Rule-based alignment (RBA): list every disallowed thing. Fast to check, easy to audit, impossible to keep current, often over-refuses on close analogs it didn't anticipate. Reason-based alignment (the 2026 Claude Constitution): encode principles, let the model reason. Scales across unseen cases, harder to audit, failure mode is principle-misapplication rather than miss-the-rule.
+基于规则的对齐（RBA）：把每一件不许做的事列出来。检查快、易审计、不可能保持最新，而且对它没预料到的相近类比常常过度拒答。基于推理的对齐（2026 年的 Claude Constitution）：编码原则，让模型去推理。能跨未见案例扩展、更难审计，失败模式是误用原则而非漏掉规则。
 
-The 2026 Constitution takes an explicit middle position. Hardcoded prohibitions — things whose wrongness does not depend on context (bioweapons uplift, CSAM) — are RBA: never, regardless of operator or user instruction. Everything else is reason-based within a four-tier hierarchy: safety and supporting human oversight first; ethics second; Anthropic-declared guidelines third; helpfulness last. Operators can adjust defaults within the soft-coded zone but cannot touch the hardcoded prohibitions.
+2026 年的章程取了一个明确的中间立场。硬编码禁令——那些其错误性不依赖语境的东西（生物武器赋能、CSAM）——是 RBA：永不，不管 operator 或用户怎么指示。其他一切都在一个四层层级里基于推理：安全与支持人类监督第一；伦理第二；Anthropic 声明的指南第三；有用性最后。operator 能在软编码区里调整默认，但碰不了硬编码禁令。
 
-## The Concept
+## 核心概念
 
-### The four-tier priority hierarchy
+### 四层优先级层级
 
-1. **Safety and supporting human oversight.** Highest. The model prioritises not undermining the ability of humans and Anthropic to supervise and correct AI. This is not "be cautious"; it is specifically "do not act in ways that make human oversight harder."
-2. **Ethics.** Honesty, avoiding harm to persons, not deceiving, not manipulating. Supersedes Anthropic's guidelines when they conflict.
-3. **Anthropic guidelines.** Operational norms Anthropic has decided matter: product scope, interaction patterns, what tools to use when.
-4. **Helpfulness.** Lowest. Be as useful as possible within the higher priorities.
+1. **安全与支持人类监督。** 最高。模型优先做到不削弱人类和 Anthropic 监督并纠正 AI 的能力。这不是"小心点"；它具体是"不要以让人类监督更难的方式行动"。
+2. **伦理。** 诚实、避免伤害人、不欺骗、不操纵。冲突时压过 Anthropic 的指南。
+3. **Anthropic 指南。** Anthropic 已决定重要的运营规范：产品范围、交互模式、何时用什么工具。
+4. **有用性。** 最低。在更高优先级之内尽可能有用。
 
-When tiers conflict, higher wins. This is the same shape as Unix priorities or network QoS — the framing is meant to produce predictable resolution, not necessarily best-case behaviour on any single axis.
+层级冲突时，更高者胜。这跟 Unix 优先级或网络 QoS 是同一个形态——这套框架意在产生可预测的解析，不一定是任何单个维度上的最优行为。
 
-### Hardcoded prohibitions vs soft-coded defaults
+### 硬编码禁令 vs 软编码默认
 
-**Hardcoded:**
-- Bioweapons / CBRN uplift
+**硬编码：**
+- 生物武器 / CBRN 赋能
 - CSAM
-- Attacks on critical infrastructure
-- Deception of users about the model's identity when asked directly
+- 对关键基础设施的攻击
+- 在被直接问到时欺骗用户关于模型的身份
 
-The operator cannot override these. The user cannot override these. They are enforced at the model-weights level where possible (RLHF / Constitutional AI training) and at the inference layer where not.
+operator 无法覆盖这些。用户无法覆盖这些。它们在可能处于模型权重层面执行（RLHF / Constitutional AI 训练），在不能时则在推理层执行。
 
-**Soft-coded defaults (operator-adjustable):**
-- Response length defaults
-- Topical scope (the model can refuse topics outside the operator's deployment)
-- Style (formal vs casual)
-- Tool-use patterns
+**软编码默认（operator 可调）：**
+- 回复长度默认值
+- 主题范围（模型可以拒绝 operator 部署之外的主题）
+- 风格（正式 vs 随意）
+- 工具使用模式
 
-Operator adjustments happen inside a declared bound. The operator cannot remove the hardcoded prohibitions by renaming them.
+operator 的调整发生在一个声明的界限之内。operator 不能靠改名把硬编码禁令拿掉。
 
-### The 2022 CAI training
+### 2022 年的 CAI 训练
 
-The original Constitutional AI (Bai et al., 2022) trained harmlessness:
+最初的 Constitutional AI（Bai 等人，2022）训练无害性：
 
-1. Generate responses to a set of prompts.
-2. Ask the model to critique each response against a constitution (explicit principles).
-3. Revise the response based on the critique.
-4. RLAIF (reinforcement learning from AI feedback) on the revised pairs.
+1. 对一组 prompt 生成回复。
+2. 让模型对照一部章程（显式原则）批判每条回复。
+3. 基于批判修订回复。
+4. 在修订后的配对上做 RLAIF（从 AI 反馈中做强化学习）。
 
-Result: a model that refuses harmful requests with principled explanations, not blanket refusals. The 2026 Constitution uses a descendant of this training plus additional post-training on the explicit tier hierarchy.
+结果：一个用有原则的解释、而非一刀切拒答来拒绝有害请求的模型。2026 年的章程用了这套训练的一个后代，外加在显式层级层级上的额外后训练。
 
-### What reason-based alignment catches and misses
+### 基于推理的对齐抓得住什么、漏掉什么
 
-**Catches:**
-- Unanticipated combinations of allowed primitives where the principle applies clearly.
-- Novel requests that are close analogs of prohibited ones.
-- Social-engineering attacks that rely on "you didn't say X was disallowed."
+**抓得住：**
+- 被允许原语的未预料组合，且原则清晰适用。
+- 与被禁请求相近类比的新颖请求。
+- 依赖"你没说 X 不许"的社会工程攻击。
 
-**Misses:**
-- Attacks that exploit principle ambiguity ("the user asked for this so helpfulness says yes").
-- Scenarios where two principles conflict in an unanticipated way, and the tier order is ambiguous.
-- Slow drift in principle interpretation over training cycles (reinterpretation).
+**漏掉：**
+- 利用原则歧义的攻击（"用户要了这个，所以有用性说可以"）。
+- 两条原则以一种未预料的方式冲突、且层级次序模糊的场景。
+- 跨训练周期、原则解读上的缓慢漂移（重新解读）。
 
-### The 2023 participatory experiment
+### 2023 年的参与式实验
 
-Anthropic ran a 2023 experiment comparing a corporate-authored constitution to one generated via public input (~1,000 US respondents). The two versions agreed on ~50% of principles. Where they diverged, the public-sourced version was more restrictive on some issues (political-content handling) and less restrictive on others (self-disclosure of AI identity). The 2026 Constitution did not incorporate the public-sourced findings. This is a documented tension in the approach.
+Anthropic 在 2023 年做了一个实验，把一部公司撰写的章程和一部通过公众输入（约 1000 名美国受访者）生成的章程做对比。两个版本在约 50% 的原则上达成一致。在它们分歧处，公众来源的版本在某些议题（政治内容处理）上更严格，在另一些（AI 身份的自我披露）上更宽松。2026 年的章程没有纳入公众来源的发现。这是这套方法里有记录在案的一处张力。
 
-### Why hardcoded prohibitions are necessary
+### 为什么硬编码禁令是必要的
 
-Reason-based alignment alone cannot close the tail. An attacker who can get the model to accept a premise (e.g., "we are a licensed bioweapons research lab") can often talk past principles that depend on case reasoning. Hardcoded prohibitions do not bend to premise framing. They are the Lesson 14 "hard constitutional limit" at the alignment layer.
+光靠基于推理的对齐闭合不了长尾。一个能让模型接受某个前提（比如"我们是一家有牌照的生物武器研究实验室"）的攻击者，往往能绕过那些依赖案例推理的原则。硬编码禁令不向前提框架弯折。它们是第 14 课的"硬章程限制"在对齐层的体现。
 
-### Where the Constitution sits in the stack
+### 章程在技术栈里的位置
 
-The Constitution is not Lesson 14's kill switch. It lives at the model layer: what the model's weights are trained to prefer. Kill switches and canary tokens live at the runtime layer: what the runtime permits. Both are required. A runtime that fires all the wrong actions because the model weights are permissive is a runtime problem. A model that refuses all the right actions because the runtime is over-restrictive is a runtime problem. Layers cover different classes.
+章程不是第 14 课的急停开关。它活在模型层：模型的权重被训练成偏好什么。急停开关和金丝雀 token 活在运行时层：运行时允许什么。两者都需要。一个因为模型权重宽松而触发了所有错误动作的运行时是运行时问题。一个因为运行时过度限制而拒绝了所有正确动作的运行时也是运行时问题。各层覆盖不同的类别。
 
-## Use It
+## 上手使用
 
-`code/main.py` implements a minimal four-tier priority resolver. The resolver takes a proposed action and a set of principle-evaluations (safety, ethics, guidelines, helpfulness) and returns the action, a refusal, or a modified action. The driver runs a small case set: clear allow, clear disallow, hardcoded prohibition, ambiguous case across tiers.
+`code/main.py` 实现一个最小的四层优先级解析器。解析器接收一个提议的动作和一组原则评估（安全、伦理、指南、有用性），返回该动作、一次拒答，或一个被修改的动作。驱动程序跑一个小案例集：明确放行、明确禁止、硬编码禁令、跨层级的模糊案例。
 
-## Ship It
+## 交付
 
-`outputs/skill-constitution-review.md` audits a deployment's constitutional layer: what is hardcoded, what is soft-coded, where the operator can adjust, and whether the four-tier hierarchy is actually the resolution order.
+`outputs/skill-constitution-review.md` 审计一个部署的章程层：什么是硬编码的、什么是软编码的、operator 能在哪里调整，以及四层层级是否真的就是解析次序。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Confirm the hardcoded prohibition fires even when helpfulness is high. Modify the resolver to weight helpfulness above ethics; observe the failure mode.
+1. 运行 `code/main.py`。确认即便有用性很高，硬编码禁令仍触发。改一下解析器，让有用性的权重高于伦理；观察失败模式。
 
-2. Read the Claude Constitution (public, 79 pages, CC0). Identify one principle you believe is under-specified. Write two paragraphs explaining the specific ambiguity and proposing a tighter formulation.
+2. 读 Claude Constitution（公开，79 页，CC0）。指出一条你认为规定不足的原则。写两段解释那个具体的歧义，并提出一个更紧的表述。
 
-3. Design a soft-coded default set for a customer-support agent. What does the operator adjust? What can the operator not touch? Justify each boundary.
+3. 为一个客服 agent 设计一组软编码默认。operator 调整什么？operator 碰不了什么？论证每一条边界。
 
-4. Read the Bai et al. 2022 CAI paper. Describe one case where Constitutional AI's critique-and-revise loop would produce a worse outcome than a blanket rule. Identify the class.
+4. 读 Bai 等人 2022 年的 CAI 论文。描述一个 Constitutional AI 的批判-修订循环会产出比一刀切规则更差结果的案例。指出这个类别。
 
-5. Anthropic's 2023 participatory experiment found ~50% divergence between public and corporate principles. Pick one category where this matters for production deployment (e.g., political neutrality). Propose a design that lets operators express their own values while the hardcoded prohibitions remain untouched.
+5. Anthropic 2023 年的参与式实验发现公众和公司原则之间约 50% 的分歧。挑一个对生产部署要紧的类别（比如政治中立）。提出一个让 operator 能表达自己价值、同时硬编码禁令保持不动的设计。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 实际指什么 |
 |---|---|---|
-| Constitutional AI | "Anthropic's alignment method" | Self-critique + RLAIF against a written constitution |
-| Reason-based alignment | "Principles, not rules" | Model reasons over principles to handle unseen cases |
-| Hardcoded prohibition | "Never do X" | Rule-based prohibition no operator or user can override |
-| Soft-coded default | "Operator-adjustable" | Behaviour within a declared bound, operator controls |
-| Four-tier hierarchy | "Priority order" | safety > ethics > guidelines > helpfulness |
-| RLAIF | "AI feedback RL" | RL where the reward comes from model-generated critiques |
-| Participatory constitution | "Public-sourced principles" | 2023 Anthropic experiment; ~50% divergence from corporate |
-| Principle drift | "Interpretation slip" | Slow change in how the model reads a fixed principle text |
+| Constitutional AI | "Anthropic 的对齐方法" | 自我批判 + 针对一部成文章程的 RLAIF |
+| Reason-based alignment（基于推理的对齐） | "原则，不是规则" | 模型对原则做推理以应对未见案例 |
+| Hardcoded prohibition（硬编码禁令） | "永不做 X" | 任何 operator 或用户都无法覆盖的基于规则的禁令 |
+| Soft-coded default（软编码默认） | "operator 可调" | 在声明界限内的行为，由 operator 控制 |
+| Four-tier hierarchy（四层层级） | "优先级次序" | 安全 > 伦理 > 指南 > 有用性 |
+| RLAIF | "AI 反馈 RL" | 奖励来自模型生成批判的强化学习 |
+| Participatory constitution（参与式章程） | "公众来源的原则" | 2023 年 Anthropic 实验；与公司版约 50% 分歧 |
+| Principle drift（原则漂移） | "解读走样" | 模型读取一段固定原则文本的方式缓慢变化 |
 
-## Further Reading
+## 延伸阅读
 
-- [Anthropic — Claude's Constitution (January 2026)](https://www.anthropic.com/news/claudes-constitution) — the 79-page CC0 document.
-- [Bai et al. — Constitutional AI: Harmlessness from AI Feedback](https://www.anthropic.com/research/constitutional-ai-harmlessness-from-ai-feedback) — 2022 original.
-- [Anthropic — Collective Constitutional AI (2023)](https://www.anthropic.com/research/collective-constitutional-ai-aligning-a-language-model-with-public-input) — participatory experiment.
-- [Anthropic — Responsible Scaling Policy v3.0](https://anthropic.com/responsible-scaling-policy/rsp-v3-0) — where the Constitution sits in the RSP stack.
-- [Anthropic — Measuring agent autonomy in practice](https://www.anthropic.com/research/measuring-agent-autonomy) — Constitution's role in long-horizon deployments.
+- [Anthropic — Claude's Constitution (January 2026)](https://www.anthropic.com/news/claudes-constitution) —— 79 页的 CC0 文档。
+- [Bai et al. — Constitutional AI: Harmlessness from AI Feedback](https://www.anthropic.com/research/constitutional-ai-harmlessness-from-ai-feedback) —— 2022 年原版。
+- [Anthropic — Collective Constitutional AI (2023)](https://www.anthropic.com/research/collective-constitutional-ai-aligning-a-language-model-with-public-input) —— 参与式实验。
+- [Anthropic — Responsible Scaling Policy v3.0](https://anthropic.com/responsible-scaling-policy/rsp-v3-0) —— 章程在 RSP 栈里的位置。
+- [Anthropic — Measuring agent autonomy in practice](https://www.anthropic.com/research/measuring-agent-autonomy) —— 章程在长程部署中的角色。

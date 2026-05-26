@@ -1,28 +1,28 @@
-# Capstone 02 — RAG over Codebase (Cross-Repo Semantic Search)
+# 顶点项目 02 —— 代码库之上的 RAG（跨仓库语义搜索）
 
-> Every serious engineering org in 2026 runs an internal code search that understands meaning, not just strings. Sourcegraph Amp, Cursor's codebase answers, Augment's enterprise graph, Aider's repomap, Pinterest's internal MCP — same shape. Ingest many repos, parse with tree-sitter, embed function- and class-level chunks, hybrid-search, re-rank, answer with citations. This capstone asks you to build one that handles 2M lines of code across 10 repos and survives incremental re-indexing on every git push.
+> 2026 年，每个像样的工程组织内部都跑着一套理解含义、而不只是字符串的代码搜索。Sourcegraph Amp、Cursor 的代码库问答、Augment 的企业图谱、Aider 的 repomap、Pinterest 的内部 MCP——同一套形态。摄入很多个仓库，用 tree-sitter 解析，对函数级和类级的 chunk 做 embedding，混合搜索，重排，带引用作答。这个顶点项目要求你做一个能扛住跨 10 个仓库、200 万行代码，并且在每次 git push 时都能挺过增量重建索引的系统。
 
-**Type:** Capstone
-**Languages:** Python (ingestion), TypeScript (API + UI)
-**Prerequisites:** Phase 5 (NLP foundations), Phase 7 (transformers), Phase 11 (LLM engineering), Phase 13 (tools), Phase 17 (infrastructure)
-**Phases exercised:** P5 · P7 · P11 · P13 · P17
-**Time:** 30 hours
+**类型：** Capstone
+**语言：** Python（摄入）、TypeScript（API + UI）
+**前置要求：** 第 5 阶段（NLP 基础）、第 7 阶段（transformer）、第 11 阶段（LLM 工程）、第 13 阶段（工具）、第 17 阶段（基础设施）
+**涉及阶段：** P5 · P7 · P11 · P13 · P17
+**预计时间：** 30 小时
 
-## Problem
+## 问题所在
 
-By 2026 every frontier coding agent ships with a codebase retrieval layer because context windows alone do not solve cross-repo questions. Claude's 1M-token context helps; it does not eliminate the need for ranked retrieval. Naive cosine search over raw chunks poisons results on generated code, on monorepo duplication, and on the long tail of rarely-imported symbols. The production answer is a hybrid (dense + BM25) search over AST-aware chunks with a re-ranker, backed by a graph of symbol references.
+到 2026 年，每个前沿编码 agent 都带着一层代码库检索，因为光靠上下文窗口解决不了跨仓库的问题。Claude 的 100 万 token 上下文有帮助，但它消除不了对排序检索的需求。在原始 chunk 上做朴素的余弦搜索，会在生成的代码、monorepo 的重复内容、以及很少被 import 的符号的长尾上把结果搞坏。生产上的答案是：在 AST 感知的 chunk 上做混合搜索（dense + BM25），加一个重排器，背后再有一张符号引用的图。
 
-You learn this by indexing a real fleet — not one tutorial repo — and measuring MRR@10, citation faithfulness, and incremental freshness. The failure modes are infrastructural: a 100k-file monorepo, a push that retouches half the files, a query that needs to cross four repos to answer correctly.
+你通过给一支真实的仓库舰队建索引来学这件事——不是某个教程里的单仓库——并衡量 MRR@10、引用忠实度和增量新鲜度。失败模式都是基础设施层面的：一个 10 万文件的 monorepo、一次改动了半数文件的 push、一个要跨四个仓库才能正确作答的查询。
 
-## Concept
+## 核心概念
 
-An AST-aware ingestion pipeline parses each file with tree-sitter, extracts function and class nodes, and chunks at node boundaries rather than fixed token windows. Each chunk gets three representations: a dense embedding (Voyage-code-3 or nomic-embed-code), sparse BM25 terms, and a short natural-language summary. The summary adds a third retrievable modality — users ask "how is X authorized" and the summary mentions "authz", even if the code only has `check_permission`.
+一条 AST 感知的摄入流水线用 tree-sitter 解析每个文件，抽出函数和类节点，按节点边界而不是固定的 token 窗口来切 chunk。每个 chunk 拿到三种表示：一个 dense embedding（Voyage-code-3 或 nomic-embed-code）、稀疏的 BM25 词项，以及一段简短的自然语言摘要。摘要加上了第三种可检索的模态——用户问“X 是怎么做鉴权的”，哪怕代码里只有 `check_permission`，摘要里也会提到 “authz”。
 
-Retrieval is hybrid. A query fires both dense and BM25 searches, merges top-k, and hands the union to a cross-encoder re-ranker (Cohere rerank-3 or bge-reranker-v2-gemma-2b). The re-ranked list goes to a long-context synthesizer (Claude Sonnet 4.7 with prompt caching, or Llama 3.3 70B self-hosted) with instructions to cite every claim by file and line range. Answers without citations are rejected by a post-filter.
+检索是混合式的。一个查询同时触发 dense 和 BM25 搜索，合并 top-k，把并集交给一个 cross-encoder 重排器（Cohere rerank-3 或 bge-reranker-v2-gemma-2b）。重排后的列表送给一个长上下文合成器（带 prompt caching 的 Claude Sonnet 4.7，或自托管的 Llama 3.3 70B），指示它每一条断言都要按文件和行号区间给出引用。没有引用的答案会被一个后置过滤器拒掉。
 
-Incremental freshness is the infrastructure problem. Git push triggers a diff: which files changed, which symbols changed. Only affected chunks re-embed. Affected cross-file symbol edges (imports, method calls) get recomputed. The index stays consistent without reprocessing 2M lines each commit.
+增量新鲜度是那个基础设施难题。Git push 触发一个 diff：哪些文件变了，哪些符号变了。只有受影响的 chunk 重新 embedding。受影响的跨文件符号边（import、方法调用）被重新计算。索引保持一致，不必每次提交都重新处理 200 万行。
 
-## Architecture
+## 架构
 
 ```
 git push --> webhook --> ingest worker (LlamaIndex Workflow)
@@ -49,40 +49,40 @@ git push --> webhook --> ingest worker (LlamaIndex Workflow)
                  answer + file:line citations
 ```
 
-## Stack
+## 技术栈
 
-- Parsing: tree-sitter with 17 language grammars (Python, TS, Rust, Go, Java, C++, etc.)
-- Dense embeddings: Voyage-code-3 (hosted) or nomic-embed-code-v1.5 (self-host), bge-code-v1 fallback
-- Sparse index: Tantivy (Rust) with BM25F, field-weighted on symbol name vs body
-- Vector DB: Qdrant 1.12 with hybrid search, or pgvector + pgvectorscale for teams under 50M vectors
-- Chunk summary model: Claude Haiku 4.5 or Gemini 2.5 Flash, prompt-cached
-- Re-ranker: Cohere rerank-3 or bge-reranker-v2-gemma-2b self-hosted
-- Orchestration: LlamaIndex Workflows for ingestion, LangGraph for query agent
-- Synthesizer: Claude Sonnet 4.7 (1M context) with prompt caching
-- Symbol graph: Neo4j (managed) or kuzu (embedded) for import and call edges
-- Observability: Langfuse spans per retrieval + synthesis step
+- 解析：带 17 种语言文法的 tree-sitter（Python、TS、Rust、Go、Java、C++ 等）
+- Dense embedding：Voyage-code-3（托管）或 nomic-embed-code-v1.5（自托管），bge-code-v1 作兜底
+- 稀疏索引：Tantivy（Rust）配 BM25F，对符号名和函数体做字段加权
+- 向量库：带混合搜索的 Qdrant 1.12，或给向量数低于 5000 万的团队用 pgvector + pgvectorscale
+- chunk 摘要模型：Claude Haiku 4.5 或 Gemini 2.5 Flash，做 prompt cache
+- 重排器：Cohere rerank-3 或自托管的 bge-reranker-v2-gemma-2b
+- 编排：摄入用 LlamaIndex Workflows，查询 agent 用 LangGraph
+- 合成器：带 prompt caching 的 Claude Sonnet 4.7（100 万上下文）
+- 符号图：Neo4j（托管）或 kuzu（嵌入式），存 import 和调用边
+- 可观测性：每个检索 + 合成步骤一个 Langfuse span
 
-## Build It
+## 动手构建
 
-1. **Ingestion walker.** Iterate git history on every push hook. Collect changed files. For each file, parse with tree-sitter, extract function and class nodes with their full source span. Emit chunk records `{repo, path, start_line, end_line, symbol, body}`.
+1. **摄入遍历器。** 在每个 push hook 上遍历 git 历史。收集变更的文件。对每个文件，用 tree-sitter 解析，连同完整源码区间抽出函数和类节点。产出 chunk 记录 `{repo, path, start_line, end_line, symbol, body}`。
 
-2. **Chunk summarizer.** Batch chunks into Haiku 4.5 calls with prompt caching on the system preamble. Prompt: "Summarize this function in one sentence, naming its public contract and side effects." Store summary alongside the chunk.
+2. **chunk 摘要器。** 把 chunk 批量塞进 Haiku 4.5 调用，对 system 前导做 prompt caching。prompt：“用一句话总结这个函数，点出它的公开契约和副作用。”把摘要跟 chunk 一起存。
 
-3. **Embedding pool.** Two parallel queues: dense (Voyage-code-3 batch 128) and summary (same model, but on the summary string). Write vectors to Qdrant with payload `{repo, path, start_line, end_line, symbol, kind}`.
+3. **embedding 池。** 两条并行队列：dense（Voyage-code-3，批大小 128）和 summary（同一个模型，但跑在摘要字符串上）。把向量写进 Qdrant，payload 为 `{repo, path, start_line, end_line, symbol, kind}`。
 
-4. **BM25 index.** Field-weighted Tantivy index: symbol name weight 4, symbol body weight 1, summary weight 2. Enables "find the function named X" queries alongside "find the function that does X".
+4. **BM25 索引。** 字段加权的 Tantivy 索引：符号名权重 4、函数体权重 1、摘要权重 2。让“找到名叫 X 的函数”这类查询能跟“找到做 X 的那个函数”并存。
 
-5. **Symbol graph.** For each chunk, record edges: imports (this file uses symbol Y from repo Z), calls (this function calls method M on class C), inheritance. Store in kuzu. Used at query time to expand retrieval across repo boundaries.
+5. **符号图。** 对每个 chunk，记录边：import（这个文件用了仓库 Z 里的符号 Y）、调用（这个函数调用了类 C 上的方法 M）、继承。存进 kuzu。查询时用来跨仓库边界扩展检索。
 
-6. **Query agent.** LangGraph with three nodes. `retrieve` fires dense + BM25 in parallel, deduplicates by (repo, path, symbol). `rerank` runs the cross-encoder on top-50 and keeps top-10. `synth` calls Claude Sonnet 4.7 with the reranked chunks in context, caches the system prompt, requires file:line citations.
+6. **查询 agent。** 带三个节点的 LangGraph。`retrieve` 并行触发 dense + BM25，按 (repo, path, symbol) 去重。`rerank` 在 top-50 上跑 cross-encoder，保留 top-10。`synth` 把重排后的 chunk 放进上下文调用 Claude Sonnet 4.7，缓存 system prompt，要求 file:line 引用。
 
-7. **Citation enforcement.** Parse the model output; any claim without a `(repo/path:start-end)` anchor gets flagged for re-ask or dropped. Return cited-only answer to the user.
+7. **引用强制。** 解析模型输出；任何没有 `(repo/path:start-end)` 锚点的断言都被标记，要么重问要么丢弃。把只含已引用内容的答案返回给用户。
 
-8. **Incremental re-index.** On each webhook, compute the symbol-level diff. Only re-embed chunks whose text changed. Recompute symbol edges for chunks whose imports changed. Measure: a 50-file push re-indexed in under 60 seconds for a 2M-LOC fleet.
+8. **增量重建索引。** 每个 webhook 上，计算符号级 diff。只对文本变了的 chunk 重新 embedding。对 import 变了的 chunk 重新计算符号边。指标：在一支 200 万行的舰队上，一次 50 文件的 push 在 60 秒内完成重建索引。
 
-9. **Eval.** Label 100 cross-repo questions with gold file:line answers. Measure MRR@10, nDCG@10, citation faithfulness (fraction of claims with verifiable anchors), and p50/p99 latency.
+9. **评测。** 给 100 个跨仓库问题标注金标准 file:line 答案。衡量 MRR@10、nDCG@10、引用忠实度（断言中带可验证锚点的占比），以及 p50/p99 延迟。
 
-## Use It
+## 上手使用
 
 ```
 $ code-rag ask "how is S3 multipart abort wired into our retry budget?"
@@ -97,50 +97,50 @@ answer:
               libs/s3client/multipart.ts:44-61]
 ```
 
-## Ship It
+## 交付
 
-Deliverable skill `outputs/skill-codebase-rag.md`. Given a corpus of repos, it stands up the ingestion pipeline, the hybrid index, and the query agent, and returns a cited answer for any cross-repo question. Rubric:
+可交付 skill `outputs/skill-codebase-rag.md`。给定一组仓库语料，它会立起摄入流水线、混合索引和查询 agent，对任何跨仓库问题返回一个带引用的答案。评分标准：
 
-| Weight | Criterion | How it is measured |
+| 权重 | 标准 | 怎么衡量 |
 |:-:|---|---|
-| 25 | Retrieval quality | MRR@10 and nDCG@10 on a 100-question held-out set |
-| 20 | Citation faithfulness | Fraction of answer claims with verifiable file:line anchors |
-| 20 | Latency and scale | p95 query latency at 10k QPS on the indexed corpus size |
-| 20 | Incremental indexing correctness | Time from git push to searchable on a 50-file commit |
-| 15 | UX and answer formatting | Citation clickability, snippet previews, follow-up affordance |
+| 25 | 检索质量 | 在 100 个问题的留出集上的 MRR@10 和 nDCG@10 |
+| 20 | 引用忠实度 | 答案断言中带可验证 file:line 锚点的占比 |
+| 20 | 延迟与规模 | 在所建索引的语料规模上、10k QPS 下的 p95 查询延迟 |
+| 20 | 增量索引正确性 | 一次 50 文件提交从 git push 到可搜索的耗时 |
+| 15 | 体验与答案排版 | 引用可点击、片段预览、追问的可操作性 |
 | **100** | | |
 
-## Exercises
+## 练习
 
-1. Swap Voyage-code-3 for nomic-embed-code self-hosted. Measure the MRR@10 delta. Report whether the gap closes with re-ranking enabled.
+1. 把 Voyage-code-3 换成自托管的 nomic-embed-code。衡量 MRR@10 的差值。报告在开启重排后这个差距会不会缩小。
 
-2. Inject 20% generated code (LLM-produced boilerplate) into the corpus and re-evaluate. Observe retrieval poisoning. Add a "generated" flag to the payload and down-weight those hits.
+2. 往语料里注入 20% 的生成代码（LLM 产出的样板代码）并重新评测。观察检索被污染的现象。给 payload 加一个 “generated” 标记，并给这些命中降权。
 
-3. Benchmark Qdrant hybrid search vs pgvector + pgvectorscale at your corpus size. Report p99 at batch size 1.
+3. 在你的语料规模上，给 Qdrant 混合搜索 vs pgvector + pgvectorscale 跑基准。报告批大小为 1 时的 p99。
 
-4. Add a sampling-based drift check: weekly, rerun the 100-question eval. Alert on MRR@10 drop > 5%.
+4. 加一个基于采样的漂移检查：每周重跑那 100 个问题的评测。MRR@10 跌幅 > 5% 时告警。
 
-5. Extend to cross-language symbol resolution: a Python function that calls a Go service over gRPC. Use the symbol graph to link them.
+5. 扩展到跨语言符号解析：一个 Python 函数通过 gRPC 调用一个 Go 服务。用符号图把它们连起来。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|-----------------|------------------------|
-| AST-aware chunking | "Function-level splits" | Cutting code at tree-sitter node boundaries instead of fixed token windows |
-| Hybrid search | "Dense + sparse" | Run BM25 and vector search in parallel, merge top-k, rerank |
-| Cross-encoder rerank | "Second-stage rank" | Model that scores each (query, candidate) pair together, more accurate than cosine |
-| Prompt caching | "Cached system prompt" | 2026 Claude / OpenAI feature that discounts repeat prefix tokens up to 90% |
-| Symbol graph | "Code graph" | Edges for imports, calls, inheritance across files and repos |
-| Citation faithfulness | "Grounded answer rate" | Fraction of claims a user can verify by clicking the anchor and reading the referenced span |
-| Incremental re-index | "Push-to-search time" | Wall-clock from git push to the changed symbols being queryable |
+| AST-aware chunking（AST 感知切块） | “函数级切分” | 在 tree-sitter 节点边界处切代码，而不是用固定的 token 窗口 |
+| Hybrid search（混合搜索） | “dense + 稀疏” | 并行跑 BM25 和向量搜索，合并 top-k，再重排 |
+| Cross-encoder rerank（cross-encoder 重排） | “第二阶段排序” | 把 (query, candidate) 一对一起打分的模型，比余弦更准 |
+| Prompt caching | “缓存的 system prompt” | 2026 年 Claude / OpenAI 的特性，对重复的前缀 token 最多打到一折 |
+| Symbol graph（符号图） | “代码图” | 跨文件、跨仓库的 import、调用、继承边 |
+| Citation faithfulness（引用忠实度） | “有据可循的答案率” | 用户点开锚点、读引用的区间就能核实的断言占比 |
+| Incremental re-index（增量重建索引） | “push 到可搜索的时间” | 从 git push 到变更符号变得可查询的墙钟时间 |
 
-## Further Reading
+## 延伸阅读
 
-- [Sourcegraph Amp](https://ampcode.com) — production cross-repo code intelligence
-- [Sourcegraph Cody RAG architecture](https://sourcegraph.com/blog/how-cody-understands-your-codebase) — the reference deep-dive for this capstone
-- [Aider repo-map](https://aider.chat/docs/repomap.html) — tree-sitter ranked repo view
-- [Augment Code enterprise graph](https://www.augmentcode.com) — commercial symbol-graph RAG
-- [Qdrant hybrid search docs](https://qdrant.tech/documentation/concepts/hybrid-queries/) — reference implementation
-- [Voyage AI code embeddings](https://docs.voyageai.com/docs/embeddings) — Voyage-code-3 details
-- [Cohere rerank-3](https://docs.cohere.com/reference/rerank) — cross-encoder reference
-- [Pinterest MCP internal search](https://medium.com/pinterest-engineering) — internal-platform reference
+- [Sourcegraph Amp](https://ampcode.com) —— 生产级跨仓库代码智能
+- [Sourcegraph Cody RAG architecture](https://sourcegraph.com/blog/how-cody-understands-your-codebase) —— 这个顶点项目的参考深度解析
+- [Aider repo-map](https://aider.chat/docs/repomap.html) —— tree-sitter 排序的仓库视图
+- [Augment Code enterprise graph](https://www.augmentcode.com) —— 商业化的符号图 RAG
+- [Qdrant hybrid search docs](https://qdrant.tech/documentation/concepts/hybrid-queries/) —— 参考实现
+- [Voyage AI code embeddings](https://docs.voyageai.com/docs/embeddings) —— Voyage-code-3 细节
+- [Cohere rerank-3](https://docs.cohere.com/reference/rerank) —— cross-encoder 参考
+- [Pinterest MCP internal search](https://medium.com/pinterest-engineering) —— 内部平台参考

@@ -1,127 +1,127 @@
-# Shadow Traffic, Canary Rollout, and Progressive Deployment for LLMs
+# LLM 的影子流量、Canary 上线与渐进式部署
 
-> LLM rollouts combine the hardest parts of software deployment: no unit tests, diffuse failure modes, delayed signals. The sequence is (1) shadow mode — duplicate prod requests to candidate model, log, compare with zero user impact; catches obvious distribution issues but is not a quality guarantee; (2) canary rollout — progressive traffic shift 10% → 25% → 50% → 75% → 100% with gates at each step; track latency percentiles, cost/request, error/refusal rate, output length distribution, user-feedback rate; (3) A/B testing for distinct alternatives after stability confirmed. Non-determinism is irreducible — up to 15% accuracy variation across runs with identical inputs due to GPU FP non-associativity plus batch-size variance. Cost is a variable, not constant — a 20% better model can be 3x more expensive per call. Rollback speed is decisive: if rollback requires redeploy, you are too slow. Policy lives in config/flags; model lives in registry with pinned digests; rollback = flip policy + revert threshold + pin old model in seconds.
+> LLM 上线把软件部署里最难的几块凑到了一起：没有单元测试、失败模式弥散、信号延迟。顺序是 (1) 影子模式 —— 把生产请求复制给候选模型，记录、对比，对用户零影响；能抓明显的分布问题，但不是质量保证；(2) canary 上线 —— 渐进式流量切换 10% → 25% → 50% → 75% → 100%，每一步设闸门；跟踪延迟分位数、单请求成本、错误/拒答率、输出长度分布、用户反馈率；(3) 稳定性确认后对截然不同的备选做 A/B 测试。非确定性不可消除 —— 因 GPU 浮点非结合性加批大小方差，相同输入跨次跑会有最高 15% 的准确率波动。成本是个变量，不是常量 —— 一个好 20% 的模型每次调用可能贵 3 倍。回滚速度是决定性的：如果回滚需要重新部署，你就太慢了。策略放在 config/flag 里；模型放在带固定 digest 的 registry 里；回滚 = 翻策略 + 还原阈值 + 几秒内钉回旧模型。
 
-**Type:** Learn
-**Languages:** Python (stdlib, toy canary-progression simulator)
-**Prerequisites:** Phase 17 · 13 (Observability), Phase 17 · 21 (A/B Testing)
-**Time:** ~60 minutes
+**类型：** Learn
+**语言：** Python（标准库，一个玩具级 canary 推进模拟器）
+**前置要求：** 阶段 17 · 13（可观测性）、阶段 17 · 21（A/B 测试）
+**预计时间：** ~60 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Distinguish shadow mode (zero-impact compare), canary (live traffic progressive), and A/B (stability-confirmed comparison).
-- Enumerate five LLM-specific canary metrics (latency, cost/request, error/refusal, output-length distribution, user feedback).
-- Explain why LLM non-determinism (up to 15%) changes what "stable" means in a rollout.
-- Design a rollback path that takes seconds (policy flip) not hours (redeploy).
+- 区分影子模式（零影响对比）、canary（实时流量渐进）和 A/B（稳定性确认后的对比）。
+- 列举五个 LLM 专属的 canary 指标（延迟、单请求成本、错误/拒答、输出长度分布、用户反馈）。
+- 解释为什么 LLM 非确定性（最高 15%）改变了上线中"稳定"的含义。
+- 设计一条几秒（翻策略）而不是几小时（重新部署）的回滚路径。
 
-## The Problem
+## 问题所在
 
-You ship a new model. Offline evals show 3% accuracy gain. You flip it on in production. Within 24 hours, cost is up 40%, user thumbs-down is up 8%, three customer tickets report "weird answers." You roll back. Redeploy takes 3 hours. Your weekend is ruined.
+你上了一个新模型。离线 eval 显示 3% 准确率增益。你在生产里把它打开。24 小时内，成本涨了 40%，用户点踩涨了 8%，三张客户工单报告"答案怪怪的"。你回滚。重新部署花 3 小时。你的周末毁了。
 
-Every piece of that was avoidable. Shadow mode would have caught the 40% cost spike before any user saw it. Canary would have stopped at 10% when thumbs-down moved. Policy-flag rollback would have taken 30 seconds. The discipline is what fills in the gap between "offline evals look good" and "real users are happy."
+这里每一环都本可避免。影子模式本能在任何用户看到之前抓住那 40% 的成本尖峰。canary 本能在点踩动起来时停在 10%。策略 flag 回滚本只需 30 秒。这套纪律就是填补"离线 eval 看起来不错"和"真实用户满意"之间那道缝的东西。
 
-## The Concept
+## 核心概念
 
-### Shadow mode
+### 影子模式
 
-Candidate receives the same requests as production; outputs are logged, not returned to users. Zero user impact. Log:
+候选模型收到和生产一样的请求；输出被记录，不返回给用户。对用户零影响。记录：
 
-- Output content (diff against production).
-- Token counts (cost delta).
-- Latency.
-- Refusal and error.
+- 输出内容（与生产做 diff）。
+- token 数（成本差值）。
+- 延迟。
+- 拒答和错误。
 
-Catches: cost blow-ups, length regressions, obvious refusal changes, hard errors. Does NOT catch: quality delta users would perceive. Shadow is a smoke test, not a quality test.
+能抓：成本爆炸、长度回退、明显的拒答变化、硬错误。抓不到：用户能感知到的质量差值。影子是个冒烟测试，不是质量测试。
 
-### Canary rollout
+### Canary 上线
 
-Progressive traffic shift with gates. Typical progression: 1% → 10% → 25% → 50% → 75% → 100%. Gate on 5 metrics at each step:
+带闸门的渐进式流量切换。典型推进：1% → 10% → 25% → 50% → 75% → 100%。每一步在 5 个指标上设闸门：
 
-1. **Latency percentiles** — P50, P95, P99. Breach: canary has P99 > 1.5x baseline.
-2. **Cost per request** — blended $. Breach: >20% above baseline.
-3. **Error / refusal rate** — 5xx plus explicit refusals. Breach: 2x baseline.
-4. **Output length distribution** — mean + P99. Breach: distributional shift.
-5. **User-feedback rate** — thumbs-down / ticket filings. Breach: 1.5x baseline.
+1. **延迟分位数** —— P50、P95、P99。越界：canary 的 P99 > 1.5x 基线。
+2. **单请求成本** —— 混合 $。越界：高出基线 >20%。
+3. **错误 / 拒答率** —— 5xx 加上显式拒答。越界：基线的 2 倍。
+4. **输出长度分布** —— 均值 + P99。越界：分布偏移。
+5. **用户反馈率** —— 点踩 / 工单提交。越界：基线的 1.5 倍。
 
-### Non-determinism is the new variance
+### 非确定性是新的方差
 
-Identical inputs produce non-identical outputs. Reasons:
+相同输入产生不相同的输出。原因：
 
-- GPU FP non-associativity (floating-point reduction order varies by batch).
-- Batch-size variance (same prompt in a batch of 128 vs batch of 16).
-- Sampling (temperature > 0).
+- GPU 浮点非结合性（浮点归约顺序随批变化）。
+- 批大小方差（同一 prompt 在 128 的批里 vs 16 的批里）。
+- 采样（temperature > 0）。
 
-Measured: up to 15% accuracy variation run-to-run on identical eval sets. "Stable" in a rollout means metrics are within expected variance, not identical to baseline. Set gates above the noise floor.
+实测：相同 eval 集上跨次跑最高 15% 的准确率波动。上线中"稳定"意味着指标在预期方差内，不是和基线完全相同。把闸门设在噪声底之上。
 
-### Cost is a variable
+### 成本是个变量
 
-A 20% better model can be 3x more expensive per call. Cost/request is one of the five gates. Shipping a "better" model that breaks unit economics is a rollback case.
+一个好 20% 的模型每次调用可能贵 3 倍。单请求成本是五个闸门之一。上一个打破单位经济性的"更好"模型，是个回滚理由。
 
-### Rollback is the weapon
+### 回滚是武器
 
-- Policy flag (feature flag system): flip percentage in config; takes seconds.
-- Model pinning (registry digest): pinned model does not auto-upgrade.
-- Rollback = revert flag + set pinned digest to previous. Seconds, not hours.
+- 策略 flag（feature flag 系统）：在 config 里翻百分比；几秒。
+- 模型钉死（registry digest）：钉死的模型不自动升级。
+- 回滚 = 还原 flag + 把钉死的 digest 设回上一个。是几秒，不是几小时。
 
-If your stack requires redeploy to rollback, fix that before rolling.
+如果你的栈需要重新部署才能回滚，在上线之前先修这点。
 
-### Tooling
+### 工具
 
-**Argo Rollouts** / **Flagger** — Kubernetes progressive delivery controllers. Integrate with Istio/Linkerd weighted routing.
+**Argo Rollouts** / **Flagger** —— Kubernetes 渐进式交付控制器。与 Istio/Linkerd 加权路由集成。
 
-**Istio weighted routing** — service-mesh-level traffic split.
+**Istio 加权路由** —— 服务网格层的流量切分。
 
-**KServe / Seldon Core** — model serving with built-in canary.
+**KServe / Seldon Core** —— 内置 canary 的模型服务。
 
-**Feature flags** — LaunchDarkly, Flagsmith, Unleash. Policy-level flip, no redeploy.
+**Feature flag** —— LaunchDarkly、Flagsmith、Unleash。策略级翻转，无需重新部署。
 
-### Metrics cadence
+### 指标节奏
 
-Canary gates check every 5-15 minutes depending on traffic volume. 1% traffic with 10 req/min gives 50-150 data points per window — enough for latency but noisy for user feedback. 10% gives ~10x more. Progressions should pause long enough to accumulate enough samples at each step.
+canary 闸门视流量大小每 5-15 分钟检查一次。1% 流量、每分钟 10 个请求，每个窗口给 50-150 个数据点 —— 对延迟够了，但对用户反馈很噪。10% 给约 10 倍多。推进应该在每一步暂停得足够久，以积累足够样本。
 
-### The A/B step is optional
+### A/B 这一步是可选的
 
-If the new model is distinctly different (different behavior, different cost curve, different tone), A/B test it at 50% after canary passes. If it's just an improved version, skip to 100% when canary gates pass.
+如果新模型截然不同（不同行为、不同成本曲线、不同语气），在 canary 通过后于 50% 处对它做 A/B 测试。如果它只是个改进版，canary 闸门通过后直接到 100%。
 
-### Numbers you should remember
+### 你该记住的数字
 
-- Canary progression: 1% → 10% → 25% → 50% → 75% → 100%.
-- Non-determinism ceiling: up to 15% run-to-run variance on identical inputs.
-- Five canary metrics: latency, cost, error/refusal, output length, user feedback.
-- Cost gate: >20% above baseline is a breach.
-- Rollback: seconds, not hours.
+- Canary 推进：1% → 10% → 25% → 50% → 75% → 100%。
+- 非确定性上限：相同输入跨次跑最高 15% 方差。
+- 五个 canary 指标：延迟、成本、错误/拒答、输出长度、用户反馈。
+- 成本闸门：高出基线 >20% 是越界。
+- 回滚：几秒，不是几小时。
 
-## Use It
+## 上手使用
 
-`code/main.py` simulates a canary rollout with injected regressions. Reports which stage the rollout halts at and which gate triggered.
+`code/main.py` 模拟一个注入了回退的 canary 上线。报告上线在哪个阶段停下，以及哪个闸门触发了。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-rollout-runbook.md`. Given candidate model, baseline, and risk tolerance, designs shadow→canary→100% plan.
+这一课产出 `outputs/skill-rollout-runbook.md`。给定候选模型、基线和风险容忍度，设计 影子→canary→100% 的方案。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Inject a 25% cost regression. At which stage does the canary halt?
-2. Your new model has 3% accuracy gain offline but cost/request is +18%. Is it a ship? Depends on the policy — write both paths.
-3. Design a rollback that takes under 60 seconds end-to-end. List the required infrastructure.
-4. Non-determinism shows ±7% on your eval. Set canary gates so you don't false-alarm. What multipliers do you use?
-5. Shadow mode catches a 40% cost spike before canary. Write the alert rule that fires in shadow.
+1. 跑 `code/main.py`。注入一个 25% 的成本回退。canary 在哪个阶段停下？
+2. 你的新模型离线有 3% 准确率增益，但单请求成本 +18%。该上吗？取决于策略 —— 把两条路径都写出来。
+3. 设计一个端到端 60 秒以内的回滚。列出所需的基础设施。
+4. 非确定性在你的 eval 上显示 ±7%。把 canary 闸门设得不会误报。你用什么乘数？
+5. 影子模式在 canary 之前抓住一个 40% 的成本尖峰。写出在影子里触发的告警规则。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| Shadow mode | "duplicate to new" | Zero-impact send-to-candidate for logging |
-| Canary | "progressive traffic" | Gradual user-exposed rollout with gates |
-| Gates | "rollout checks" | Metric thresholds that block progression |
-| Non-determinism | "LLM variance" | Irreducible run-to-run differences |
-| Policy flag | "flag flip rollback" | Config-level rollback, seconds not hours |
-| Model pin | "registry digest" | Immutable reference to a model version |
-| Argo Rollouts | "K8s progressive" | Kubernetes-native canary/rollback controller |
-| KServe | "inference K8s" | Model serving with canary primitives |
-| Istio weighted | "mesh split" | Service-mesh traffic splitter |
+| 影子模式 | "复制给新模型" | 零影响地发给候选用于记录 |
+| Canary | "渐进流量" | 带闸门的逐步对用户暴露的上线 |
+| 闸门 | "上线检查" | 阻止推进的指标阈值 |
+| 非确定性 | "LLM 方差" | 不可消除的跨次跑差异 |
+| 策略 flag | "翻 flag 回滚" | config 级回滚，几秒不是几小时 |
+| 模型钉死 | "registry digest" | 对某个模型版本的不可变引用 |
+| Argo Rollouts | "K8s 渐进" | Kubernetes 原生的 canary/回滚控制器 |
+| KServe | "推理 K8s" | 带 canary 原语的模型服务 |
+| Istio 加权 | "网格切分" | 服务网格流量切分器 |
 
-## Further Reading
+## 延伸阅读
 
 - [TianPan — Releasing AI Features Without Breaking Production](https://tianpan.co/blog/2026-04-09-llm-gradual-rollout-shadow-canary-ab-testing)
 - [MarkTechPost — Safely Deploying ML Models](https://www.marktechpost.com/2026/03/21/safely-deploying-ml-models-to-production-four-controlled-strategies-a-b-canary-interleaved-shadow-testing/)

@@ -1,28 +1,28 @@
-# Capstone 13 — MCP Server with Registry and Governance
+# 顶点项目 13 —— 带注册中心和治理的 MCP 服务器
 
-> The Model Context Protocol stopped being the future and became the default tool-use spec in 2026. Anthropic, OpenAI, Google, and every major IDE ship MCP clients. Pinterest published its internal ecosystem of MCP servers. The AAIF Registry formalized capability metadata at `.well-known`. AWS ECS published the reference stateless deployment. Block's goose-agent put the same protocol inside a hosted assistant. The 2026 production shape is: StreamableHTTP transport, OAuth 2.1 scopes, OPA policy gating, and a registry that lets platform teams discover, validate, and enable servers. Build that end to end.
+> Model Context Protocol 不再是未来，在 2026 年成了默认的工具使用规范。Anthropic、OpenAI、Google，以及每个主流 IDE 都出了 MCP 客户端。Pinterest 公开了它内部的 MCP 服务器生态。AAIF Registry 在 `.well-known` 处把能力元数据规范化了。AWS ECS 发布了参考级的无状态部署。Block 的 goose-agent 把同一套协议塞进了一个托管助手里。2026 年的生产形态是：StreamableHTTP 传输、OAuth 2.1 scope、OPA 策略把关，以及一个让平台团队发现、校验、启用服务器的注册中心。把它端到端做出来。
 
-**Type:** Capstone
-**Languages:** Python (server, via FastMCP) or TypeScript (@modelcontextprotocol/sdk), Go (registry service)
-**Prerequisites:** Phase 11 (LLM engineering), Phase 13 (tools and MCP), Phase 14 (agents), Phase 17 (infrastructure), Phase 18 (safety)
-**Phases exercised:** P11 · P13 · P14 · P17 · P18
-**Time:** 25 hours
+**类型：** Capstone
+**语言：** Python（服务器，经由 FastMCP）或 TypeScript（@modelcontextprotocol/sdk），Go（注册中心服务）
+**前置要求：** 第 11 阶段（LLM 工程）、第 13 阶段（工具与 MCP）、第 14 阶段（agent）、第 17 阶段（基础设施）、第 18 阶段（安全）
+**涉及阶段：** P11 · P13 · P14 · P17 · P18
+**预计时间：** 25 小时
 
-## Problem
+## 问题所在
 
-MCP became the tool-use lingua franca. Claude Code, Cursor 3, Amp, OpenCode, Gemini CLI, and every managed agent now consume MCP servers. The production challenges are not authoring servers (FastMCP makes that easy) but deploying them at scale with enterprise requirements: per-tenant OAuth scopes, OPA policy on destructive tools, StreamableHTTP stateless scaling, a registry for discovery, audit logs per tool call. Pinterest's internal MCP ecosystem and the AAIF Registry spec set the 2026 bar.
+MCP 成了工具使用的通用语。Claude Code、Cursor 3、Amp、OpenCode、Gemini CLI，以及每个托管 agent 现在都消费 MCP 服务器。生产上的挑战不在编写服务器（FastMCP 让这事很简单），而在带企业要求大规模部署它们：逐租户的 OAuth scope、破坏性工具上的 OPA 策略、StreamableHTTP 无状态扩展、一个用于发现的注册中心、逐工具调用的审计日志。Pinterest 内部的 MCP 生态和 AAIF Registry 规范立下了 2026 年的标准。
 
-You will build an MCP server exposing 10 internal tools (Postgres read-only, S3 listing, Jira, Linear, Datadog, etc.), a registry UI for platform discovery, and a human-approval gate for destructive tools. The load test demonstrates StreamableHTTP horizontal scaling. The audit trail satisfies an enterprise security review.
+你将做一个暴露 10 个内部工具（Postgres 只读、S3 列举、Jira、Linear、Datadog 等）的 MCP 服务器、一个供平台发现的注册中心 UI，以及破坏性工具的人类审批闸门。负载测试演示 StreamableHTTP 的水平扩展。审计轨迹满足一次企业安全评审。
 
-## Concept
+## 核心概念
 
-MCP 2026 revision mandates StreamableHTTP as the default transport. Unlike the earlier stdio-and-SSE shape, StreamableHTTP is stateless by default: a single HTTP endpoint accepts JSON-RPC requests, streams responses, and supports long-lived connections for notifications. Stateless means horizontally scalable behind a load balancer.
+MCP 2026 修订版强制把 StreamableHTTP 作为默认传输。不像早先的 stdio-加-SSE 形态，StreamableHTTP 默认无状态：单个 HTTP 端点接收 JSON-RPC 请求、流式回响应，并支持给通知用的长连接。无状态意味着能在负载均衡器后面水平扩展。
 
-Authorization is OAuth 2.1 with per-tool scopes. A token carries scopes like `jira:read`, `s3:list`, `postgres:query:readonly`. The MCP server checks scopes at tool-call time, not just session start. For high-risk tools, the server rejects any call whose scope is not elevated to `approved:by:human` within the last N minutes — that elevation comes from a Slack review card.
+授权是带逐工具 scope 的 OAuth 2.1。一个 token 携带 `jira:read`、`s3:list`、`postgres:query:readonly` 这类 scope。MCP 服务器在工具调用时检查 scope，而不只是在会话开始时。对高风险工具，服务器拒绝任何 scope 未在最近 N 分钟内被提升到 `approved:by:human` 的调用——那次提升来自一张 Slack 评审卡片。
 
-The registry is a separate service. Every MCP server exposes a `.well-known/mcp-capabilities` document with its tool manifest, transport URL, auth requirements. The registry polls, validates, and indexes. Platform teams use the registry UI to see what tools are available, what scopes they need, and which teams own them.
+注册中心是一个独立服务。每个 MCP 服务器在 `.well-known/mcp-capabilities` 处暴露一份文档，带它的工具清单、传输 URL、鉴权要求。注册中心轮询、校验并建索引。平台团队用注册中心 UI 看有哪些工具可用、它们需要什么 scope、哪些团队拥有它们。
 
-## Architecture
+## 架构
 
 ```
 MCP client (Claude Code, Cursor 3, ...)
@@ -55,38 +55,38 @@ Postgres    S3 listing  Jira       Linear     Datadog
      UI: search / validate / enable-disable / ownership
 ```
 
-## Stack
+## 技术栈
 
-- Server framework: FastMCP (Python) or `@modelcontextprotocol/sdk` (TypeScript)
-- Transport: StreamableHTTP over HTTPS (stateless)
-- Auth: OAuth 2.1 with workload identity via SPIFFE / SPIRE
-- Policy: OPA / Rego rules per tool; policy decision service per request
-- Registry: self-hosted, consumes `.well-known/mcp-capabilities` manifests
-- Human approval: Slack interactive message for destructive tools
-- Deployment: AWS ECS Fargate or Fly.io, one server per tenant or shared with tenant scoping
-- Audit: structured JSONL per-tenant bucket with per-call lineage
+- 服务器框架：FastMCP（Python）或 `@modelcontextprotocol/sdk`（TypeScript）
+- 传输：StreamableHTTP over HTTPS（无状态）
+- 鉴权：OAuth 2.1，工作负载身份经由 SPIFFE / SPIRE
+- 策略：逐工具的 OPA / Rego 规则；每请求一个策略决策服务
+- 注册中心：自托管，消费 `.well-known/mcp-capabilities` 清单
+- 人类审批：破坏性工具用 Slack 交互式消息
+- 部署：AWS ECS Fargate 或 Fly.io，每租户一个服务器，或共享并带租户圈定
+- 审计：逐租户桶的结构化 JSONL，带逐调用血缘
 
-## Build It
+## 动手构建
 
-1. **Tool surface.** Expose 10 internal tools: Postgres read-only query, S3 list objects, Jira search/fetch, Linear search/fetch, Datadog metric query, PagerDuty on-call lookup, GitHub read-only, Notion search, Slack search, Salesforce read. Each tool has a typed schema and a scope label.
+1. **工具面。** 暴露 10 个内部工具：Postgres 只读查询、S3 列对象、Jira 搜索/取、Linear 搜索/取、Datadog 指标查询、PagerDuty 值班查询、GitHub 只读、Notion 搜索、Slack 搜索、Salesforce 读。每个工具有一个带类型的 schema 和一个 scope 标签。
 
-2. **FastMCP server.** Mount the tools. Configure StreamableHTTP transport. Add a middleware for OAuth token introspection and scope enforcement.
+2. **FastMCP 服务器。** 挂上工具。配置 StreamableHTTP 传输。加一个做 OAuth token 内省和 scope 强制的中间件。
 
-3. **OPA policy.** Rego policy per tool: what scopes permit invocation, what PII redaction applies, what payload-size caps apply. Decision service called on every tool call.
+3. **OPA 策略。** 逐工具的 Rego 策略：什么 scope 允许调用、应用什么 PII 脱敏、应用什么 payload 大小上限。每个工具调用都调决策服务。
 
-4. **Registry service.** Separate Go or TS service that polls `.well-known/mcp-capabilities` from registered servers, validates with JSON Schema, and exposes a list / search / validate / enable-disable UI.
+4. **注册中心服务。** 一个独立的 Go 或 TS 服务，从已注册的服务器轮询 `.well-known/mcp-capabilities`、用 JSON Schema 校验，并暴露一个 列举 / 搜索 / 校验 / 启用-停用 的 UI。
 
-5. **Capability manifest.** Each server exposes `.well-known/mcp-capabilities` with: tool list, auth requirements, transport URL, owner team, SLO.
+5. **能力清单。** 每个服务器暴露 `.well-known/mcp-capabilities`，带：工具列表、鉴权要求、传输 URL、所有者团队、SLO。
 
-6. **Destructive tool separation.** Tools that mutate state (Jira create, Linear create, Postgres write) live on a second MCP server with a stricter auth flow: tokens must have a `approved:by:human` scope elevated via Slack card within 15 minutes.
+6. **破坏性工具分离。** 改变状态的工具（Jira 创建、Linear 创建、Postgres 写）住在第二个 MCP 服务器上，带更严的鉴权流：token 必须带一个在 15 分钟内经 Slack 卡片提升的 `approved:by:human` scope。
 
-7. **Audit log.** Append-only JSONL per tenant: `{timestamp, user, tool, args_redacted, response_redacted, outcome}`. PII redaction via Presidio before write.
+7. **审计日志。** 逐租户的仅追加 JSONL：`{timestamp, user, tool, args_redacted, response_redacted, outcome}`。写之前用 Presidio 做 PII 脱敏。
 
-8. **Load test.** 100 concurrent clients on StreamableHTTP. Demonstrate horizontal scaling by adding a second replica; show the load balancer redistributing without session stickiness.
+8. **负载测试。** StreamableHTTP 上 100 个并发客户端。通过加第二个副本演示水平扩展；展示负载均衡器在无会话粘性的情况下重新分配。
 
-9. **Conformance tests.** Run the official MCP conformance suite against both servers. Pass all mandatory sections.
+9. **一致性测试。** 对两个服务器跑官方 MCP 一致性套件。通过所有强制章节。
 
-## Use It
+## 上手使用
 
 ```
 $ curl -H "Authorization: Bearer eyJhbGc..." \
@@ -99,50 +99,50 @@ $ curl -H "Authorization: Bearer eyJhbGc..." \
 response:    { "result": { "rows": [[1]] } }
 ```
 
-## Ship It
+## 交付
 
-`outputs/skill-mcp-server.md` describes the deliverable. A production-grade MCP server + registry + audit layer for internal tools with OAuth 2.1 scopes and OPA gating.
+`outputs/skill-mcp-server.md` 描述交付物。一个生产级的 MCP 服务器 + 注册中心 + 审计层，给内部工具用，带 OAuth 2.1 scope 和 OPA 把关。
 
-| Weight | Criterion | How it is measured |
+| 权重 | 标准 | 怎么衡量 |
 |:-:|---|---|
-| 25 | Spec conformance | StreamableHTTP + capability manifest passes MCP conformance tests |
-| 20 | Security | Scope enforcement, OPA coverage across every tool, secret hygiene |
-| 20 | Observability | Per-tool-call audit log with PII redaction |
-| 20 | Scale | 100-client load test horizontal scale demonstration |
-| 15 | Registry UX | Discover / validate / enable-disable workflow |
+| 25 | 规范一致性 | StreamableHTTP + 能力清单通过 MCP 一致性测试 |
+| 20 | 安全性 | scope 强制、OPA 覆盖每个工具、密钥卫生 |
+| 20 | 可观测性 | 带 PII 脱敏的逐工具调用审计日志 |
+| 20 | 规模 | 100 客户端负载测试的水平扩展演示 |
+| 15 | 注册中心体验 | 发现 / 校验 / 启用-停用 工作流 |
 | **100** | | |
 
-## Exercises
+## 练习
 
-1. Add a new tool (Confluence search). Ship it through the registry validation flow without touching the core server.
+1. 加一个新工具（Confluence 搜索）。让它过注册中心校验流上线，而不碰核心服务器。
 
-2. Write an OPA policy that redacts Postgres query results containing columns named `email`, `ssn`, or `phone`. Exercise with a probe query.
+2. 写一个 OPA 策略，脱敏 Postgres 查询结果里名为 `email`、`ssn`、`phone` 的列。用一个探针查询演练。
 
-3. Benchmark StreamableHTTP vs stdio on local latency. Report per-call p50/p95.
+3. 在本地延迟上给 StreamableHTTP vs stdio 跑基准。报告逐调用 p50/p95。
 
-4. Implement per-tenant quota: maximum N calls per minute per tool per tenant. Enforce via a second OPA rule.
+4. 实现逐租户配额：每租户每工具每分钟最多 N 次调用。用第二条 OPA 规则强制。
 
-5. Run the MCP conformance suite from [mcp-conformance-tests](https://github.com/modelcontextprotocol/conformance) and fix every failure.
+5. 跑 [mcp-conformance-tests](https://github.com/modelcontextprotocol/conformance) 里的 MCP 一致性套件，修掉每个失败。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|-----------------|------------------------|
-| StreamableHTTP | "2026 MCP transport" | Stateless HTTP + streaming; replaces SSE + stdio for networked servers |
-| Capability manifest | "Well-known doc" | `.well-known/mcp-capabilities` with tool list, auth, transport URL |
-| OPA / Rego | "Policy engine" | Open Policy Agent for authorizing tool calls against external rules |
-| Scope elevation | "Approved-by-human" | Short-lived scope granted via Slack approval, required for destructive tools |
-| Registry | "Tool discovery" | Service that indexes MCP servers from their capability manifests |
-| Workload identity | "SPIFFE / SPIRE" | Cryptographic service identity for OAuth token issuance |
-| Conformance suite | "Spec tests" | Official MCP test battery for StreamableHTTP + tool manifest correctness |
+| StreamableHTTP | “2026 MCP 传输” | 无状态 HTTP + 流式；为网络化服务器取代 SSE + stdio |
+| Capability manifest（能力清单） | “well-known 文档” | `.well-known/mcp-capabilities`，带工具列表、鉴权、传输 URL |
+| OPA / Rego | “策略引擎” | Open Policy Agent，对照外部规则授权工具调用 |
+| Scope elevation（scope 提升） | “经人类批准” | 经 Slack 审批授予的短时 scope，破坏性工具必需 |
+| Registry（注册中心） | “工具发现” | 从能力清单给 MCP 服务器建索引的服务 |
+| Workload identity（工作负载身份） | “SPIFFE / SPIRE” | 给 OAuth token 签发用的加密服务身份 |
+| Conformance suite（一致性套件） | “规范测试” | 官方 MCP 测试套，查 StreamableHTTP + 工具清单正确性 |
 
-## Further Reading
+## 延伸阅读
 
-- [Model Context Protocol 2026 Roadmap](https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/) — StreamableHTTP, capability metadata, registry
-- [AAIF MCP Registry spec](https://github.com/modelcontextprotocol/registry) — the 2026 registry spec
-- [AWS ECS reference deployment](https://aws.amazon.com/blogs/containers/deploying-model-context-protocol-mcp-servers-on-amazon-ecs/) — reference production deployment
-- [Pinterest internal MCP ecosystem](https://www.infoq.com/news/2026/04/pinterest-mcp-ecosystem/) — the reference internal deployment
-- [Block `goose` MCP usage](https://block.github.io/goose/) — reference agent consumption pattern
-- [FastMCP](https://github.com/jlowin/fastmcp) — Python server framework
-- [Open Policy Agent](https://www.openpolicyagent.org/) — policy engine reference
-- [SPIFFE / SPIRE](https://spiffe.io) — workload identity reference
+- [Model Context Protocol 2026 Roadmap](https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/) —— StreamableHTTP、能力元数据、注册中心
+- [AAIF MCP Registry spec](https://github.com/modelcontextprotocol/registry) —— 2026 注册中心规范
+- [AWS ECS reference deployment](https://aws.amazon.com/blogs/containers/deploying-model-context-protocol-mcp-servers-on-amazon-ecs/) —— 参考级生产部署
+- [Pinterest internal MCP ecosystem](https://www.infoq.com/news/2026/04/pinterest-mcp-ecosystem/) —— 参考级内部部署
+- [Block `goose` MCP usage](https://block.github.io/goose/) —— 参考级 agent 消费模式
+- [FastMCP](https://github.com/jlowin/fastmcp) —— Python 服务器框架
+- [Open Policy Agent](https://www.openpolicyagent.org/) —— 策略引擎参考
+- [SPIFFE / SPIRE](https://spiffe.io) —— 工作负载身份参考

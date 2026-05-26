@@ -1,58 +1,58 @@
-# Structured Output — JSON Schema, Pydantic, Zod, Constrained Decoding
+# 结构化输出——JSON Schema、Pydantic、Zod、受约束解码
 
-> "Ask the model nicely to return JSON" fails 5 to 15 percent of the time, even on frontier models. Structured outputs close that gap with constrained decoding: the model is literally prevented from emitting a token that would violate the schema. OpenAI's strict mode, Anthropic's schema-typed tool use, Gemini's `responseSchema`, Pydantic AI's `output_type`, and Zod's `.parse` are five surface forms of the same idea. This lesson builds the schema validator and the strict-mode contract learners will use for every production extraction pipeline.
+> "客客气气求模型返回 JSON"有 5% 到 15% 的概率失败，连前沿模型也不例外。结构化输出用受约束解码弥合这道鸿沟：模型从字面上就被阻止吐出任何会违反 schema 的 token。OpenAI 的严格模式、Anthropic 的 schema 定型工具调用、Gemini 的 `responseSchema`、Pydantic AI 的 `output_type`、Zod 的 `.parse`，是同一个想法的五种表面形式。本课构建 schema 校验器和严格模式契约，学员之后每一条生产抽取管线都会用到它们。
 
-**Type:** Build
-**Languages:** Python (stdlib, JSON Schema 2020-12 subset)
-**Prerequisites:** Phase 13 · 02 (function calling deep dive)
-**Time:** ~75 minutes
+**类型：** Build
+**语言：** Python（标准库，JSON Schema 2020-12 子集）
+**前置要求：** 阶段 13 · 02（function calling 深入剖析）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Write a JSON Schema 2020-12 for an extraction target using the right constraints (enum, min/max, required, pattern).
-- Explain why strict mode and constrained decoding give different guarantees from "validate after generation".
-- Distinguish the three failure modes: parse error, schema violation, model refusal.
-- Ship an extraction pipeline with typed repair and typed refusal handling.
+- 用对的约束（enum、min/max、required、pattern）为一个抽取目标写一份 JSON Schema 2020-12。
+- 解释为什么严格模式和受约束解码给出的保证，和"生成后再校验"不一样。
+- 区分三种失败模式：解析错误、schema 违反、模型拒绝。
+- 交付一条带定型修复和定型拒绝处理的抽取管线。
 
-## The Problem
+## 问题所在
 
-An agent reading a purchase-order email needs to turn free text into `{customer, line_items, total_usd}`. Three approaches.
+一个读采购订单邮件的 agent 需要把自由文本变成 `{customer, line_items, total_usd}`。三种做法。
 
-**Approach one: prompt for JSON.** "Reply in JSON with fields customer, line_items, total_usd." Works 85 to 95 percent of the time on frontier models. Fails in six ways: missing brace, trailing comma, wrong types, hallucinated fields, truncated at token limit, leaked prose like "Here is your JSON:".
+**做法一：prompt 求 JSON。** "用 JSON 回复，字段为 customer、line_items、total_usd。"在前沿模型上有 85% 到 95% 的概率行。会以六种方式失败：缺花括号、多余逗号、类型错误、幻觉字段、在 token 上限处被截断、泄漏出"这是你要的 JSON："这类散文。
 
-**Approach two: validate after generation.** Generate freely, parse, validate against schema, retry on failure. Reliable but expensive — you pay for every retry, and truncation bugs cost one extra turn per occurrence.
+**做法二：生成后再校验。** 自由生成，解析，按 schema 校验，失败就重试。可靠但昂贵——每次重试你都要付费，而截断 bug 每发生一次就多花一轮。
 
-**Approach three: constrained decoding.** The provider enforces the schema at decode time. Invalid tokens are masked out of the sampling distribution. The output is guaranteed to parse and guaranteed to validate. Failure collapses to one mode: refusal (the model decides the input does not fit the schema).
+**做法三：受约束解码。** provider 在解码时强制 schema。非法 token 被从采样分布里掩掉。输出保证能解析、保证能通过校验。失败塌缩为一种模式：拒绝（模型判断输入装不进 schema）。
 
-Every 2026 frontier provider ships some form of approach three.
+2026 年每家前沿 provider 都交付了某种形式的做法三。
 
-- **OpenAI.** `response_format: {type: "json_schema", strict: true}` plus `refusal` in the response if the model declines.
-- **Anthropic.** Schema enforcement on `tool_use` inputs; `stop_reason: "refusal"` is not a thing, but `end_turn` with no tool call is the signal.
-- **Gemini.** `responseSchema` at request level; in 2026 Gemini ships token-level grammar constraints for selected types.
-- **Pydantic AI.** `output_type=InvoiceModel` emits a structured `RunResult` typed to `InvoiceModel`.
-- **Zod (TypeScript).** Runtime parser that validates provider output against a Zod schema; pairs with OpenAI's `beta.chat.completions.parse`.
+- **OpenAI。** `response_format: {type: "json_schema", strict: true}`，外加模型若拒绝则响应里带 `refusal`。
+- **Anthropic。** 对 `tool_use` 输入做 schema 强制；`stop_reason: "refusal"` 不是个东西，但 `end_turn` 且无工具调用就是那个信号。
+- **Gemini。** 请求层面的 `responseSchema`；2026 年 Gemini 为选定类型交付 token 级语法约束。
+- **Pydantic AI。** `output_type=InvoiceModel` 吐出一个定型到 `InvoiceModel` 的结构化 `RunResult`。
+- **Zod（TypeScript）。** 运行时解析器，按 Zod schema 校验 provider 输出；与 OpenAI 的 `beta.chat.completions.parse` 配对。
 
-The common thread: declare the schema once, enforce it end to end.
+共同主线：声明一次 schema，端到端地强制它。
 
-## The Concept
+## 核心概念
 
-### JSON Schema 2020-12 — the lingua franca
+### JSON Schema 2020-12——通用语
 
-Every provider accepts JSON Schema 2020-12. The constructs you use most:
+每家 provider 都接受 JSON Schema 2020-12。你用得最多的构造：
 
-- `type`: one of `object`, `array`, `string`, `number`, `integer`, `boolean`, `null`.
-- `properties`: map of field name to subschema.
-- `required`: list of field names that must appear.
-- `enum`: closed set of allowed values.
-- `minimum` / `maximum` (numbers), `minLength` / `maxLength` / `pattern` (strings).
-- `items`: subschema applied to every array element.
-- `additionalProperties`: `false` forbids extra fields (default varies by mode).
+- `type`：`object`、`array`、`string`、`number`、`integer`、`boolean`、`null` 之一。
+- `properties`：字段名到子 schema 的映射。
+- `required`：必须出现的字段名清单。
+- `enum`：允许值的封闭集合。
+- `minimum` / `maximum`（数字）、`minLength` / `maxLength` / `pattern`（字符串）。
+- `items`：施加到每个数组元素上的子 schema。
+- `additionalProperties`：`false` 禁止额外字段（默认值因模式而异）。
 
-OpenAI strict mode adds three requirements: every property must be listed in `required`, `additionalProperties: false` everywhere, and no unresolved `$ref`. If you break these, the API returns 400 at request time.
+OpenAI 严格模式额外加三条要求：每个 property 都必须列进 `required`、处处 `additionalProperties: false`、没有未解析的 `$ref`。你破坏这些，API 在请求时返回 400。
 
-### Pydantic, the Python binding
+### Pydantic，Python 绑定
 
-Pydantic v2 generates JSON Schema from dataclass-shaped models via `model_json_schema()`. Pydantic AI wraps this so you write:
+Pydantic v2 通过 `model_json_schema()` 从 dataclass 形状的模型生成 JSON Schema。Pydantic AI 把它包起来，于是你写：
 
 ```python
 class Invoice(BaseModel):
@@ -61,91 +61,91 @@ class Invoice(BaseModel):
     total_usd: Decimal
 ```
 
-and the agent framework translates the schema into OpenAI strict mode, Anthropic `input_schema`, or Gemini `responseSchema` at the edge. The model's output comes back as a typed `Invoice` instance. Validation errors raise `ValidationError` with typed error paths.
+agent 框架就在边缘把 schema 翻译成 OpenAI 严格模式、Anthropic `input_schema` 或 Gemini `responseSchema`。模型的输出回来时是一个定型的 `Invoice` 实例。校验错误抛出带定型错误路径的 `ValidationError`。
 
-### Zod, the TypeScript binding
+### Zod，TypeScript 绑定
 
-Zod (`z.object({customer: z.string(), ...})`) is the TS equivalent. OpenAI's Node SDK exposes `zodResponseFormat(Invoice)` which translates to the API's JSON Schema payload.
+Zod（`z.object({customer: z.string(), ...})`）是 TS 里的对应物。OpenAI 的 Node SDK 暴露 `zodResponseFormat(Invoice)`，它翻译成 API 的 JSON Schema 载荷。
 
-### Refusals
+### 拒绝
 
-Strict mode cannot force the model to answer. If the input cannot fit the schema ("the email was a poem, not an invoice"), the model emits a `refusal` field containing the reason. Your code must handle this as a first-class outcome, not a failure. The refusal is also useful as a safety signal: a model asked to extract a credit card number from a protected-content email returns a refusal with the safety reason attached.
+严格模式没法强迫模型回答。如果输入装不进 schema（"这封邮件是首诗，不是发票"），模型吐出一个 `refusal` 字段，含原因。你的代码必须把它当作一等结果处理，而非失败。拒绝作为安全信号也有用：一个被要求从受保护内容邮件里抽取信用卡号的模型，会返回一个附带安全原因的拒绝。
 
-### Constrained decoding in the open
+### 公开的受约束解码
 
-Open-weights implementations use three techniques.
+开源权重实现用三种技术。
 
-1. **Grammar-based decoding** (`outlines`, `guidance`, `lm-format-enforcer`): build a deterministic finite automaton from the schema; at every step, mask the logits of tokens that would violate the FSM.
-2. **Logit masking with a JSON parser**: run a streaming JSON parser in lockstep with the model; at every step, compute the valid-next-token set.
-3. **Speculative decoding with a verifier**: cheap draft model proposes tokens, verifier enforces the schema.
+1. **基于语法的解码**（`outlines`、`guidance`、`lm-format-enforcer`）：从 schema 构建一个确定性有限自动机；每一步把会违反这个 FSM 的 token 的 logit 掩掉。
+2. **配 JSON 解析器的 logit 掩码**：让一个流式 JSON 解析器与模型同步运行；每一步算出合法的下一 token 集合。
+3. **配验证器的推测解码**：廉价的草稿模型提议 token，验证器强制 schema。
 
-Commercial providers pick one of these behind the scenes. The 2026 state of the art is faster than plain generation for short structured outputs and roughly the same speed for long ones.
+商业 provider 在幕后选其一。2026 年的最新水平，对短结构化输出比纯生成更快，对长输出大致同速。
 
-### The three failure modes
+### 三种失败模式
 
-1. **Parse error.** The output is not valid JSON. Cannot happen under strict mode. Can still happen on non-strict providers.
-2. **Schema violation.** The output parses but violates the schema. Cannot happen under strict mode. Common outside it.
-3. **Refusal.** The model declines. Must be handled as a typed outcome.
+1. **解析错误。** 输出不是合法 JSON。严格模式下不可能发生。在非严格 provider 上仍会发生。
+2. **schema 违反。** 输出能解析但违反 schema。严格模式下不可能发生。在它之外很常见。
+3. **拒绝。** 模型拒绝。必须当作定型结果处理。
 
-### Retry strategy
+### 重试策略
 
-When you are outside strict mode (Anthropic tool use, non-strict OpenAI, older Gemini), the recovery pattern is:
+当你在严格模式之外（Anthropic 工具调用、非严格 OpenAI、更老的 Gemini）时，恢复模式是：
 
 ```
-generate -> parse -> validate -> if fail, inject error and retry, max 3x
+生成 -> 解析 -> 校验 -> 若失败，注入错误并重试，最多 3 次
 ```
 
-One retry is usually enough. Three retries catches weak-model flakes. Beyond three is a sign of a bad schema: the model cannot satisfy it for some inputs, and the prompt or the schema needs fixing.
+一次重试通常就够。三次重试能兜住弱模型的偶发抽风。超过三次是个 schema 不好的信号：模型对某些输入满足不了它，prompt 或 schema 需要修。
 
-### Small-model support
+### 小模型支持
 
-Constrained decoding works on small models. A 3B-parameter open model with grammar enforcement out-performs a 70B-parameter model with raw prompting on structured tasks. This is the main reason structured outputs matter for production: it decouples reliability from model size.
+受约束解码在小模型上也好使。一个带语法强制的 3B 参数开源模型，在结构化任务上胜过一个用裸 prompt 的 70B 参数模型。这是结构化输出对生产之所以重要的主要原因：它把可靠性和模型大小解耦。
 
-## Use It
+## 上手使用
 
-`code/main.py` ships a minimal JSON Schema 2020-12 validator in stdlib (types, required, enum, min/max, pattern, items, additionalProperties). It wraps an `Invoice` schema and runs a fake LLM output through the validator, demonstrating parse error, schema violation, and refusal paths. Swap the fake output for any provider's real response in production.
+`code/main.py` 用标准库交付一个极简 JSON Schema 2020-12 校验器（types、required、enum、min/max、pattern、items、additionalProperties）。它包一份 `Invoice` schema，让一份假 LLM 输出过一遍校验器，演示解析错误、schema 违反和拒绝三条路径。生产里把假输出换成任意 provider 的真实响应。
 
-What to look at:
+要看什么：
 
-- The validator returns a typed `[ValidationError]` list with path and message. That is the shape you want surfaced to the retry prompt.
-- The refusal branch does NOT retry. It logs and returns a typed refusal. Phase 14 · 09 uses refusals as a safety signal.
-- The `additionalProperties: false` check fires on the adversarial test input, showing why strict mode shuts the door on hallucinated fields.
+- 校验器返回一个带路径和消息的定型 `[ValidationError]` 列表。这正是你想抛进重试 prompt 的形状。
+- 拒绝分支不重试。它记录日志并返回一个定型拒绝。阶段 14 · 09 把拒绝当安全信号用。
+- `additionalProperties: false` 检查在对抗性测试输入上触发，显示严格模式为何对幻觉字段关上了门。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-structured-output-designer.md`. Given a free-text extraction target (invoices, support tickets, resumes, etc.), the skill produces a JSON Schema 2020-12 that is strict-mode-compatible and a Pydantic model that mirrors it, with typed refusal and retry handling stubbed in.
+本课产出 `outputs/skill-structured-output-designer.md`。给定一个自由文本抽取目标（发票、工单、简历等），这个 skill 产出一份兼容严格模式的 JSON Schema 2020-12，以及一个与之镜像的 Pydantic 模型，定型拒绝和重试处理打好桩。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Add a fourth test case whose `total_usd` is a negative number. Confirm the validator rejects it with the `minimum` constraint path.
+1. 跑 `code/main.py`。加第四个测试用例，其 `total_usd` 是负数。确认校验器以 `minimum` 约束路径拒绝它。
 
-2. Extend the validator to support `oneOf` with a discriminator. The common case: `line_item` is either a product or a service, tagged by `kind`. Strict mode has subtle rules here; check OpenAI's structured outputs guide.
+2. 扩展校验器以支持带判别字段的 `oneOf`。常见情况：`line_item` 要么是商品要么是服务，由 `kind` 标记。严格模式在这里有微妙的规则；查 OpenAI 的结构化输出指南。
 
-3. Write the same Invoice schema as a Pydantic BaseModel and compare `model_json_schema()` output to your hand-rolled schema. Identify the one field Pydantic sets by default that the hand-rolled version omits.
+3. 把同一份 Invoice schema 写成一个 Pydantic BaseModel，把 `model_json_schema()` 输出和你手搓的 schema 比一比。找出 Pydantic 默认设、而手搓版本漏掉的那个字段。
 
-4. Measure refusal rates. Construct ten inputs that should not be extractable (a song lyric, a math proof, a blank email) and run them through a real provider with strict mode. Count refusals vs hallucinated outputs. This is your ground truth for refusal-aware retries.
+4. 测量拒绝率。构造十个本不该可抽取的输入（一段歌词、一个数学证明、一封空邮件），用严格模式过一遍真实 provider。数拒绝 vs 幻觉输出。这是你做拒绝感知重试的真值。
 
-5. Read OpenAI's structured outputs guide top to bottom. Identify the one construct it explicitly forbids in strict mode that plain JSON Schema allows. Then design a schema that uses the forbidden construct non-essentially and refactor it to be strict-compatible.
+5. 从头到尾读 OpenAI 的结构化输出指南。找出一个它在严格模式里明确禁止、而纯 JSON Schema 允许的构造。然后设计一个非必需地用上那个被禁构造的 schema，再把它重构成兼容严格模式的。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| JSON Schema 2020-12 | "The schema spec" | IETF-draft schema dialect every modern provider speaks |
-| Strict mode | "Guaranteed schema" | OpenAI flag that enforces schema via constrained decoding |
-| Constrained decoding | "Logit masking" | Decode-time enforcement that masks invalid next-tokens |
-| Refusal | "Model declines" | Typed outcome when input cannot fit the schema |
-| Parse error | "Invalid JSON" | Output did not parse as JSON; impossible under strict |
-| Schema violation | "Wrong shape" | Parsed but violated types / required / enum / range |
-| `additionalProperties: false` | "No extras allowed" | Forbids unknown fields; required in OpenAI strict |
-| Pydantic BaseModel | "Typed output" | Python class that emits and validates JSON Schema |
-| Zod schema | "TypeScript output type" | TS runtime schema for provider output validation |
-| Grammar enforcement | "Open-weights constrained decode" | FSM-based logit masking, as in outlines / guidance |
+| JSON Schema 2020-12 | "schema 规范" | 每家现代 provider 都说的 IETF 草案 schema 方言 |
+| Strict mode | "保证 schema" | OpenAI 的标志，经由受约束解码强制 schema |
+| Constrained decoding | "logit 掩码" | 解码时强制，掩掉非法的下一 token |
+| Refusal | "模型拒绝" | 输入装不进 schema 时的定型结果 |
+| Parse error | "非法 JSON" | 输出没解析成 JSON；严格模式下不可能 |
+| Schema violation | "形状错了" | 解析了但违反 types / required / enum / range |
+| `additionalProperties: false` | "不许有额外的" | 禁止未知字段；OpenAI 严格模式中必须 |
+| Pydantic BaseModel | "定型输出" | 吐出并校验 JSON Schema 的 Python 类 |
+| Zod schema | "TypeScript 输出类型" | 用于 provider 输出校验的 TS 运行时 schema |
+| Grammar enforcement | "开源权重受约束解码" | 基于 FSM 的 logit 掩码，如 outlines / guidance 中那样 |
 
-## Further Reading
+## 延伸阅读
 
-- [OpenAI — Structured outputs](https://platform.openai.com/docs/guides/structured-outputs) — strict mode, refusals, and schema requirements
-- [OpenAI — Introducing structured outputs](https://openai.com/index/introducing-structured-outputs-in-the-api/) — August 2024 launch post explaining the decoding guarantee
-- [Pydantic AI — Output](https://ai.pydantic.dev/output/) — typed output_type bindings that serialize to each provider
-- [JSON Schema — 2020-12 release notes](https://json-schema.org/draft/2020-12/release-notes) — the canonical spec
-- [Microsoft — Structured outputs in Azure OpenAI](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/structured-outputs) — enterprise deployment notes and strict-mode caveats
+- [OpenAI — Structured outputs](https://platform.openai.com/docs/guides/structured-outputs) — 严格模式、拒绝与 schema 要求
+- [OpenAI — Introducing structured outputs](https://openai.com/index/introducing-structured-outputs-in-the-api/) — 2024 年 8 月发布博文，解释解码保证
+- [Pydantic AI — Output](https://ai.pydantic.dev/output/) — 序列化到每家 provider 的定型 output_type 绑定
+- [JSON Schema — 2020-12 release notes](https://json-schema.org/draft/2020-12/release-notes) — 权威规范
+- [Microsoft — Structured outputs in Azure OpenAI](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/structured-outputs) — 企业部署说明与严格模式告诫

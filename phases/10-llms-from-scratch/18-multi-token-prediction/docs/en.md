@@ -1,200 +1,200 @@
-# Multi-Token Prediction (MTP)
+# 多 token 预测（MTP）
 
-> Every autoregressive LLM from GPT-2 to Llama 3 trains on one loss per position: predict the next token. DeepSeek-V3 added a second loss per position: predict the token after that. The extra 14B of parameters (on a 671B model) got distilled back into the main model through gradient flow, and the trained MTP heads were repurposed at inference as speculative-decoding drafters with 80%+ acceptance. 1.8× generation throughput came for free. This lesson builds the sequential MTP module from the DeepSeek technical report, computes the loss and the shared-head parameter layout, and explains why MTP keeps the causal chain while Gloeckle et al.'s original parallel MTP broke it.
+> 从 GPT-2 到 Llama 3，每个自回归 LLM 每个位置训练一个损失：预测下一个 token。DeepSeek-V3 每个位置加了第二个损失：预测再下一个 token。那额外的 14B 参数（在一个 671B 模型上）通过梯度流被蒸馏回主模型，训练好的 MTP 头在推理时被改用作推测解码的起草器，接受率 80%+。1.8 倍生成吞吐白送。本节课构建 DeepSeek 技术报告里的顺序 MTP 模块，计算损失和共享头的参数布局，并解释为什么 MTP 保住了因果链，而 Gloeckle et al. 最初的并行 MTP 打断了它。
 
-**Type:** Build
-**Languages:** Python (stdlib)
-**Prerequisites:** Phase 10 · 04 (pre-training a mini GPT), Phase 10 · 15 (speculative decoding)
-**Time:** ~60 minutes
+**类型：** Build
+**语言：** Python（stdlib）
+**前置要求：** 阶段 10 · 04（预训练一个 mini GPT），阶段 10 · 15（推测解码）
+**预计时间：** ~60 分钟
 
-## Learning Objectives
+## 学习目标
 
-- State the MTP training objective and derive the joint loss across prediction depths.
-- Explain the difference between Gloeckle et al.'s parallel MTP heads (2024) and DeepSeek-V3's sequential MTP modules and why the sequential design preserves the causal chain.
-- Compute the parameter and memory overhead of adding MTP modules to a pre-training run.
-- Implement one MTP module from scratch: the shared embedding, the per-depth transformer block, the projection, and the shared output head.
+- 陈述 MTP 训练目标，并推导跨预测深度的联合损失。
+- 解释 Gloeckle et al. 的并行 MTP 头（2024）和 DeepSeek-V3 的顺序 MTP 模块之间的区别，以及为什么顺序设计保住了因果链。
+- 计算给一次预训练运行加 MTP 模块的参数和内存开销。
+- 从零实现一个 MTP 模块：共享 embedding、按深度的 transformer 块、投影和共享输出头。
 
-## The Problem
+## 问题所在
 
-Next-token prediction is the standard LLM training objective. Every hidden state is supervised to predict exactly one thing: the immediately following token. That is a surprisingly weak signal. Most of the information in a sequence extends beyond one token — structure, coherence, factuality, arithmetic flow. The model has to learn those by accumulating many one-token signals over trillions of tokens.
+下一个 token 预测是标准 LLM 训练目标。每个隐藏状态都被监督去预测恰好一件事：紧随其后的 token。那是个出奇地弱的信号。序列里大多数信息延伸超过一个 token——结构、连贯、事实性、算术流。模型不得不靠在万亿 token 上累积许多一个 token 的信号来学这些。
 
-MTP asks: what if every hidden state were supervised to predict multiple future tokens at once? Gloeckle et al. (Meta, 2024) showed this helps. Their implementation put several independent output heads on top of the backbone, each predicting a different offset. Parallel, simple, but the heads saw the same hidden state without any hierarchical refinement — and the predictions did not chain causally, so they could not be used for speculative decoding.
+MTP 问：要是每个隐藏状态都被监督去一次预测多个未来 token 呢？Gloeckle et al.（Meta，2024）表明这有帮助。他们的实现在主干上放几个独立输出头，每个预测一个不同偏移。并行、简单，但这些头看到相同的隐藏状态、没有任何层次精炼——而且预测之间不因果链接，所以它们不能用于推测解码。
 
-DeepSeek-V3 (December 2024) re-designed MTP as sequential modules that keep the causal chain at each prediction depth. The model predicts `t+1` from `h_i^(0)`, then predicts `t+2` from a new hidden state `h_i^(1)` that combined `h_i^(0)` with the `E(t+1)` embedding, and so on. Each depth is its own small transformer block. The shared embedding and shared output head keep parameter overhead modest. At DeepSeek-V3's scale, 14B extra parameters across MTP modules on top of 671B main-model weights. That 2% overhead bought denser training signals AND a ready-made speculative-decoding draft at inference.
+DeepSeek-V3（2024 年 12 月）把 MTP 重新设计成顺序模块，在每个预测深度保住因果链。模型从 `h_i^(0)` 预测 `t+1`，然后从一个把 `h_i^(0)` 和 `E(t+1)` embedding 结合的新隐藏状态 `h_i^(1)` 预测 `t+2`，依此类推。每个深度是它自己的一个小 transformer 块。共享 embedding 和共享输出头让参数开销适中。在 DeepSeek-V3 的规模上，671B 主模型权重之上跨 MTP 模块的 14B 额外参数。那 2% 的开销买来了更密的训练信号 *和* 一个推理时现成的推测解码 draft。
 
-This lesson builds a single MTP module and the D-depth loss from scratch. The math is tidy. The implementation is 150 lines.
+本节课从零构建单个 MTP 模块和 D 深度损失。数学很干净。实现 150 行。
 
-## The Concept
+## 核心概念
 
-### The sequential MTP recipe
+### 顺序 MTP 配方
 
-DeepSeek-V3 adds `D` MTP modules on top of the main model. Each module `k` (for `k = 1..D`) predicts the token at depth `k` — that is, `t_{i+k}` given a prefix through position `i`.
+DeepSeek-V3 在主模型之上加 `D` 个 MTP 模块。每个模块 `k`（`k = 1..D`）预测深度 `k` 的 token——也就是给定到位置 `i` 的前缀时的 `t_{i+k}`。
 
-Module `k` consists of:
+模块 `k` 由以下组成：
 
-- A transformer block `T_k` with its own attention and MLP.
-- A projection matrix `M_k` that combines the previous-depth hidden state with the embedding of the next-depth ground-truth token.
-- The shared embedding `E` (same as the main model).
-- The shared output head `Out` (same as the main model).
+- 一个 transformer 块 `T_k`，有它自己的注意力和 MLP。
+- 一个投影矩阵 `M_k`，把上一深度的隐藏状态和下一深度真值 token 的 embedding 结合。
+- 共享 embedding `E`（和主模型相同）。
+- 共享输出头 `Out`（和主模型相同）。
 
-At training, for a prefix through position `i`, the per-depth hidden state is:
+训练时，对到位置 `i` 的前缀，按深度的隐藏状态是：
 
 ```
 h_i^(0) = main model backbone at position i
 h_i^(k) = T_k( M_k * concat(RMSNorm(h_i^(k-1)), RMSNorm(E(t_{i+k}))) )   for k >= 1
 ```
 
-The per-depth prediction is:
+按深度的预测是：
 
 ```
 logits_{i+k} = Out(h_i^(k-1))   for k = 1..D
 ```
 
-The per-depth loss is cross-entropy against the ground-truth `t_{i+k}`:
+按深度的损失是对真值 `t_{i+k}` 的交叉熵：
 
 ```
 L_k = CE(logits_{i+k}, t_{i+k})
 ```
 
-The joint loss across depths:
+跨深度的联合损失：
 
 ```
 L_MTP = (lambda / D) * sum_{k=1..D} L_k
 ```
 
-`lambda` is a small weighting factor — DeepSeek-V3 uses 0.3 for the first 10% of training and 0.1 afterward. The total training loss is `L_main + L_MTP`.
+`lambda` 是一个小加权因子——DeepSeek-V3 在训练前 10% 用 0.3，之后用 0.1。总训练损失是 `L_main + L_MTP`。
 
-### Why sequential, not parallel
+### 为什么顺序，而非并行
 
-Gloeckle's original parallel MTP had D output heads, each directly applied to `h_i^(0)`. Each head predicts `t_{i+k}` from the same backbone hidden state. That trains fine, but the predictions are not conditioned on each other. You cannot use `head_1`'s output to help `head_2` — the heads fire in parallel.
+Gloeckle 最初的并行 MTP 有 D 个输出头，每个直接应用在 `h_i^(0)` 上。每个头从同一个主干隐藏状态预测 `t_{i+k}`。那训练没问题，但预测彼此不以对方为条件。你没法用 `head_1` 的输出来帮 `head_2`——这些头并行发射。
 
-DeepSeek-V3's sequential design builds `h_i^(k)` from `h_i^(k-1)` plus the actual next-token embedding `E(t_{i+k})`. That preserves the causal chain: to predict `t_{i+k+1}`, the module at depth `k+1` sees what was at `t_{i+k}`. This is structurally identical to how an autoregressive decoder consumes its own output — making the MTP modules directly usable as speculative-decoding drafters.
+DeepSeek-V3 的顺序设计从 `h_i^(k-1)` 加上实际的下一个 token embedding `E(t_{i+k})` 构建 `h_i^(k)`。那保住了因果链：要预测 `t_{i+k+1}`，深度 `k+1` 的模块看到的是 `t_{i+k}` 处的东西。这在结构上和一个自回归解码器消费自己的输出一模一样——使 MTP 模块能直接用作推测解码的起草器。
 
-At inference: feed `h_i^(k-1)` and the drafted `t_{i+k}` into module `k+1`, get a prediction for `t_{i+k+1}`. Repeat. That is exactly an EAGLE-style draft, using the trained MTP module as the draft network. DeepSeek-V3 reports 80%+ acceptance on the first MTP module and ~1.8× speedup.
+推理时：把 `h_i^(k-1)` 和起草的 `t_{i+k}` 喂进模块 `k+1`，得到 `t_{i+k+1}` 的预测。重复。那正是一个 EAGLE 风格的 draft，用训练好的 MTP 模块作为 draft 网络。DeepSeek-V3 报告第一个 MTP 模块上 80%+ 的接受率和约 1.8 倍加速。
 
-### Parameter accounting
+### 参数核算
 
-For a model with hidden `h` and vocabulary `V`:
+对一个 hidden 为 `h`、词表为 `V` 的模型：
 
-- Main model: billions of parameters, plus one output head of size `V * h`.
-- Shared output head: reuse the main model's head. No extra params.
-- Shared embedding: reuse the main model's embedding. No extra params.
-- Per-MTP module:
-  - Projection `M_k`: `(2h) * h = 2h^2`.
-  - Transformer block `T_k`: attention (`4h^2` for MHA) plus MLP (typically `8h^2` for SwiGLU with ratio 8/3). About `12h^2` per block.
+- 主模型：数十亿参数，加一个大小为 `V * h` 的输出头。
+- 共享输出头：复用主模型的头。无额外参数。
+- 共享 embedding：复用主模型的 embedding。无额外参数。
+- 每个 MTP 模块：
+  - 投影 `M_k`：`(2h) * h = 2h^2`。
+  - transformer 块 `T_k`：注意力（MHA 的 `4h^2`）加 MLP（SwiGLU 比率 8/3 时通常 `8h^2`）。每块约 `12h^2`。
 
-Total extra per module: `~14h^2`. For DeepSeek-V3's `h = 7168`, D = 1 module: `~14 * 7168^2 = ~720M` parameters on paper. DeepSeek-V3 reports 14B — the difference is mostly expert layers being MoE in the MTP module too.
+每模块总额外：`~14h^2`。对 DeepSeek-V3 的 `h = 7168`、D = 1 个模块：纸面上 `~14 * 7168^2 = ~720M` 参数。DeepSeek-V3 报告 14B——差异主要是 MTP 模块里的专家层也是 MoE。
 
-### The speculative-decoding payoff
+### 推测解码的回报
 
-During pre-training, the MTP modules slow training by about 10% (more forward compute, extra loss). The payoff is two-fold:
+预训练时，MTP 模块让训练慢约 10%（更多前向计算、额外损失）。回报有两方面：
 
-1. Denser training signal. Each hidden state sees D+1 supervision targets. Measured effect on MMLU, GSM8K, MATH, HumanEval: consistent few-percentage-point improvements in DeepSeek-V3's ablations.
+1. 更密的训练信号。每个隐藏状态看到 D+1 个监督目标。在 MMLU、GSM8K、MATH、HumanEval 上的实测效果：在 DeepSeek-V3 的消融里一致的几个百分点提升。
 
-2. Free speculative decoding draft at inference. The MTP module is already trained to predict the next few tokens. Repurposed as a draft network, it delivers 80%+ acceptance rates. At that level, N=3 or N=5 spec decoding gives 1.8× throughput. The 10% training-time cost pays back the first time you run inference.
+2. 推理时免费的推测解码 draft。MTP 模块已经训练成预测接下来几个 token。改用作 draft 网络，它交付 80%+ 的接受率。在那个水平上，N=3 或 N=5 的 spec decoding 给 1.8 倍吞吐。10% 的训练时成本在你第一次跑推理时就回本了。
 
-### Relation to EAGLE
+### 和 EAGLE 的关系
 
-EAGLE trains a small draft model SEPARATELY after pre-training. MTP bakes the draft into pre-training. The two approaches converge on similar accept rates but via different pipelines:
+EAGLE 在预训练 *之后* 单独训练一个小 draft 模型。MTP 把 draft 烤进预训练。两种方法收敛到相似的接受率，但经由不同的流水线：
 
-| Dimension | EAGLE-3 | MTP (DeepSeek-V3) |
+| 维度 | EAGLE-3 | MTP（DeepSeek-V3） |
 |-----------|---------|------------------|
-| When trained | Post-pre-training | During pre-training |
-| Backward-compatible with existing weights | Yes | No (need to re-train) |
-| Draft params | 1-2 transformer layers | 1 transformer block + projection |
-| Acceptance rate | 0.88-0.92 | 0.80+ at depth 1 |
-| Benefit beyond speedup | Speculative decoding only | Denser training signal + speedup |
+| 何时训练 | 预训练之后 | 预训练期间 |
+| 和现有权重向后兼容 | 是 | 否（需要重训） |
+| Draft 参数 | 1-2 个 transformer 层 | 1 个 transformer 块 + 投影 |
+| 接受率 | 0.88-0.92 | 深度 1 处 0.80+ |
+| 加速之外的收益 | 仅推测解码 | 更密的训练信号 + 加速 |
 
-## Build It
+## 动手构建
 
-`code/main.py` builds a single MTP module end to end: shared embedding, projection, transformer block, shared output head. It then computes the per-depth cross-entropy loss on a short synthetic sequence and prints the parameter count by component. A toy vocabulary of 32 tokens keeps the numbers readable.
+`code/main.py` 端到端构建单个 MTP 模块：共享 embedding、投影、transformer 块、共享输出头。然后它在一个短合成序列上计算按深度的交叉熵损失，并按组件打印参数量。一个 32 token 的玩具词表让数字可读。
 
-### Step 1: shared embedding table
+### 第 1 步：共享 embedding 表
 
-A single `vocab_size x hidden` table is used by the main model AND by every MTP module at every depth. Not a second copy — literally the same tensor.
+一张 `vocab_size x hidden` 的表被主模型 *和* 每个 MTP 模块在每个深度使用。不是第二份拷贝——字面上是同一个张量。
 
-### Step 2: the per-depth combination
+### 第 2 步：按深度的组合
 
 ```python
 def combine(prev_hidden, next_token_embed, M_k):
     # concat along feature dim, then project down to hidden
-    concat = rms_norm(prev_hidden) + rms_norm(next_token_embed)  # vector addition stand-in
+    concat = rms_norm(prev_hidden) + rms_norm(next_token_embed)  # 向量加法替身
     projected = matvec(M_k, concat)
     return projected
 ```
 
-Real DeepSeek-V3 concatenates the two RMSNormed vectors to `[2h]` and projects with an `h x 2h` matrix. The toy uses vector addition for stdlib brevity.
+真实 DeepSeek-V3 把两个 RMSNorm 后的向量拼接成 `[2h]`，用一个 `h x 2h` 矩阵投影。玩具为 stdlib 简洁用向量加法。
 
-### Step 3: the transformer block at depth k
+### 第 3 步：深度 k 处的 transformer 块
 
-Self-attention plus MLP. In the toy, a one-layer linear attention block and a SwiGLU MLP keep the structure visible without numpy.
+自注意力加 MLP。玩具里，一个一层线性注意力块和一个 SwiGLU MLP 让结构可见而不用 numpy。
 
-### Step 4: the shared output head
+### 第 4 步：共享输出头
 
-Reuse the main model's output projection. Logits over the vocabulary.
+复用主模型的输出投影。词表上的 logits。
 
-### Step 5: per-depth loss
+### 第 5 步：按深度损失
 
-Cross-entropy of softmax(logits) against the ground-truth token at offset `k`. Aggregate across depths with the `lambda / D` scaling factor.
+softmax(logits) 对偏移 `k` 处真值 token 的交叉熵。用 `lambda / D` 缩放因子跨深度聚合。
 
-### Step 6: parameter accounting
+### 第 6 步：参数核算
 
-Print the total parameter count, the shared (embedding, head) count, and the per-module extra count. Show the ratio of MTP extra to main-model size.
+打印总参数量、共享（embedding、头）数量和每模块额外数量。展示 MTP 额外对主模型大小的比率。
 
-## Use It
+## 上手使用
 
-MTP is integrated into DeepSeek-V3 (December 2024) and the DeepSeek-R1 series. At inference:
+MTP 集成在 DeepSeek-V3（2024 年 12 月）和 DeepSeek-R1 系列里。推理时：
 
-- DeepSeek's own serving stack consumes MTP modules as speculative decoders out of the box.
-- vLLM and SGLang have integration paths for DeepSeek-V3 MTP as of April 2026.
-- AMD's ROCm SGLang tutorial shows a specific MTP speculative-decoding config with measured 1.8× speedup on the V3 checkpoint.
+- DeepSeek 自己的服务栈开箱即把 MTP 模块当作推测解码器消费。
+- 截至 2026 年 4 月，vLLM 和 SGLang 有 DeepSeek-V3 MTP 的集成路径。
+- AMD 的 ROCm SGLang 教程展示了一个具体的 MTP 推测解码配置，在 V3 checkpoint 上实测 1.8 倍加速。
 
-When to use MTP in a new pre-training run:
+什么时候在新预训练运行里用 MTP：
 
-- You control the full pre-training pipeline and want to bank denser training signal.
-- You know you will serve the model at scale and want speculative decoding for free.
-- Your hidden size is at least 4096. At 1B-scale the overhead hurts more than the gain helps.
+- 你控制完整的预训练流水线，想攒下更密的训练信号。
+- 你知道你会大规模服务这个模型，想要免费的推测解码。
+- 你的 hidden size 至少 4096。在 1B 规模上开销带来的伤害大于增益带来的帮助。
 
-When not to:
+什么时候不用：
 
-- Fine-tuning an existing pre-trained dense model. The MTP module is not trained.
-- Research models where you want a clean baseline to compare against. MTP changes the architecture.
+- 微调一个现有的预训练稠密模型。MTP 模块没被训练。
+- 你想要一个干净基线来对比的研究模型。MTP 改变了架构。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-mtp-planner.md`. Given a pre-training run specification (model size, data, compute), it returns a plan for integrating MTP: number of depths D, `lambda` schedule, memory overhead, and the inference-time speculative-decoding wiring.
+本节课产出 `outputs/skill-mtp-planner.md`。给定一份预训练运行规格（模型大小、数据、算力），它返回一份集成 MTP 的计划：深度数 D、`lambda` 调度、内存开销和推理时的推测解码接线。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Show the per-depth loss decreases monotonically as the synthetic signal strengthens. Modify the synthetic to use a fixed pattern and verify both depth-1 and depth-2 losses converge.
+1. 跑 `code/main.py`。展示随合成信号增强，按深度损失单调下降。改合成用一个固定模式，验证深度 1 和深度 2 的损失都收敛。
 
-2. Compute the parameter overhead for a dense 70B model (hidden 8192, 80 layers) with D=1 MTP module. Compare to the DeepSeek-V3 reported 14B overhead. Explain why DeepSeek's number is higher: the MTP transformer block inherits the same MoE structure, inflating the per-module parameter count.
+2. 为一个稠密 70B 模型（hidden 8192，80 层）配 D=1 MTP 模块计算参数开销。和 DeepSeek-V3 报告的 14B 开销对比。解释为什么 DeepSeek 的数字更高：MTP transformer 块继承了相同的 MoE 结构，膨胀了每模块参数量。
 
-3. Implement D=2 in the toy: add a second MTP module that takes h^(1) and predicts `t_{i+2}`. Verify the joint loss and the parameter accounting match the DeepSeek paper's equations 19-21.
+3. 在玩具里实现 D=2：加第二个 MTP 模块，接收 h^(1) 并预测 `t_{i+2}`。验证联合损失和参数核算匹配 DeepSeek 论文的方程 19-21。
 
-4. Switch the toy to parallel MTP (Gloeckle-style): add D output heads on top of the main hidden state, each predicting a different offset. Measure how the losses per depth compare to the sequential version on the same synthetic signal. The sequential version should produce lower depth-k loss for k > 1 because it conditions on the intermediate predictions.
+4. 把玩具切换成并行 MTP（Gloeckle 风格）：在主隐藏状态之上加 D 个输出头，每个预测一个不同偏移。测量按深度损失在同一合成信号上和顺序版本如何比较。顺序版本对 k > 1 应该产出更低的深度 k 损失，因为它以中间预测为条件。
 
-5. Use the trained MTP module as an EAGLE-style draft: call module k to propose `t_{i+k}` at inference. Measure the acceptance rate of these draft tokens against the main model's predictions on a held-out sequence. If you hit 50%+ on the toy, you have reproduced the empirical MTP-as-draft property.
+5. 把训练好的 MTP 模块用作 EAGLE 风格的 draft：推理时调用模块 k 来提议 `t_{i+k}`。在一个留出序列上测量这些 draft token 对主模型预测的接受率。如果你在玩具上打到 50%+，你就复现了 MTP-作-draft 的经验性质。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 人们怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| MTP module | "Extra loss block" | A small transformer block plus projection that predicts a token `k` positions ahead of the main model |
-| Prediction depth | "Which offset" | The integer `k` such that module `k` predicts `t_{i+k}` from prefix through position `i` |
-| Parallel MTP | "Gloeckle-style" | D independent heads on the same backbone hidden state, no conditional chain |
-| Sequential MTP | "DeepSeek-V3 style" | Each module conditions on the previous depth's hidden state plus the next token's embedding; preserves causal chain |
-| Shared output head | "Reuse the main head" | The MTP modules call the main model's LM head, not a separate output projection |
-| Shared embedding | "Reuse the main table" | Same vocabulary embedding table is used everywhere; no duplicate parameters |
-| Projection matrix M_k | "Combine hidden + next-token" | An `h x 2h` linear layer that folds the previous hidden state and the target-token embedding into the next depth's input |
-| Joint loss L_MTP | "Averaged extra losses" | Arithmetic mean of per-depth cross-entropy losses, scaled by `lambda` |
-| Acceptance rate at depth 1 | "How often MTP draft is right" | The rate at which the D=1 MTP module's top-1 prediction equals the main model's top-1 prediction; 80%+ on DeepSeek-V3 |
-| Lambda weighting | "Extra-loss importance" | Per-depth scaling factor; 0.3 at start of training, 0.1 later on DeepSeek-V3 |
+| MTP 模块 | "额外损失块" | 一个小 transformer 块加投影，预测主模型之前 `k` 个位置的一个 token |
+| 预测深度 | "哪个偏移" | 整数 `k`，使模块 `k` 从到位置 `i` 的前缀预测 `t_{i+k}` |
+| 并行 MTP | "Gloeckle 风格" | 同一主干隐藏状态上的 D 个独立头，无条件链 |
+| 顺序 MTP | "DeepSeek-V3 风格" | 每个模块以上一深度的隐藏状态加下一个 token 的 embedding 为条件；保住因果链 |
+| 共享输出头 | "复用主头" | MTP 模块调用主模型的 LM 头，不是单独的输出投影 |
+| 共享 embedding | "复用主表" | 到处用同一张词表 embedding 表；无重复参数 |
+| 投影矩阵 M_k | "结合隐藏 + 下一个 token" | 一个 `h x 2h` 线性层，把上一隐藏状态和目标 token embedding 折进下一深度的输入 |
+| 联合损失 L_MTP | "平均后的额外损失" | 按深度交叉熵损失的算术平均，按 `lambda` 缩放 |
+| 深度 1 处的接受率 | "MTP draft 多常对" | D=1 MTP 模块的 top-1 预测等于主模型 top-1 预测的比率；DeepSeek-V3 上 80%+ |
+| Lambda 加权 | "额外损失的重要性" | 按深度的缩放因子；DeepSeek-V3 上训练开始 0.3，之后 0.1 |
 
-## Further Reading
+## 延伸阅读
 
-- [DeepSeek-AI — DeepSeek-V3 Technical Report (arXiv:2412.19437)](https://arxiv.org/abs/2412.19437) — the full sequential MTP description (Section 2.2), including the joint-loss equations and the 1.8× speedup at inference
-- [Gloeckle et al. — Better & Faster Large Language Models via Multi-token Prediction (arXiv:2404.19737)](https://arxiv.org/abs/2404.19737) — the parallel MTP baseline DeepSeek's design improves on
-- [DeepSeek-V3 model card on Hugging Face](https://huggingface.co/deepseek-ai/DeepSeek-V3) — 685B total (671B main + 14B MTP), deployment notes
-- [Leviathan et al. — Fast Inference from Transformers via Speculative Decoding (arXiv:2211.17192)](https://arxiv.org/abs/2211.17192) — the speculative-decoding framework MTP fits into
-- [Li et al. — EAGLE-3 (arXiv:2503.01840)](https://arxiv.org/abs/2503.01840) — EAGLE's 2025 draft architecture, the counterpart MTP competes with
+- [DeepSeek-AI — DeepSeek-V3 Technical Report (arXiv:2412.19437)](https://arxiv.org/abs/2412.19437) — 完整的顺序 MTP 描述（第 2.2 节），含联合损失方程和推理时 1.8 倍加速
+- [Gloeckle et al. — Better & Faster Large Language Models via Multi-token Prediction (arXiv:2404.19737)](https://arxiv.org/abs/2404.19737) — DeepSeek 设计改进的并行 MTP 基线
+- [DeepSeek-V3 model card on Hugging Face](https://huggingface.co/deepseek-ai/DeepSeek-V3) — 总共 685B（671B 主 + 14B MTP），部署说明
+- [Leviathan et al. — Fast Inference from Transformers via Speculative Decoding (arXiv:2211.17192)](https://arxiv.org/abs/2211.17192) — MTP 嵌入其中的推测解码框架
+- [Li et al. — EAGLE-3 (arXiv:2503.01840)](https://arxiv.org/abs/2503.01840) — EAGLE 的 2025 draft 架构，MTP 竞争的对手

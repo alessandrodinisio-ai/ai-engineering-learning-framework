@@ -1,133 +1,133 @@
-# Vision Transformers (ViT)
+# 视觉 Transformer（ViT）
 
-> Cut the image into patches, treat each patch as a word, run a standard transformer. Don't look back.
+> 把图像切成 patch，把每个 patch 当成一个词，跑一个标准 transformer。别回头看。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 7 Lesson 02 (Self-Attention), Phase 4 Lesson 04 (Image Classification)
-**Time:** ~45 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** 阶段 7 第 02 课（自注意力）、阶段 4 第 04 课（图像分类）
+**预计时间：** ~45 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Implement patch embedding, learned positional embedding, class token, and transformer encoder blocks from scratch to build a minimal ViT
-- Explain why ViT was thought to need massive pretraining data until DeiT and MAE proved otherwise
-- Compare ViT, Swin, and ConvNeXt on their architectural priors (none, local window attention, conv backbone)
-- Fine-tune a pretrained ViT on a small dataset using `timm` and the standard linear-probe / fine-tune recipe
+- 从零实现 patch 嵌入、学习式位置嵌入、class token 和 transformer 编码器块，搭一个极简 ViT
+- 解释为什么 ViT 曾被认为需要海量预训练数据，直到 DeiT 和 MAE 证明并非如此
+- 在架构先验上对比 ViT、Swin、ConvNeXt（无先验、局部窗口注意力、卷积骨干）
+- 用 `timm` 和标准的线性探针 / 微调配方，在一个小数据集上微调预训练 ViT
 
-## The Problem
+## 问题所在
 
-For a decade, convolution was synonymous with computer vision. CNNs had strong inductive biases — locality, translation equivariance — that nobody thought you could replace. Then Dosovitskiy et al. (2020) showed that a plain transformer applied to flattened image patches, with no convolutional machinery at all, could match or beat the best CNNs at scale.
+十年里，卷积几乎就是计算机视觉的同义词。CNN 有强归纳偏置——局部性、平移等变性——没人觉得你能替换掉它们。然后 Dosovitskiy 等人（2020）证明：一个朴素 transformer，作用于展平的图像 patch，完全不用卷积机制，在规模上能匹敌甚至击败最好的 CNN。
 
-The catch was "at scale." ViT on ImageNet-1k lost to ResNet. ViT pretrained on ImageNet-21k or JFT-300M then fine-tuned on ImageNet-1k beat it. The conclusion was that transformers lacked useful priors but could learn them from enough data. Subsequent work (DeiT, MAE, DINO) showed that with the right training recipes — strong augmentation, self-supervised pretraining, distillation — ViTs train fine on small data too.
+陷阱在于"在规模上"。ViT 在 ImageNet-1k 上输给 ResNet。在 ImageNet-21k 或 JFT-300M 上预训练、再在 ImageNet-1k 上微调的 ViT 赢了它。结论是 transformer 缺少有用的先验，但能从足够多的数据里学到它们。后续工作（DeiT、MAE、DINO）表明：有了对的训练配方——强增广、自监督预训练、蒸馏——ViT 在小数据上也训得很好。
 
-By 2026, pure CNNs are still competitive on edge devices (ConvNeXt is the strongest), but transformers dominate everything else: segmentation (Mask2Former, SegFormer), detection (DETR, RT-DETR), multimodal (CLIP, SigLIP), video (VideoMAE, VJEPA). The ViT block structure is the one to know.
+到 2026 年，纯 CNN 在边缘设备上仍有竞争力（ConvNeXt 最强），但 transformer 称霸其余一切：分割（Mask2Former、SegFormer）、检测（DETR、RT-DETR）、多模态（CLIP、SigLIP）、视频（VideoMAE、VJEPA）。ViT 的块结构就是那个该掌握的。
 
-## The Concept
+## 核心概念
 
-### The pipeline
+### Pipeline
 
 ```mermaid
 flowchart LR
-    IMG["Image<br/>(3, 224, 224)"] --> PATCH["Patch embedding<br/>conv 16x16 s=16<br/>-> (768, 14, 14)"]
-    PATCH --> FLAT["Flatten to<br/>(196, 768) tokens"]
-    FLAT --> CAT["Prepend<br/>[CLS] token"]
-    CAT --> POS["Add learned<br/>positional embed"]
-    POS --> ENC["N transformer<br/>encoder blocks"]
-    ENC --> CLS["Take [CLS]<br/>token output"]
-    CLS --> HEAD["MLP classifier"]
+    IMG["图像<br/>(3, 224, 224)"] --> PATCH["patch 嵌入<br/>conv 16x16 s=16<br/>-> (768, 14, 14)"]
+    PATCH --> FLAT["展平为<br/>(196, 768) token"]
+    FLAT --> CAT["在前面拼<br/>[CLS] token"]
+    CAT --> POS["加学习式<br/>位置嵌入"]
+    POS --> ENC["N 个 transformer<br/>编码器块"]
+    ENC --> CLS["取 [CLS]<br/>token 输出"]
+    CLS --> HEAD["MLP 分类器"]
 
     style PATCH fill:#dbeafe,stroke:#2563eb
     style ENC fill:#fef3c7,stroke:#d97706
     style HEAD fill:#dcfce7,stroke:#16a34a
 ```
 
-Seven steps. Patches -> tokens -> attention -> classifier. Every variant (DeiT, Swin, ConvNeXt, MAE pretraining) changes one or two of the seven and leaves the rest alone.
+七步。patch -> token -> 注意力 -> 分类器。每个变体（DeiT、Swin、ConvNeXt、MAE 预训练）改其中一两步，其余照旧。
 
-### Patch embedding
+### Patch 嵌入
 
-The first conv is the secret. Kernel size 16, stride 16, so a 224x224 image becomes a 14x14 grid of 16x16 patches, each projected to a 768-dim embedding. That single conv both patchifies and linearly projects.
+第一个卷积是诀窍。核大小 16、stride 16，于是一张 224x224 图像变成一个 14x14 的 16x16 patch 网格，每个被投影成一个 768 维嵌入。那一个卷积既切 patch 又做线性投影。
 
 ```
-Input:  (3, 224, 224)
-Conv (3 -> 768, k=16, s=16, no padding):
-Output: (768, 14, 14)
-Flatten spatial: (196, 768)
+输入:  (3, 224, 224)
+卷积 (3 -> 768, k=16, s=16, 无 padding):
+输出: (768, 14, 14)
+展平空间: (196, 768)
 ```
 
-196 patches = 196 tokens. Each token's feature dimension is 768 (ViT-B), 1024 (ViT-L), or 1280 (ViT-H).
+196 个 patch = 196 个 token。每个 token 的特征维度是 768（ViT-B）、1024（ViT-L）或 1280（ViT-H）。
 
 ### Class token
 
-A single learned vector prepended to the sequence:
+一个学习出来的向量，拼在序列前面：
 
 ```
 tokens = [CLS; patch_1; patch_2; ...; patch_196]   shape (197, 768)
 ```
 
-After N transformer blocks, the `[CLS]` output is the global image representation. Classification head reads only this one vector.
+经过 N 个 transformer 块后，`[CLS]` 的输出是全局图像表示。分类头只读这一个向量。
 
-### Positional embedding
+### 位置嵌入
 
-Transformers have no built-in notion of spatial position. Add a learned vector to every token:
+Transformer 没有内建的空间位置概念。给每个 token 加一个学习出来的向量：
 
 ```
-tokens = tokens + learned_pos_embedding   (also shape (197, 768))
+tokens = tokens + learned_pos_embedding   (同样是 shape (197, 768))
 ```
 
-The embedding is a parameter of the model; gradient-based training adapts it to 2D image structure. Sinusoidal 2D alternatives exist but are rarely used in practice.
+这个嵌入是模型的一个参数；基于梯度的训练让它适应 2D 图像结构。有正弦式 2D 替代方案，但实践中很少用。
 
-### Transformer encoder block
+### Transformer 编码器块
 
-Standard. Multi-head self-attention, MLP, residual connections, pre-LayerNorm.
+标准的。多头自注意力、MLP、残差连接、pre-LayerNorm。
 
 ```
 x = x + MSA(LN(x))
 x = x + MLP(LN(x))
 
-MLP is two-layer with GELU: Linear(d -> 4d) -> GELU -> Linear(4d -> d)
+MLP 是带 GELU 的两层：Linear(d -> 4d) -> GELU -> Linear(4d -> d)
 ```
 
-ViT-B/16 stacks 12 of these blocks, each with 12 attention heads, totalling 86M parameters.
+ViT-B/16 堆 12 个这样的块，每个 12 个注意力头，共 8600 万参数。
 
-### Why pre-LN
+### 为什么用 pre-LN
 
-Early transformers used post-LN (`x = LN(x + sublayer(x))`) and struggled to train past 6-8 layers without warmup. Pre-LN (`x = x + sublayer(LN(x))`) trains deeper networks stably without warmup. Every ViT and every modern LLM uses pre-LN.
+早期 transformer 用 post-LN（`x = LN(x + sublayer(x))`），不带 warmup 很难训过 6-8 层。Pre-LN（`x = x + sublayer(LN(x))`）不带 warmup 也能稳定训练更深的网络。每个 ViT 和每个现代 LLM 都用 pre-LN。
 
-### Patch size trade-off
+### Patch 大小的权衡
 
-- 16x16 patches -> 196 tokens, standard.
-- 32x32 patches -> 49 tokens, faster but lower resolution.
-- 8x8 patches -> 784 tokens, finer but O(n^2) attention cost scales badly.
+- 16x16 patch -> 196 token，标准。
+- 32x32 patch -> 49 token，更快但分辨率更低。
+- 8x8 patch -> 784 token，更细但 O(n^2) 注意力成本缩放很差。
 
-Bigger patches = fewer tokens = faster but less spatial detail. SwinV2 uses 4x4 patches in hierarchical windows.
+patch 越大 = token 越少 = 越快但空间细节越少。SwinV2 在层级窗口里用 4x4 patch。
 
-### DeiT's recipe for training ViT on ImageNet-1k
+### DeiT 在 ImageNet-1k 上训练 ViT 的配方
 
-The original ViT needed JFT-300M to beat CNNs. DeiT (Touvron et al., 2020) trained ViT-B to 81.8% top-1 on ImageNet-1k alone with four changes:
+原始 ViT 需要 JFT-300M 才能击败 CNN。DeiT（Touvron 等人，2020）仅靠 ImageNet-1k 就把 ViT-B 训到 81.8% top-1，靠四个改动：
 
-1. Heavy augmentation: RandAugment, Mixup, CutMix, Random Erasing.
-2. Stochastic depth (drop entire blocks at random during training).
-3. Repeated augmentation (same image sampled 3 times per batch).
-4. Distillation from a CNN teacher (optional, lifts accuracy further).
+1. 重度增广：RandAugment、Mixup、CutMix、Random Erasing。
+2. 随机深度（训练时随机丢掉整个块）。
+3. 重复增广（同一图像每个 batch 采 3 次）。
+4. 从一个 CNN 教师蒸馏（可选，进一步提升准确率）。
 
-Every modern ViT training recipe descends from DeiT.
+每个现代 ViT 训练配方都源自 DeiT。
 
 ### Swin vs ConvNeXt
 
-- **Swin** (Liu et al., 2021) — window-based attention. Each block attends within a local window; alternating blocks shift the window to mix information across windows. Brings back a CNN-like locality prior while keeping the attention operator.
-- **ConvNeXt** (Liu et al., 2022) — redesigned CNN that matches Swin's architecture choices (depthwise convs, LayerNorm, GELU, inverted bottleneck). Showed that the gap is not "attention vs convolution" but "modern training recipe + architecture."
+- **Swin**（Liu 等人，2021）—— 基于窗口的注意力。每个块在一个局部窗口内做注意力；交替的块移动窗口，跨窗口混合信息。在保留注意力算子的同时找回了类 CNN 的局部性先验。
+- **ConvNeXt**（Liu 等人，2022）—— 重新设计的 CNN，匹配了 Swin 的架构选择（深度可分卷积、LayerNorm、GELU、倒置瓶颈）。它表明差距不是"注意力 vs 卷积"，而是"现代训练配方 + 架构"。
 
-In 2026, ConvNeXt-V2 and Swin-V2 are both production-grade; the right choice depends on your inference stack (ConvNeXt compiles better for edge) and pretraining corpus.
+2026 年，ConvNeXt-V2 和 Swin-V2 都是生产级；正确的选择取决于你的推理栈（ConvNeXt 在边缘上编译得更好）和预训练语料。
 
-### MAE pretraining
+### MAE 预训练
 
-Masked Autoencoder (He et al., 2022): mask 75% of patches at random, train the encoder to process only the visible 25%, train a small decoder to reconstruct the masked patches from the encoder's output. After pretraining, discard the decoder and fine-tune the encoder.
+掩码自编码器（He 等人，2022）：随机掩码 75% 的 patch，训练编码器只处理可见的 25%，训练一个小解码器从编码器输出重建被掩码的 patch。预训练后丢掉解码器，微调编码器。
 
-MAE makes ViT trainable on ImageNet-1k alone, hits SOTA, and is the current default self-supervised recipe.
+MAE 让 ViT 仅靠 ImageNet-1k 就可训练、达到 SOTA，是当前默认的自监督配方。
 
-## Build It
+## 动手构建
 
-### Step 1: Patch embedding
+### 第 1 步：Patch 嵌入
 
 ```python
 import torch
@@ -146,11 +146,11 @@ class PatchEmbedding(nn.Module):
         return x.flatten(2).transpose(1, 2)
 ```
 
-One conv, one flatten, one transpose. That is the entire image-to-tokens step.
+一个卷积、一个 flatten、一个 transpose。这就是整个"图像到 token"步骤。
 
-### Step 2: Transformer block
+### 第 2 步：Transformer 块
 
-Pre-LN, multi-head self-attention, MLP with GELU, residual connections.
+Pre-LN、多头自注意力、带 GELU 的 MLP、残差连接。
 
 ```python
 class Block(nn.Module):
@@ -174,9 +174,9 @@ class Block(nn.Module):
         return x
 ```
 
-`nn.MultiheadAttention` handles the splitting into heads, the scaled dot-product, and the output projection. `batch_first=True` so shapes are `(N, seq, dim)`.
+`nn.MultiheadAttention` 处理拆头、缩放点积和输出投影。`batch_first=True`，所以形状是 `(N, seq, dim)`。
 
-### Step 3: The ViT
+### 第 3 步：ViT
 
 ```python
 class ViT(nn.Module):
@@ -211,9 +211,9 @@ print(f"output: {vit(x).shape}")
 print(f"params: {sum(p.numel() for p in vit.parameters()):,}")
 ```
 
-About 2.8M parameters — a tiny ViT tractable on CPU. Real ViT-B is 86M; same class definition with `dim=768, depth=12, num_heads=12`.
+约 280 万参数——一个在 CPU 上跑得动的小 ViT。真正的 ViT-B 是 8600 万；同一个类定义，用 `dim=768, depth=12, num_heads=12`。
 
-### Step 4: Sanity check — single image inference
+### 第 4 步：合理性检查 —— 单图推理
 
 ```python
 logits = vit(torch.randn(1, 3, 64, 64))
@@ -221,11 +221,11 @@ print(f"logits: {logits}")
 print(f"probs:  {logits.softmax(-1)}")
 ```
 
-Should run without error. Probabilities sum to 1.
+应该无错运行。概率之和为 1。
 
-## Use It
+## 上手使用
 
-`timm` ships every ViT variant with ImageNet pretrained weights. One line:
+`timm` 提供每个 ViT 变体的 ImageNet 预训练权重。一行：
 
 ```python
 import timm
@@ -233,39 +233,39 @@ import timm
 model = timm.create_model("vit_base_patch16_224", pretrained=True, num_classes=10)
 ```
 
-`timm` is the production default for vision transformers in 2026. Supports ViT, DeiT, Swin, Swin-V2, ConvNeXt, ConvNeXt-V2, MaxViT, MViT, EfficientFormer, and dozens of others under the same API.
+2026 年 `timm` 是视觉 transformer 的生产默认。在同一套 API 下支持 ViT、DeiT、Swin、Swin-V2、ConvNeXt、ConvNeXt-V2、MaxViT、MViT、EfficientFormer，以及几十个其他模型。
 
-For multi-modal work (image + text), `transformers` ships CLIP, SigLIP, BLIP-2, LLaVA. The image encoder in all of those is a ViT variant.
+做多模态（图像 + 文本）时，`transformers` 提供 CLIP、SigLIP、BLIP-2、LLaVA。这些里面的图像编码器都是某个 ViT 变体。
 
-## Ship It
+## 交付
 
-This lesson produces:
+这一课产出：
 
-- `outputs/prompt-vit-vs-cnn-picker.md` — a prompt that picks between a ViT, a ConvNeXt, or a Swin based on dataset size, compute, and inference stack.
-- `outputs/skill-vit-patch-and-pos-embed-inspector.md` — a skill that verifies a ViT's patch embedding and positional embedding shapes match the model's expected sequence length, catching the most common porting bugs.
+- `outputs/prompt-vit-vs-cnn-picker.md` —— 一个 prompt，根据数据集规模、算力和推理栈，在 ViT、ConvNeXt、Swin 之间挑选。
+- `outputs/skill-vit-patch-and-pos-embed-inspector.md` —— 一个 skill，验证 ViT 的 patch 嵌入和位置嵌入形状是否匹配模型期望的序列长度，抓出最常见的移植 bug。
 
-## Exercises
+## 练习
 
-1. **(Easy)** Print the shapes of every intermediate tensor for a forward pass through the tiny ViT above. Confirm: input `(N, 3, 64, 64)` -> patches `(N, 16, 192)` -> with CLS `(N, 17, 192)` -> classifier input `(N, 192)` -> output `(N, num_classes)`.
-2. **(Medium)** Fine-tune a pretrained `timm` ViT-S/16 on the synthetic-CIFAR dataset from Lesson 4. Compare against ResNet-18 fine-tuning on the same data. Report training time and final accuracy.
-3. **(Hard)** Implement MAE pretraining for the tiny ViT: mask 75% of patches, train the encoder + a small decoder to reconstruct the masked patches. Evaluate linear-probe accuracy on the synthetic data before and after pretraining.
+1. **（简单）** 打印上面那个小 ViT 一次前向里每个中间张量的形状。确认：输入 `(N, 3, 64, 64)` -> patch `(N, 16, 192)` -> 带 CLS `(N, 17, 192)` -> 分类器输入 `(N, 192)` -> 输出 `(N, num_classes)`。
+2. **（中等）** 在第 4 课的合成 CIFAR 数据集上微调一个预训练的 `timm` ViT-S/16。和在同样数据上微调 ResNet-18 对比。报告训练时间和最终准确率。
+3. **（困难）** 为这个小 ViT 实现 MAE 预训练：掩码 75% 的 patch，训练编码器 + 一个小解码器去重建被掩码的 patch。评估预训练前后在合成数据上的线性探针准确率。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|----------------------|
-| Patch embedding | "The first conv" | A conv with kernel size = stride = patch size; turns the image into a grid of token embeddings |
-| Class token | "[CLS]" | A learned vector prepended to the token sequence; its final output is the global image representation |
-| Positional embedding | "Learned pos" | A learned vector added to every token so the transformer knows where each patch came from |
-| Pre-LN | "LayerNorm before sublayer" | The stable transformer variant: `x + sublayer(LN(x))` instead of `LN(x + sublayer(x))` |
-| Multi-head attention | "Parallel attention" | Standard transformer attention split into num_heads independent subspaces, concatenated afterwards |
-| ViT-B/16 | "Base, patch 16" | The canonical size: dim=768, depth=12, heads=12, patch_size=16, image=224; ~86M params |
-| DeiT | "Data-efficient ViT" | ViT trained on ImageNet-1k alone with strong augmentation; proved large pretraining datasets are not strictly required |
-| MAE | "Masked autoencoder" | Self-supervised pretraining: mask 75% of patches, reconstruct; the dominant ViT pretraining recipe |
+| Patch 嵌入 | "第一个卷积" | 核大小 = stride = patch 大小的卷积；把图像变成 token 嵌入的网格 |
+| Class token | "[CLS]" | 拼在 token 序列前面的学习出来的向量；它的最终输出是全局图像表示 |
+| 位置嵌入 | "学习式位置" | 加到每个 token 上的学习出来的向量，让 transformer 知道每个 patch 来自哪 |
+| Pre-LN | "子层前做 LayerNorm" | 稳定的 transformer 变体：`x + sublayer(LN(x))` 而非 `LN(x + sublayer(x))` |
+| 多头注意力 | "并行注意力" | 标准 transformer 注意力，拆成 num_heads 个独立子空间，之后拼接 |
+| ViT-B/16 | "Base，patch 16" | 经典尺寸：dim=768、depth=12、heads=12、patch_size=16、image=224；约 8600 万参数 |
+| DeiT | "数据高效 ViT" | 仅在 ImageNet-1k 上配强增广训练的 ViT；证明海量预训练数据并非严格必需 |
+| MAE | "掩码自编码器" | 自监督预训练：掩码 75% 的 patch，重建；主导的 ViT 预训练配方 |
 
-## Further Reading
+## 延伸阅读
 
-- [An Image is Worth 16x16 Words (Dosovitskiy et al., 2020)](https://arxiv.org/abs/2010.11929) — the ViT paper
-- [DeiT: Data-efficient Image Transformers (Touvron et al., 2020)](https://arxiv.org/abs/2012.12877) — how to train ViT on ImageNet-1k alone
-- [Masked Autoencoders are Scalable Vision Learners (He et al., 2022)](https://arxiv.org/abs/2111.06377) — MAE pretraining
-- [timm documentation](https://huggingface.co/docs/timm) — the reference for every vision transformer you will use in production
+- [An Image is Worth 16x16 Words (Dosovitskiy et al., 2020)](https://arxiv.org/abs/2010.11929) —— ViT 论文
+- [DeiT: Data-efficient Image Transformers (Touvron et al., 2020)](https://arxiv.org/abs/2012.12877) —— 如何仅靠 ImageNet-1k 训练 ViT
+- [Masked Autoencoders are Scalable Vision Learners (He et al., 2022)](https://arxiv.org/abs/2111.06377) —— MAE 预训练
+- [timm documentation](https://huggingface.co/docs/timm) —— 你在生产中会用到的每个视觉 transformer 的参考

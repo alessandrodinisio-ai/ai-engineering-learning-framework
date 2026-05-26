@@ -1,36 +1,36 @@
-# Quantization: Making Models Fit
+# 量化：把模型塞进去
 
-> A 70B model in FP16 needs 140GB. Two A100s just for weights. Quantize to FP8: one 80GB GPU. INT4: a MacBook.
+> 一个 70B 模型在 FP16 下要 140GB。光权重就要两张 A100。量化到 FP8：一张 80GB GPU。INT4：一台 MacBook。
 
-**Type:** Build
-**Languages:** Python (with numpy)
-**Prerequisites:** Phase 10, Lessons 01-10 (LLMs from Scratch)
-**Time:** ~120 minutes
+**类型：** Build
+**语言：** Python（配合 numpy）
+**前置要求：** 阶段 10，第 01-10 课（从零构建 LLM）
+**预计时间：** ~120 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Implement symmetric and asymmetric quantization from FP16 to INT8 and INT4, including per-tensor and per-channel scaling
-- Calculate the memory savings from quantization and determine which precision fits a given GPU's VRAM
-- Explain the difference between post-training quantization (PTQ) and quantization-aware training (QAT)
-- Apply GPTQ or AWQ to quantize a real model and measure the accuracy-memory tradeoff on a benchmark
+- 实现从 FP16 到 INT8 和 INT4 的对称和非对称量化，包括 per-tensor 和 per-channel 缩放
+- 计算量化带来的显存节省，并判断哪种精度能塞进给定 GPU 的显存
+- 解释训练后量化（PTQ）和量化感知训练（QAT）的区别
+- 用 GPTQ 或 AWQ 量化一个真实模型，并在基准上测量精度-显存的权衡
 
-## The Problem
+## 问题所在
 
-Llama 3 70B has 70 billion parameters. Each parameter is a 16-bit floating point number. That is 140 billion bytes. 140GB. A single A100 has 80GB of VRAM. You cannot even load the weights, let alone run inference, on a single GPU. You need two A100s at $2/hour each just to serve one model.
+Llama 3 70B 有 700 亿参数。每个参数是一个 16 位浮点数。那是 1400 亿字节。140GB。单张 A100 有 80GB 显存。你连权重都加载不进去，更别说在单张 GPU 上推理了。光是服务一个模型，你就需要两张各 2 美元/小时的 A100。
 
-But 16 bits per parameter is wasteful. Most weights in a neural network cluster near zero. The full dynamic range of FP16 (from 0.000000059 to 65,504) is almost entirely unused. If you measure the actual distribution of weights in Llama 3 70B, 95% of them fall between -0.1 and +0.1. You are burning 16 bits to represent values that could fit in 4.
+但每个参数 16 位是浪费的。神经网络里大多数权重都聚在零附近。FP16 的完整动态范围（从 0.000000059 到 65,504）几乎完全没用上。如果你测量 Llama 3 70B 里权重的实际分布，95% 落在 -0.1 和 +0.1 之间。你在烧 16 位去表示本可以塞进 4 位的值。
 
-Quantization replaces high-precision numbers with lower-precision ones. FP16 to FP8 cuts memory in half. FP16 to INT4 cuts it to a quarter. That 140GB model becomes 35GB. It fits on a single consumer GPU. Push to 2-bit quantization (aggressive, lossy, but usable for some tasks) and the same model runs on a 16GB laptop.
+量化用低精度数字替换高精度数字。FP16 到 FP8 把显存砍一半。FP16 到 INT4 砍到四分之一。那个 140GB 的模型变成 35GB。它能塞进单张消费级 GPU。推到 2 位量化（激进、有损，但对某些任务可用），同一个模型就跑在一台 16GB 笔记本上。
 
-The cost is accuracy. Every bit you remove destroys information. The question is how much accuracy you lose and where. A well-quantized INT4 model retains 95-99% of the original's quality on most benchmarks. A naive quantization to INT4 can destroy the model entirely. The difference is technique.
+代价是精度。你每去掉一位都摧毁信息。问题是你损失多少精度、损失在哪。一个量化得当的 INT4 模型在大多数基准上保留原模型 95-99% 的质量。一个朴素量化到 INT4 的模型能把整个模型毁掉。差别在于技术。
 
-Community quantizations of Llama 3 to INT4 with GPTQ show roughly 1-2 perplexity points lost on WikiText. Mistral released FP8 checkpoints of Mixtral 8x22B with zero measurable quality loss on MMLU. The GGUF format powers llama.cpp, running 70B models on MacBooks with M-series chips. Quantization is not a hack. It is the standard deployment path for every model larger than 7B.
+社区用 GPTQ 把 Llama 3 量化到 INT4 的结果显示，在 WikiText 上大约损失 1-2 个困惑度点。Mistral 发布了 Mixtral 8x22B 的 FP8 checkpoint，在 MMLU 上没有可测量的质量损失。GGUF 格式驱动 llama.cpp，在 M 系列芯片的 MacBook 上跑 70B 模型。量化不是个 hack。它是每个大于 7B 的模型的标准部署路径。
 
-## The Concept
+## 核心概念
 
-### Number Formats: What Each Bit Does
+### 数字格式：每一位干什么
 
-Every floating-point number has three parts: sign, exponent, and mantissa (also called significand). The sign is one bit. The exponent determines the range (how large or small the number can be). The mantissa determines the precision (how many decimal places you get).
+每个浮点数有三部分：符号、指数和尾数（也叫有效数字）。符号是一位。指数决定范围（数能多大或多小）。尾数决定精度（你能得到多少位小数）。
 
 ```
 FP32:  [1 sign] [8 exponent] [23 mantissa]  = 32 bits
@@ -42,17 +42,17 @@ INT8:  [1 sign] [7 value]                   = 8  bits (uniform steps)
 INT4:  [1 sign] [3 value]                   = 4  bits (16 levels total)
 ```
 
-**FP32** is full precision. 23 mantissa bits give you about 7 decimal digits of precision. Range: roughly 1.2 x 10^-38 to 3.4 x 10^38. Training used to happen exclusively in FP32. It still does for accumulation (running sums during matrix multiplication).
+**FP32** 是全精度。23 个尾数位给你大约 7 位十进制精度。范围：大约 1.2 x 10^-38 到 3.4 x 10^38。训练曾经只在 FP32 里进行。对累加（矩阵乘法时的滑动求和）它仍然如此。
 
-**FP16** halves the bits. 10 mantissa bits give about 3.3 decimal digits. The exponent shrinks to 5 bits, reducing the range dramatically (max value ~65,504). This is fine for weights (which cluster near zero) but dangerous for activations and gradients that can spike during training. FP16 training requires loss scaling to prevent underflow.
+**FP16** 把位数减半。10 个尾数位给约 3.3 位十进制。指数缩到 5 位，大幅减小范围（最大值 ~65,504）。这对权重（聚在零附近）没问题，但对训练时可能飙升的激活和梯度很危险。FP16 训练需要损失缩放来防止下溢。
 
-**BF16** (Brain Float 16) keeps the 8-bit exponent from FP32 but shrinks the mantissa to 7 bits. Same range as FP32, less precision than FP16. Google designed it specifically for deep learning. The intuition: range matters more than precision for neural networks. A gradient of 10^-20 that underflows to zero in FP16 survives in BF16. A weight of 0.07342 that rounds to 0.0734 in BF16 is close enough. Every modern training run uses BF16 or a BF16/FP32 mix.
+**BF16**（Brain Float 16）保留 FP32 的 8 位指数，但把尾数缩到 7 位。和 FP32 相同的范围，比 FP16 更低的精度。Google 专门为深度学习设计了它。直觉是：对神经网络而言，范围比精度更重要。一个 10^-20 的梯度在 FP16 里下溢到零，在 BF16 里能存活。一个 0.07342 的权重在 BF16 里舍入到 0.0734，足够接近。每次现代训练都用 BF16 或 BF16/FP32 混合。
 
-**FP8** comes in two flavors. E4M3 (4 exponent, 3 mantissa) is used for weights and activations during inference. E5M2 (5 exponent, 2 mantissa) is used for gradients during training where range matters more than precision. FP8 inference on H100 GPUs achieves 30-50% speedup over FP16 with negligible quality loss.
+**FP8** 有两种口味。E4M3（4 指数，3 尾数）用于推理时的权重和激活。E5M2（5 指数，2 尾数）用于训练时的梯度，那里范围比精度更重要。在 H100 GPU 上的 FP8 推理相比 FP16 实现 30-50% 加速，质量损失可忽略。
 
-**INT8** is an integer format. No exponent, no mantissa. Just 256 evenly spaced values from -128 to 127. You need a scale factor to map floating-point weights into this range. The advantage: integer arithmetic is faster and more power-efficient than floating-point. INT8 matrix multiplication on an A100 runs at 624 TOPS versus 312 TFLOPS for FP16.
+**INT8** 是整数格式。没有指数，没有尾数。就是从 -128 到 127 的 256 个均匀间隔的值。你需要一个缩放因子把浮点权重映射进这个范围。优点：整数运算比浮点运算更快、更省电。INT8 矩阵乘法在 A100 上跑 624 TOPS，对比 FP16 的 312 TFLOPS。
 
-**INT4** pushes further. Only 16 possible values. The scale factor does heavy lifting. Quality depends entirely on how you choose the scale and which weights you quantize. State-of-the-art INT4 methods (GPTQ, AWQ) retain 95%+ of original model quality.
+**INT4** 推得更远。只有 16 个可能的值。缩放因子挑大梁。质量完全取决于你怎么选缩放、量化哪些权重。最先进的 INT4 方法（GPTQ、AWQ）保留 95%+ 的原模型质量。
 
 ```mermaid
 graph LR
@@ -80,44 +80,44 @@ graph LR
     style INT4 fill:#1a1a2e,stroke:#e94560,color:#fff
 ```
 
-### How Quantization Works
+### 量化怎么工作
 
-The core operation is simple. Take a tensor of floating-point values, find a scale factor, multiply, round to the nearest integer, and store the integers plus the scale factor.
+核心操作很简单。拿一个浮点值的张量，找一个缩放因子，相乘，舍入到最近的整数，然后存整数加缩放因子。
 
-**Quantize:**
+**量化：**
 ```
 scale = max(abs(tensor)) / max_int_value
 quantized = round(tensor / scale)
 ```
 
-**Dequantize:**
+**反量化：**
 ```
 reconstructed = quantized * scale
 ```
 
-For INT8 with a symmetric range (-127 to 127):
+对对称范围（-127 到 127）的 INT8：
 ```
 scale = max(abs(tensor)) / 127
 quantized = clamp(round(tensor / scale), -128, 127)
 ```
 
-The error is the rounding error. Each value can be off by at most `scale / 2`. The total error across a layer depends on how many weights you have and how sensitive the model is to perturbations in those weights.
+误差是舍入误差。每个值最多偏 `scale / 2`。一层的总误差取决于你有多少权重，以及模型对那些权重扰动有多敏感。
 
-**Per-tensor vs per-channel quantization.** Per-tensor uses one scale factor for the entire weight matrix. Simple but lossy: if one column has large values and another has small values, the small values lose most of their precision. Per-channel uses one scale factor per output channel (per row or column of the weight matrix). More overhead (you store N scale factors instead of 1) but dramatically better quality. Every production quantization method uses per-channel or finer granularity.
+**Per-tensor vs per-channel 量化。** Per-tensor 对整个权重矩阵用一个缩放因子。简单但有损：如果一列有大值、另一列有小值，小值就丢了大部分精度。Per-channel 每个输出通道（权重矩阵的每行或每列）用一个缩放因子。开销更大（你存 N 个缩放因子而不是 1 个），但质量好得多。每个生产量化方法都用 per-channel 或更细的粒度。
 
-**Asymmetric quantization** adds a zero-point offset: `quantized = round(tensor / scale) + zero_point`. This handles distributions that are not centered at zero. ReLU activations, for example, are always non-negative. Symmetric quantization wastes half the integer range on negative values that never appear. Asymmetric quantization maps the actual range [min, max] to the full integer range.
+**非对称量化**加一个零点偏移：`quantized = round(tensor / scale) + zero_point`。这处理不以零为中心的分布。比如 ReLU 激活总是非负的。对称量化把整数范围的一半浪费在永远不出现的负值上。非对称量化把实际范围 [min, max] 映射到完整的整数范围。
 
-### Sensitivity Hierarchy
+### 敏感度层级
 
-Not everything in a model tolerates quantization equally. There is a clear hierarchy.
+模型里不是每样东西都同等耐受量化。有一个清晰的层级。
 
-**Weights (most robust).** Model weights change slowly during training and follow a roughly Gaussian distribution centered near zero. They quantize well. INT8 weights with per-channel scales produce nearly lossless results. INT4 requires more sophisticated methods but works.
+**权重（最鲁棒）。** 模型权重在训练时变化缓慢，遵循一个大致以零为中心的高斯分布。它们量化得好。带 per-channel 缩放的 INT8 权重产出几乎无损的结果。INT4 需要更精巧的方法，但能用。
 
-**Activations (moderate sensitivity).** Activations are the intermediate values flowing through the network during inference. They have wider dynamic range than weights and contain outliers. A single attention head might produce activation values 100x larger than the mean. These outliers are critical for model quality. Quantizing them naively destroys information. Solutions: keep outlier channels in higher precision (LLM.int8()), use per-token or per-channel activation scales.
+**激活（中等敏感）。** 激活是推理时流过网络的中间值。它们的动态范围比权重宽，并且含离群值。单个注意力头可能产出比均值大 100 倍的激活值。这些离群值对模型质量至关重要。朴素地量化它们会摧毁信息。解决办法：把离群通道保留在更高精度（LLM.int8()）、用 per-token 或 per-channel 激活缩放。
 
-**KV cache (high sensitivity).** The key-value cache stores attention states for all previous tokens. At long context lengths, the KV cache dominates memory. For a 70B model at 32K context, the KV cache alone is 40GB in FP16. Quantizing the KV cache to FP8 or INT8 saves massive memory but any error compounds across all future attention computations. The quality impact scales with sequence length.
+**KV cache（高敏感）。** 键值缓存为之前所有 token 存注意力状态。在长 context 长度下，KV cache 主导显存。对一个 32K context 的 70B 模型，光 KV cache 在 FP16 下就是 40GB。把 KV cache 量化到 FP8 或 INT8 省下巨量显存，但任何误差都会在所有未来的注意力计算里累积。质量影响随序列长度放大。
 
-**Attention logits (most sensitive).** The softmax in attention is highly sensitive to small changes in its inputs. A quantization error of 0.01 in a pre-softmax logit can shift the attention distribution meaningfully. Most quantization schemes keep attention computation in higher precision (FP16 or BF16) even when everything else is quantized.
+**注意力 logits（最敏感）。** 注意力里的 softmax 对它输入的小变化高度敏感。pre-softmax logit 上 0.01 的量化误差就能显著移动注意力分布。大多数量化方案即使其他一切都量化了，也把注意力计算保留在更高精度（FP16 或 BF16）。
 
 ```mermaid
 graph TD
@@ -141,26 +141,26 @@ graph TD
 
 ### PTQ vs QAT
 
-**Post-Training Quantization (PTQ)** quantizes an already-trained model. No retraining. You take the FP16 weights, compute scale factors, round, and deploy. Fast (minutes to hours) and cheap. Works well for INT8 and FP8. For INT4, naive PTQ often fails badly because rounding errors accumulate. Advanced PTQ methods (GPTQ, AWQ) use calibration data to minimize the quantization error.
+**训练后量化（PTQ）**量化一个已训练好的模型。不重训。你拿 FP16 权重，计算缩放因子，舍入，部署。快（几分钟到几小时）且便宜。对 INT8 和 FP8 效果好。对 INT4，朴素 PTQ 常常败得很惨，因为舍入误差累积。高级 PTQ 方法（GPTQ、AWQ）用校准数据来最小化量化误差。
 
-**Quantization-Aware Training (QAT)** inserts fake quantization operations into the forward pass during training. The model learns to place its weights where rounding errors are small. Gradients flow through the fake quantization using the straight-through estimator (STE): pretend the rounding operation has gradient 1. QAT produces better INT4 and INT2 models than PTQ but requires a full training run. Google used QAT for Gemini's efficient serving. Meta used QAT for some Llama deployment targets.
+**量化感知训练（QAT）**在训练时的前向传播里插入伪量化操作。模型学会把权重放在舍入误差小的地方。梯度用直通估计器（STE）流过伪量化：假装舍入操作的梯度是 1。QAT 产出比 PTQ 更好的 INT4 和 INT2 模型，但需要一次完整训练。Google 用 QAT 做 Gemini 的高效服务。Meta 为某些 Llama 部署目标用了 QAT。
 
-| Aspect | PTQ | QAT |
+| 方面 | PTQ | QAT |
 |--------|-----|-----|
-| Cost | Minutes to hours | Full training run |
-| Quality at INT8 | Excellent (< 0.1% loss) | Excellent |
-| Quality at INT4 | Good with GPTQ/AWQ (1-3% loss) | Better (< 1% loss) |
-| Quality at INT2 | Poor | Usable for some tasks |
-| Calibration data | 128-1024 examples | Full training dataset |
-| When to use | Deployment, iteration | Maximum quality at low bit-width |
+| 成本 | 几分钟到几小时 | 一次完整训练 |
+| INT8 下的质量 | 优秀（< 0.1% 损失） | 优秀 |
+| INT4 下的质量 | 用 GPTQ/AWQ 良好（1-3% 损失） | 更好（< 1% 损失） |
+| INT2 下的质量 | 差 | 对某些任务可用 |
+| 校准数据 | 128-1024 个例子 | 完整训练数据集 |
+| 何时用 | 部署、迭代 | 在低位宽下追求最高质量 |
 
-### GPTQ, AWQ, GGUF
+### GPTQ、AWQ、GGUF
 
-**GPTQ (GPT Quantization)** is a one-shot PTQ method. It quantizes weights one layer at a time, using a small calibration dataset (128 examples is typical) to measure the Hessian (second-order information about how sensitive the output is to each weight). Weights that the Hessian says are important get quantized more carefully. GPTQ was the first method to make INT4 quantization practical for LLMs. The TheBloke on Hugging Face popularized GPTQ by releasing quantized versions of hundreds of models.
+**GPTQ（GPT Quantization）**是一种一次性 PTQ 方法。它一次量化一层权重，用一个小校准数据集（典型 128 个例子）来测量 Hessian（关于输出对每个权重有多敏感的二阶信息）。Hessian 说重要的权重得到更仔细的量化。GPTQ 是第一个让 INT4 量化对 LLM 实用的方法。Hugging Face 上的 TheBloke 通过发布数百个模型的量化版本让 GPTQ 流行起来。
 
-**AWQ (Activation-Aware Weight Quantization)** observes that a small fraction of weights (about 1%) are disproportionately important because they multiply with large activation values. AWQ identifies these salient weights using calibration data and scales them up before quantization (then scales the corresponding activations down). This keeps the important weights in a range where INT4 quantization is accurate. AWQ typically matches or slightly beats GPTQ quality while being 1.5-2x faster to apply.
+**AWQ（Activation-Aware Weight Quantization）**观察到一小部分权重（约 1%）因为和大激活值相乘而格外重要。AWQ 用校准数据识别这些显著权重，在量化前把它们放大（然后把对应的激活缩小）。这让重要权重处于一个 INT4 量化准确的范围。AWQ 通常匹配或略胜 GPTQ 质量，同时应用起来快 1.5-2 倍。
 
-**GGUF (GPT-Generated Unified Format)** is the file format used by llama.cpp and its ecosystem. It supports mixed quantization: different layers get different bit widths. The first and last layers (embedding and output head) are typically kept at higher precision. Middle layers get INT4 or INT3. GGUF files are self-contained: weights, tokenizer, metadata all in one file. The format is designed for CPU inference and Apple Silicon, where loading the entire model into memory and running matrix multiplications on the CPU or Metal GPU is the standard path. Q4_K_M is the most popular GGUF quantization variant, balancing quality and size.
+**GGUF（GPT-Generated Unified Format）**是 llama.cpp 及其生态用的文件格式。它支持混合量化：不同层用不同位宽。第一层和最后一层（embedding 和输出头）通常保留在更高精度。中间层用 INT4 或 INT3。GGUF 文件是自包含的：权重、tokenizer、元数据全在一个文件里。这个格式为 CPU 推理和 Apple Silicon 设计，把整个模型加载进内存、在 CPU 或 Metal GPU 上跑矩阵乘法是标准路径。Q4_K_M 是最流行的 GGUF 量化变体，平衡质量和大小。
 
 ```mermaid
 graph TD
@@ -185,45 +185,45 @@ graph TD
     style GGUF_ fill:#1a1a2e,stroke:#0f3460,color:#fff
 ```
 
-### Quality Measurement
+### 质量度量
 
-How do you know if your quantized model is still good?
+你怎么知道你量化后的模型还好不好？
 
-**Perplexity.** The most common metric. Lower is better. Compute perplexity on a held-out dataset (WikiText-2 is standard) for both the original and quantized model. The delta tells you how much information the quantization destroyed. Rules of thumb: delta < 0.5 is excellent, 0.5-1.0 is good, 1.0-2.0 is acceptable for most tasks, > 2.0 means something went wrong.
+**困惑度。** 最常见的指标。越低越好。在一个留出数据集上（WikiText-2 是标准）为原模型和量化模型都计算困惑度。差值告诉你量化摧毁了多少信息。经验法则：delta < 0.5 优秀，0.5-1.0 良好，1.0-2.0 对大多数任务可接受，> 2.0 意味着出问题了。
 
-**Task-specific benchmarks.** Run the quantized model on MMLU, HumanEval, GSM8K, or your custom eval suite. Compare against the original. Quantization affects different capabilities unevenly. Math and code tasks are more sensitive to precision loss than general knowledge.
+**任务特定基准。** 在 MMLU、HumanEval、GSM8K 或你自定义的 eval 套件上跑量化模型。和原模型对比。量化对不同能力影响不均。数学和代码任务对精度损失比通用知识更敏感。
 
-**Output comparison.** Generate responses from both models on the same prompts and compare. LLM-as-judge (Lesson 10) works well here. Compute a win rate: what fraction of prompts does the quantized model match or beat the original on?
+**输出对比。** 用两个模型在相同 prompt 上生成回复并对比。LLM-as-judge（第 10 课）在这里效果好。计算一个胜率：量化模型在多大比例的 prompt 上匹配或超过原模型？
 
-**Latency and throughput.** Quantization exists to make models faster and cheaper. Measure tokens per second, time to first token, and memory usage. A quantized model that is slower than the original is worse than useless.
+**延迟和吞吐。** 量化的存在就是为了让模型更快更便宜。测量每秒 token 数、首 token 时间和显存用量。一个比原模型还慢的量化模型，比没用还糟。
 
-| Model | Format | Size | Perplexity (WikiText-2) | MMLU | Tokens/sec (A100) |
+| 模型 | 格式 | 大小 | 困惑度（WikiText-2） | MMLU | Tokens/sec（A100） |
 |-------|--------|------|------------------------|------|-------------------|
 | Llama 3 70B | FP16 | 140GB | 3.12 | 79.5% | 38 |
 | Llama 3 70B | FP8 | 70GB | 3.14 | 79.3% | 55 |
 | Llama 3 70B | GPTQ INT4 | 35GB | 4.32 | 77.8% | 72 |
 | Llama 3 70B | AWQ INT4 | 35GB | 4.18 | 78.1% | 75 |
-| Llama 3 70B | GGUF Q4_K_M | 40GB | 4.25 | 77.9% | 28 (CPU) |
+| Llama 3 70B | GGUF Q4_K_M | 40GB | 4.25 | 77.9% | 28（CPU） |
 
-The pattern: FP8 is nearly free. INT4 costs 1-2 MMLU points but doubles throughput and quarters memory. The tradeoff is worth it for almost every deployment.
+模式是：FP8 几乎免费。INT4 花 1-2 个 MMLU 点，但吞吐翻倍、显存减到四分之一。对几乎每个部署，这笔权衡都值。
 
-### Real Numbers
+### 真实数字
 
-FP16 to FP8 on H100: 30-50% inference speedup, < 0.1% quality loss. This is the no-brainer quantization. Every H100 deployment should use it.
+H100 上 FP16 到 FP8：推理加速 30-50%，质量损失 < 0.1%。这是想都不用想的量化。每个 H100 部署都该用它。
 
-FP16 to INT8 (LLM.int8()): 2x memory reduction, < 0.5% quality loss. The mixed-precision approach keeps outlier features in FP16 while quantizing everything else to INT8.
+FP16 到 INT8（LLM.int8()）：显存减半，质量损失 < 0.5%。这种混合精度方法把离群特征保留在 FP16，其他一切量化到 INT8。
 
-FP16 to INT4 (GPTQ/AWQ): 4x memory reduction, 1-3% quality loss depending on the model and method. Enables 70B models on a single 48GB GPU.
+FP16 到 INT4（GPTQ/AWQ）：显存减到四分之一，质量损失 1-3%，视模型和方法而定。让 70B 模型能跑在单张 48GB GPU 上。
 
-FP16 to INT4 (GGUF Q4_K_M): 3.5x memory reduction, 1-2% quality loss. Optimized for CPU inference. A 70B model at Q4_K_M is about 40GB and runs at 10-15 tokens/second on an M3 Max with 64GB.
+FP16 到 INT4（GGUF Q4_K_M）：显存减到 1/3.5，质量损失 1-2%。为 CPU 推理优化。Q4_K_M 下的 70B 模型约 40GB，在 64GB 的 M3 Max 上跑 10-15 token/秒。
 
-FP16 to INT2: 8x memory reduction, 5-15% quality loss. Only viable for specific narrow tasks where you can tolerate degradation. Research frontier, not production-ready for general use.
+FP16 到 INT2：显存减到 1/8，质量损失 5-15%。只对你能容忍退化的特定窄任务可行。研究前沿，对通用用途还没到生产就绪。
 
-## Build It
+## 动手构建
 
-### Step 1: Number Format Representations
+### 第 1 步：数字格式表示
 
-Build the bit-level representation of each format to see exactly what sign, exponent, and mantissa do.
+构建每种格式的位级表示，看清符号、指数和尾数到底干什么。
 
 ```python
 import numpy as np
@@ -307,9 +307,9 @@ def display_format_comparison(value):
     print(f"  {'FP8e4m3':<8} {fp8['value']:>14.6f} {abs(fp8['value'] - value):>12.8f} {fp8['sign']:>5} {fp8['exponent_bits']:>10} {fp8['mantissa_bits']:>25}")
 ```
 
-### Step 2: Symmetric Quantization (Per-Tensor and Per-Channel)
+### 第 2 步：对称量化（Per-Tensor 和 Per-Channel）
 
-The fundamental quantization operations. Per-tensor uses one scale for the whole matrix. Per-channel uses one scale per row or column.
+基本的量化操作。Per-tensor 对整个矩阵用一个缩放。Per-channel 每行或每列用一个缩放。
 
 ```python
 def quantize_symmetric(tensor, num_bits=8):
@@ -367,9 +367,9 @@ def dequantize_asymmetric(quantized, scale, zero_point):
     return (quantized.astype(np.float64) - zero_point) * scale
 ```
 
-### Step 3: Quality Measurement
+### 第 3 步：质量度量
 
-Measure how much information quantization destroys. Mean squared error, signal-to-noise ratio, and cosine similarity between original and reconstructed tensors.
+测量量化摧毁了多少信息。原张量和重建张量之间的均方误差、信噪比和余弦相似度。
 
 ```python
 def quantization_error(original, reconstructed):
@@ -416,9 +416,9 @@ def compare_quantization_methods(tensor, num_bits=8):
     return {"per_tensor": err_pt, "per_channel": err_pc, "asymmetric": err_asym}
 ```
 
-### Step 4: Bit-Width Sweep
+### 第 4 步：位宽扫描
 
-Quantize the same tensor at different bit widths (2, 3, 4, 8, 16) and measure quality at each level. This shows exactly where the quality cliff is.
+在不同位宽（2、3、4、8、16）下量化同一个张量，测量每个级别的质量。这准确显示出质量悬崖在哪。
 
 ```python
 def bit_width_sweep(tensor):
@@ -440,9 +440,9 @@ def bit_width_sweep(tensor):
     return results
 ```
 
-### Step 5: Sensitivity Experiment
+### 第 5 步：敏感度实验
 
-Simulate quantizing different parts of a transformer and measure which components are most sensitive. This demonstrates the sensitivity hierarchy: weights < activations < KV cache < attention.
+模拟量化 transformer 的不同部分，测量哪些组件最敏感。这演示敏感度层级：权重 < 激活 < KV cache < 注意力。
 
 ```python
 def simulate_transformer_layer(input_data, weights, kv_scale=1.0):
@@ -520,9 +520,9 @@ def sensitivity_experiment(batch_size=2, seq_len=16, d_model=64, num_bits=8):
     return experiments
 ```
 
-### Step 6: Simulated GPTQ
+### 第 6 步：模拟 GPTQ
 
-GPTQ quantizes one column at a time, using the Hessian to decide how to distribute the rounding error. This is a simplified version that captures the core idea: use calibration data to measure weight importance, then quantize the least important weights more aggressively.
+GPTQ 一次量化一列，用 Hessian 决定如何分摊舍入误差。这是个简化版本，抓住了核心思想：用校准数据测量权重重要性，然后更激进地量化最不重要的权重。
 
 ```python
 def simulated_gptq(weight_matrix, calibration_inputs, num_bits=4):
@@ -580,9 +580,9 @@ def dequantize_gptq(quantized, scales):
     return result
 ```
 
-### Step 7: AWQ Simulation
+### 第 7 步：AWQ 模拟
 
-AWQ identifies salient weights (those that multiply with large activations) and protects them by scaling before quantization.
+AWQ 识别显著权重（那些和大激活相乘的），在量化前通过缩放保护它们。
 
 ```python
 def simulated_awq(weight_matrix, calibration_inputs, num_bits=4, salient_fraction=0.01):
@@ -622,9 +622,9 @@ def simulated_awq(weight_matrix, calibration_inputs, num_bits=4, salient_fractio
                     "n_salient": n_salient}
 ```
 
-### Step 8: Full Pipeline
+### 第 8 步：完整流水线
 
-Wire everything together. Compare naive quantization, per-channel, GPTQ, and AWQ on the same weight matrix.
+把所有东西接起来。在同一个权重矩阵上对比朴素量化、per-channel、GPTQ 和 AWQ。
 
 ```python
 def full_quantization_comparison(d_in=256, d_out=512, num_bits=4, n_calibration=32):
@@ -767,9 +767,9 @@ if __name__ == "__main__":
     print("=" * 70)
 ```
 
-## Use It
+## 上手使用
 
-### Quantizing with AutoGPTQ
+### 用 AutoGPTQ 量化
 
 ```python
 # pip install auto-gptq transformers
@@ -791,7 +791,7 @@ if __name__ == "__main__":
 # model.save_quantized("llama-8b-gptq-int4")
 ```
 
-### Quantizing with AutoAWQ
+### 用 AutoAWQ 量化
 
 ```python
 # pip install autoawq
@@ -806,7 +806,7 @@ if __name__ == "__main__":
 # model.save_quantized("llama-8b-awq-int4")
 ```
 
-### Converting to GGUF
+### 转换成 GGUF
 
 ```bash
 # pip install llama-cpp-python
@@ -814,54 +814,54 @@ if __name__ == "__main__":
 # llama-server -m llama-8b-q4km.gguf -c 4096 -ngl 99
 ```
 
-### Serving with vLLM
+### 用 vLLM 服务
 
 ```python
 # pip install vllm
 # vllm serve model-awq --quantization awq --dtype half --max-model-len 8192
 ```
 
-vLLM natively supports AWQ and GPTQ models. It handles the dequantization during matrix multiplication and uses paged attention for the KV cache. For FP8 on H100, add `--dtype float8_e4m3fn`.
+vLLM 原生支持 AWQ 和 GPTQ 模型。它在矩阵乘法时处理反量化，并对 KV cache 用分页注意力。H100 上的 FP8，加 `--dtype float8_e4m3fn`。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-quantization.md`, a decision framework for choosing the right quantization strategy. Given your model size, target hardware, and quality requirements, it tells you which format, method, and validation steps to use. It includes memory budget calculations, per-component precision recommendations, and deployment recipes for vLLM, llama.cpp, and TensorRT-LLM.
+本节课产出 `outputs/skill-quantization.md`，一个选择正确量化策略的决策框架。给定你的模型规模、目标硬件和质量要求，它告诉你用哪种格式、方法和验证步骤。它包含显存预算计算、per-component 精度建议，以及 vLLM、llama.cpp 和 TensorRT-LLM 的部署配方。
 
-## Exercises
+## 练习
 
-1. Implement group quantization. Instead of one scale per channel, use one scale per group of 128 weights within a channel. This is what GPTQ and AWQ actually use. Compare group sizes of 32, 64, 128, and 256 on the same weight matrix. Smaller groups give better quality but more storage overhead for scale factors.
+1. 实现分组量化。不用每通道一个缩放，而是在一个通道内每 128 个权重用一个缩放。这是 GPTQ 和 AWQ 实际用的。在同一个权重矩阵上对比组大小 32、64、128、256。更小的组质量更好，但缩放因子的存储开销更大。
 
-2. Build a mixed-precision quantizer. Quantize the first and last layers of a multi-layer network at INT8 while quantizing middle layers at INT4. Compare end-to-end output quality against uniform INT4 and uniform INT8. Measure the memory savings compared to all-INT8.
+2. 做一个混合精度量化器。把多层网络的第一层和最后一层量化到 INT8，中间层量化到 INT4。把端到端输出质量和统一 INT4、统一 INT8 对比。测量相比全 INT8 的显存节省。
 
-3. Implement the straight-through estimator (STE) for quantization-aware training. Insert fake quantize/dequantize operations in the forward pass of a simple two-layer network trained on a regression task. Compare final loss between a model trained normally (then PTQ to INT4) versus a model trained with QAT from the start.
+3. 为量化感知训练实现直通估计器（STE）。在一个用回归任务训练的简单两层网络的前向传播里插入伪量化/反量化操作。对比一个正常训练（然后 PTQ 到 INT4）的模型 vs 一个从一开始就用 QAT 训练的模型的最终损失。
 
-4. Build an outlier-aware quantizer inspired by LLM.int8(). Detect channels where the activation magnitude exceeds 6x the mean. Keep those channels in FP16 and quantize everything else to INT8. Measure end-to-end quality on the transformer layer from Step 5 with varying outlier thresholds (3x, 6x, 10x).
+4. 做一个受 LLM.int8() 启发的离群感知量化器。检测激活幅度超过均值 6 倍的通道。把那些通道保留在 FP16，其他一切量化到 INT8。在第 5 步的 transformer 层上，用不同的离群阈值（3 倍、6 倍、10 倍）测量端到端质量。
 
-5. Implement a quantization quality dashboard. Given a weight matrix, compute and display: the weight distribution histogram, the quantization error distribution, per-channel scale factors, the worst-quantized channels (highest reconstruction error), and the cosine similarity between original and quantized outputs across 100 random inputs. Identify which channels should be kept at higher precision.
+5. 实现一个量化质量仪表盘。给定一个权重矩阵，计算并显示：权重分布直方图、量化误差分布、per-channel 缩放因子、量化最差的通道（重建误差最高的），以及跨 100 个随机输入的原始和量化输出之间的余弦相似度。找出哪些通道应该保留在更高精度。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 人们怎么说 | 它实际是什么 |
 |------|----------------|----------------------|
-| FP16 | "Half precision" | 16-bit float with 5 exponent bits and 10 mantissa bits, max value 65,504, standard inference format |
-| BF16 | "Brain float" | 16-bit float with 8 exponent bits (same range as FP32) and 7 mantissa bits, designed by Google for training |
-| FP8 | "Eight-bit float" | Two variants: E4M3 (inference, more precision) and E5M2 (training, more range), native on H100 |
-| INT8 | "Eight-bit integer" | 256 uniformly spaced values from -128 to 127, needs a scale factor to map from floats |
-| INT4 | "Four-bit integer" | 16 levels total, requires sophisticated methods (GPTQ, AWQ) to maintain quality |
-| Per-channel quantization | "One scale per row" | Uses a separate scale factor for each output channel instead of one for the whole tensor, dramatically reduces error |
-| GPTQ | "The Hessian method" | Post-training quantization using second-order information to minimize output error, one layer at a time |
-| AWQ | "Activation-aware" | Scales salient weights (those multiplied by large activations) before quantization to protect them |
-| GGUF | "The llama.cpp format" | Self-contained model file with mixed-precision layers, optimized for CPU and Apple Silicon inference |
-| PTQ | "Quantize after training" | Convert a trained model's weights to lower precision without retraining, fast but limited at extreme compression |
-| QAT | "Quantize during training" | Insert fake quantization into the forward pass so the model learns to tolerate rounding, better at INT4/INT2 |
-| Calibration data | "The 128 examples" | A small dataset run through the model to compute activation statistics for setting scale factors |
-| Scale factor | "The multiplier" | Converts between floating-point range and integer range: `float_val = int_val * scale` |
-| Perplexity delta | "How much worse" | Difference in perplexity between original and quantized model, < 0.5 is excellent, > 2.0 is a problem |
+| FP16 | "半精度" | 16 位浮点，5 个指数位、10 个尾数位，最大值 65,504，标准推理格式 |
+| BF16 | "Brain float" | 16 位浮点，8 个指数位（和 FP32 相同范围）、7 个尾数位，由 Google 为训练设计 |
+| FP8 | "八位浮点" | 两个变体：E4M3（推理，精度更高）和 E5M2（训练，范围更大），H100 原生 |
+| INT8 | "八位整数" | 从 -128 到 127 的 256 个均匀间隔值，需要一个缩放因子从浮点映射 |
+| INT4 | "四位整数" | 总共 16 个级别，需要精巧方法（GPTQ、AWQ）来维持质量 |
+| Per-channel 量化 | "每行一个缩放" | 每个输出通道用一个单独的缩放因子，而不是整个张量一个，大幅减小误差 |
+| GPTQ | "Hessian 方法" | 用二阶信息最小化输出误差的训练后量化，一次一层 |
+| AWQ | "激活感知" | 在量化前缩放显著权重（那些和大激活相乘的）来保护它们 |
+| GGUF | "llama.cpp 格式" | 带混合精度层的自包含模型文件，为 CPU 和 Apple Silicon 推理优化 |
+| PTQ | "训练后量化" | 不重训就把已训练模型的权重转成低精度，快但在极端压缩下受限 |
+| QAT | "训练时量化" | 在前向传播里插入伪量化让模型学会容忍舍入，在 INT4/INT2 下更好 |
+| 校准数据 | "那 128 个例子" | 一个小数据集，过一遍模型来计算激活统计以设置缩放因子 |
+| 缩放因子 | "那个乘数" | 在浮点范围和整数范围之间转换：`float_val = int_val * scale` |
+| 困惑度 delta | "差了多少" | 原模型和量化模型困惑度之差，< 0.5 优秀，> 2.0 是问题 |
 
-## Further Reading
+## 延伸阅读
 
-- [Frantar et al., 2022 -- "GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers"](https://arxiv.org/abs/2210.17323) -- the paper that made INT4 quantization practical for LLMs using Hessian-guided weight rounding
-- [Lin et al., 2023 -- "AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration"](https://arxiv.org/abs/2306.00978) -- protecting salient weights by scaling before quantization, matching or beating GPTQ
-- [Dettmers et al., 2022 -- "LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale"](https://arxiv.org/abs/2208.07339) -- mixed-precision INT8 that keeps outlier features in FP16, enabling INT8 inference without quality loss
-- [Xiao et al., 2023 -- "SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models"](https://arxiv.org/abs/2211.10438) -- migrating quantization difficulty from activations to weights for W8A8 deployment
-- [Micikevicius et al., 2022 -- "FP8 Formats for Deep Learning"](https://arxiv.org/abs/2209.05433) -- the NVIDIA/ARM/Intel paper defining E4M3 and E5M2 formats now native on H100
+- [Frantar et al., 2022 -- "GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers"](https://arxiv.org/abs/2210.17323) -- 用 Hessian 引导的权重舍入让 INT4 量化对 LLM 实用的论文
+- [Lin et al., 2023 -- "AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration"](https://arxiv.org/abs/2306.00978) -- 通过量化前缩放保护显著权重，匹配或胜过 GPTQ
+- [Dettmers et al., 2022 -- "LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale"](https://arxiv.org/abs/2208.07339) -- 把离群特征保留在 FP16 的混合精度 INT8，让 INT8 推理无质量损失
+- [Xiao et al., 2023 -- "SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models"](https://arxiv.org/abs/2211.10438) -- 把量化难度从激活迁移到权重，用于 W8A8 部署
+- [Micikevicius et al., 2022 -- "FP8 Formats for Deep Learning"](https://arxiv.org/abs/2209.05433) -- NVIDIA/ARM/Intel 定义 E4M3 和 E5M2 格式的论文，现已在 H100 原生

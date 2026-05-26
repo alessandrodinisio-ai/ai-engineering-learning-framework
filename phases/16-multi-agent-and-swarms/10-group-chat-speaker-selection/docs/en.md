@@ -1,21 +1,21 @@
-# Group Chat and Speaker Selection
+# 群聊与发言者选择
 
-> AutoGen GroupChat and AG2 GroupChat share one conversation across N agents; a selector function (LLM, round-robin, or custom) picks who speaks next. This is the archetype of emergent multi-agent conversation — agents do not know their role in a static graph, they just react to the shared pool. AutoGen v0.2's GroupChat semantics were preserved in the AG2 fork; AutoGen v0.4 rewrote it as an event-driven actor model. Microsoft put AutoGen into maintenance mode in February 2026 and merged it with Semantic Kernel into Microsoft Agent Framework (RC February 2026). The GroupChat primitive survives in both AG2 and Microsoft Agent Framework — learn it once, use it everywhere.
+> AutoGen GroupChat 和 AG2 GroupChat 让 N 个 agent 共享一段对话；一个选择器函数（LLM、轮询、或自定义）挑出接下来谁发言。这是涌现式多 agent 对话的原型——agent 不知道自己在某张静态图里的角色，它们只是对共享池子做出反应。AutoGen v0.2 的 GroupChat 语义被保留在 AG2 分叉里；AutoGen v0.4 把它重写成了事件驱动的 actor 模型。微软在 2026 年 2 月把 AutoGen 转入维护模式，并把它与 Semantic Kernel 合并进 Microsoft Agent Framework（RC 2026 年 2 月）。GroupChat 这个原语在 AG2 和 Microsoft Agent Framework 里都活了下来——学一次，到处用。
 
-**Type:** Learn + Build
-**Languages:** Python (stdlib)
-**Prerequisites:** Phase 16 · 04 (Primitive Model)
-**Time:** ~60 minutes
+**类型：** Learn + Build
+**语言：** Python（标准库）
+**前置要求：** Phase 16 · 04（原语模型）
+**预计时间：** ~60 分钟
 
-## Problem
+## 问题所在
 
-Static graphs (LangGraph) are great when the workflow is known. Real conversations are not static: sometimes the coder asks the reviewer, sometimes the researcher, sometimes the writer. Hardcoding every possible handoff produces an edge explosion. You want *agents reacting to a shared pool*, with some function deciding who talks next.
+静态图（LangGraph）在工作流已知时很棒。真实对话不是静态的：有时 coder 问 reviewer，有时问 researcher，有时问 writer。把每一种可能的 handoff 硬编码会导致边爆炸。你想要的是 *agent 对共享池子做反应*，由某个函数决定接下来谁说话。
 
-That is exactly what AutoGen GroupChat does.
+这正是 AutoGen GroupChat 做的事。
 
-## Concept
+## 核心概念
 
-### The shape
+### 形状
 
 ```
               ┌─── shared pool ────┐
@@ -30,17 +30,17 @@ That is exactly what AutoGen GroupChat does.
                                   "next speaker = C"
 ```
 
-Every agent sees every message. A selector function is invoked at each turn to pick who speaks next.
+每个 agent 都看到每条消息。每一轮调用一个选择器函数来挑出接下来谁发言。
 
-### The three selector flavors
+### 三种选择器口味
 
-**Round-robin.** Fixed cycle. Deterministic. Scales linearly in N but ignores context — a coder gets the turn even when the topic is legal review.
+**轮询（Round-robin）。** 固定循环。确定性。在 N 上线性扩展，但无视上下文——哪怕话题是法务审查，coder 也会轮到发言。
 
-**LLM-selected.** A call to an LLM that reads the recent pool and returns the best next speaker. Context-aware but slow: every turn adds an LLM call. AutoGen's default.
+**LLM 选择。** 一次 LLM 调用，读最近的池子、返回最佳的下一发言者。感知上下文但慢：每一轮都加一次 LLM 调用。AutoGen 的默认。
 
-**Custom.** A Python function with whatever logic you want. Typical: LLM-selected with fallback rules (e.g., "always give the verifier the turn after the coder").
+**自定义。** 一个想写什么逻辑就写什么逻辑的 Python 函数。典型：带兜底规则的 LLM 选择（比如「coder 之后永远轮到 verifier」）。
 
-### The ConversableAgent API
+### ConversableAgent API
 
 ```
 agent = ConversableAgent(
@@ -52,94 +52,94 @@ chat = GroupChat(agents=[coder, reviewer, tester], messages=[])
 manager = GroupChatManager(groupchat=chat, llm_config={...})
 ```
 
-`GroupChatManager` holds the selector. When an agent completes a turn, the manager calls the selector, which returns the next agent. Loop continues until a termination condition.
+`GroupChatManager` 持有选择器。当一个 agent 完成一轮，manager 调用选择器，它返回下一个 agent。循环持续到满足某个终止条件。
 
-### Termination
+### 终止
 
-Three common patterns:
+三种常见模式：
 
-- **Max rounds.** Hard cap on total turns.
-- **"TERMINATE" token.** Agents can emit a sentinel message; the manager stops when one appears.
-- **Goal-reached check.** A lightweight verifier runs each turn and stops the chat when done.
+- **最大轮数。** 对总轮数的硬上限。
+- **「TERMINATE」token。** agent 可以发出一个哨兵消息；manager 一看到就停。
+- **目标达成检查。** 每一轮跑一个轻量 verifier，完成时停掉聊天。
 
-### The AutoGen → AG2 split and the Microsoft Agent Framework merge
+### AutoGen → AG2 的分裂，以及 Microsoft Agent Framework 的合并
 
-In early 2025, Microsoft began a major rewrite of AutoGen (v0.4) around an event-driven actor model. The community forked AutoGen v0.2's GroupChat semantics as AG2, preserving the API that early adopters had integrated.
+2025 年初，微软围绕事件驱动的 actor 模型开始了对 AutoGen 的大重写（v0.4）。社区把 AutoGen v0.2 的 GroupChat 语义分叉成了 AG2，保留了早期采用者已经集成的那套 API。
 
-In February 2026, Microsoft announced AutoGen would go to maintenance mode, with the event-driven actor model merging into **Microsoft Agent Framework** (RC February 2026, now merged with Semantic Kernel). The GroupChat concept survives in both tracks; the implementation details differ. AG2 is the preferred upstream for v0.2-compatible code.
+2026 年 2 月，微软宣布 AutoGen 将转入维护模式，事件驱动的 actor 模型并入 **Microsoft Agent Framework**（RC 2026 年 2 月，现已与 Semantic Kernel 合并）。GroupChat 这个概念在两条线里都活着；实现细节有别。AG2 是 v0.2 兼容代码的首选上游。
 
-### When GroupChat fits
+### GroupChat 何时适合
 
-- **Emergent conversations.** You do not want to pre-wire every possible next-speaker.
-- **Role-mixing tasks.** Coder asks researcher, researcher asks archivist, archivist asks coder back. Flow is not a DAG.
-- **Exploratory problem-solving.** Think "brainstorm meeting," not "assembly line."
+- **涌现式对话。** 你不想预先把每一种可能的下一发言者都接好线。
+- **角色混合任务。** coder 问 researcher，researcher 问 archivist，archivist 又问回 coder。流程不是 DAG。
+- **探索式问题求解。** 想成「头脑风暴会」，而不是「流水线」。
 
-### When it fails
+### 它何时失败
 
-- **Strict determinism.** The LLM selector can be inconsistent. Same prompt, different runs, different next speakers.
-- **Sycophancy cascades.** Agents defer to whoever spoke most confidently. Counter-prompt explicitly.
-- **Context bloat.** Every agent reads every message; after 10 turns the context is huge. Use projections (Lesson 15) to scope views.
-- **Hot speakers.** One agent dominates the conversation because the selector favors its specialties. Introduce speaker balance as a selector feature.
+- **严格确定性。** LLM 选择器可能不一致。同一 prompt、不同运行、不同的下一发言者。
+- **谄媚级联。** agent 倒向谁说得最自信。要明确反向 prompt。
+- **上下文膨胀。** 每个 agent 读每条消息；10 轮之后上下文就巨大了。用投影（第 15 课）来裁剪视图。
+- **热门发言者。** 某个 agent 主导了对话，因为选择器偏爱它的专长。把发言者均衡作为选择器的一个特性引入。
 
-### Group chat vs supervisor
+### 群聊对 supervisor
 
-Same primitives, different defaults:
+同样的原语，不同的默认值：
 
-- Supervisor: one agent plans and others execute. Selector is "ask the planner what to do."
-- Group chat: all agents are peers; selector is a function over the shared pool.
+- supervisor：一个 agent 规划、其他执行。选择器是「问 planner 该做什么」。
+- 群聊：所有 agent 都是对等的；选择器是一个作用于共享池子的函数。
 
-Both use the four primitives from Lesson 04. Group chat defaults to LLM-selected orchestration and full-pool shared state.
+两者都用第 04 课的四个原语。群聊默认用 LLM 选择式 orchestration 和全池共享状态。
 
-## Build It
+## 动手构建
 
-`code/main.py` implements a GroupChat from scratch in stdlib. Three agents (coder, reviewer, manager), round-robin and LLM-selected variants, and a termination on a `TERMINATE` token.
+`code/main.py` 用标准库从零实现了一个 GroupChat。三个 agent（coder、reviewer、manager），轮询和 LLM 选择两种变体，以及一个基于 `TERMINATE` token 的终止。
 
-The demo prints the conversation transcript plus the selector's decision trace for both variants.
+演示打印对话记录，外加两种变体的选择器决策轨迹。
 
-Run:
+运行：
 
 ```
 python3 code/main.py
 ```
 
-## Use It
+## 上手使用
 
-`outputs/skill-groupchat-selector.md` configures a GroupChat selector for a given task — round-robin vs LLM-selected vs custom, and what selector inputs (recent messages, agent specialties, turn counts) to use.
+`outputs/skill-groupchat-selector.md` 为一个给定任务配置 GroupChat 选择器——轮询 vs LLM 选择 vs 自定义，以及该用哪些选择器输入（最近消息、agent 专长、轮次计数）。
 
-## Ship It
+## 交付
 
-Checklist:
+检查清单：
 
-- **Max rounds cap.** Always. 10-20 for typical tasks.
-- **Speaker-balance metric.** Track turns per agent; alert when imbalance exceeds a threshold.
-- **Termination token.** `TERMINATE` or a dedicated verifier agent.
-- **Projection or scoped memory.** After ~10 messages, consider giving each agent only a scoped view to prevent context bloat.
-- **Selector logging.** For LLM-selected variants, log both the selector's input and its choice. Otherwise debugging is impossible.
+- **最大轮数上限。** 永远要有。典型任务 10-20。
+- **发言者均衡指标。** 跟踪每个 agent 的轮次数；不均衡超过阈值时告警。
+- **终止 token。** `TERMINATE` 或一个专门的 verifier agent。
+- **投影或裁剪记忆。** 大约 10 条消息后，考虑只给每个 agent 一个裁剪视图，防止上下文膨胀。
+- **选择器日志。** 对 LLM 选择变体，同时记录选择器的输入和它的选择。否则没法调试。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Compare the conversation under round-robin vs LLM-selected. Which agent dominates under each?
-2. Add a "max-speaks-per-agent" rule in the selector. How does it affect the transcript?
-3. Implement a goal-reached termination: stop when the reviewer returns "approved." How often does it trigger before the round cap?
-4. Read the AutoGen stable docs on GroupChat (https://microsoft.github.io/autogen/stable/user-guide/core-user-guide/design-patterns/group-chat.html). Identify the default selector used by `GroupChatManager`.
-5. Read the AG2 repo (https://github.com/ag2ai/ag2) and compare its v0.2 GroupChat to the v0.4 event-driven version. What concrete property (throughput, fault-tolerance, composability) does v0.4 add?
+1. 跑 `code/main.py`。对比轮询和 LLM 选择下的对话。每种下哪个 agent 主导？
+2. 在选择器里加一条「每个 agent 最多发言次数」规则。它如何影响对话记录？
+3. 实现一个目标达成终止：reviewer 返回「approved」时停。在触及轮数上限之前，它多久触发一次？
+4. 读 AutoGen stable 关于 GroupChat 的文档（https://microsoft.github.io/autogen/stable/user-guide/core-user-guide/design-patterns/group-chat.html）。指出 `GroupChatManager` 用的默认选择器。
+5. 读 AG2 仓库（https://github.com/ag2ai/ag2），对比它的 v0.2 GroupChat 和 v0.4 事件驱动版本。v0.4 加了什么具体属性（吞吐、容错、可组合性）？
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么意思 |
 |------|----------------|------------------------|
-| GroupChat | "Agents in one chat room" | Shared message pool + selector function. AutoGen / AG2 primitive. |
-| Speaker selection | "Who talks next" | The function that picks the next agent. Round-robin, LLM-selected, or custom. |
-| GroupChatManager | "The meeting host" | AutoGen component that owns the selector and loops over turns. |
-| ConversableAgent | "The base agent" | AutoGen base class; an agent that can send and receive messages. |
-| Termination token | "The 'stop' word" | Sentinel string (usually `TERMINATE`) that ends the chat. |
-| Hot speaker | "One agent dominates" | Failure mode where the selector keeps picking the same agent. |
-| Context bloat | "Pool grows unbounded" | Each agent reads every prior message; context grows with turns. |
-| Projection | "Scoped view" | Role-specific view into the shared pool to prevent context bloat. |
+| GroupChat | 「同一个聊天室里的 agent」 | 共享消息池 + 选择器函数。AutoGen / AG2 的原语。 |
+| Speaker selection | 「接下来谁说话」 | 挑下一个 agent 的那个函数。轮询、LLM 选择、或自定义。 |
+| GroupChatManager | 「会议主持人」 | AutoGen 组件，持有选择器并循环跑各轮。 |
+| ConversableAgent | 「基础 agent」 | AutoGen 基类；一个能收发消息的 agent。 |
+| Termination token | 「那个『停』字」 | 结束聊天的哨兵字符串（通常是 `TERMINATE`）。 |
+| Hot speaker | 「一个 agent 独占」 | 故障模式，选择器一直挑同一个 agent。 |
+| Context bloat | 「池子无限增长」 | 每个 agent 都读之前的每条消息；上下文随轮次增长。 |
+| Projection | 「裁剪视图」 | 进入共享池的角色专属视图，防止上下文膨胀。 |
 
-## Further Reading
+## 延伸阅读
 
-- [AutoGen group chat docs](https://microsoft.github.io/autogen/stable/user-guide/core-user-guide/design-patterns/group-chat.html) — the reference implementation
-- [AG2 repo](https://github.com/ag2ai/ag2) — community AutoGen v0.2 continuation
-- [Microsoft Agent Framework docs](https://microsoft.github.io/agent-framework/) — the merged successor, RC February 2026
-- [AutoGen v0.4 release notes](https://microsoft.github.io/autogen/stable/) — event-driven actor model rewrite details
+- [AutoGen group chat docs](https://microsoft.github.io/autogen/stable/user-guide/core-user-guide/design-patterns/group-chat.html) —— 参考实现
+- [AG2 repo](https://github.com/ag2ai/ag2) —— 社区版 AutoGen v0.2 延续
+- [Microsoft Agent Framework docs](https://microsoft.github.io/agent-framework/) —— 合并后的继任者，RC 2026 年 2 月
+- [AutoGen v0.4 release notes](https://microsoft.github.io/autogen/stable/) —— 事件驱动 actor 模型重写细节

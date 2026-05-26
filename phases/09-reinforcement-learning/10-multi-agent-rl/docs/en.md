@@ -1,57 +1,57 @@
-# Multi-Agent RL
+# 多 agent RL
 
-> Single-agent RL assumes the environment is stationary. Put two learning agents in the same world and that assumption breaks: each agent is part of the other's environment, and both are changing. Multi-agent RL is the set of tricks to make learning converge when the Markov assumption no longer holds.
+> 单 agent RL 假设环境是平稳的。把两个会学习的 agent 放进同一个世界，这个假设就破了：每个 agent 都是另一个 agent 环境的一部分，而两者都在变。多 agent RL 就是那套在马尔可夫假设不再成立时让学习仍能收敛的技巧。
 
-**Type:** Build
-**Languages:** Python
-**Prerequisites:** Phase 9 · 04 (Q-learning), Phase 9 · 06 (REINFORCE), Phase 9 · 07 (Actor-Critic)
-**Time:** ~45 minutes
+**类型：** Build
+**语言：** Python
+**前置要求：** Phase 9 · 04（Q-learning）、Phase 9 · 06（REINFORCE）、Phase 9 · 07（Actor-Critic）
+**预计时间：** ~45 分钟
 
-## The Problem
+## 问题所在
 
-A robot learning to navigate a room is a single-agent RL problem. A soccer team is not. AlphaStar vs StarCraft opponents is not. A marketplace of bidding agents is not. Two cars negotiating a four-way stop is not. Many-on-many real-world problems are not.
+一个机器人学习在房间里导航，是个单 agent RL 问题。一支足球队不是。AlphaStar 对阵《星际争霸》对手不是。一个竞价 agent 市场不是。两辆车在四向停车口博弈不是。现实世界里多对多的问题都不是。
 
-In every multi-agent setting, from the perspective of any one agent, the other agents *are* part of the environment. As they learn and change their behavior, the environment becomes non-stationary. The Markov property — "next state depends only on current state and my action" — gets violated because the next state also depends on what the *other* agents chose, and their policies are moving targets.
+在每一个多 agent 场景里，从任何一个 agent 的视角看，其他 agent *就是*环境的一部分。当它们学习、改变行为，环境就变得非平稳。马尔可夫性——"下一状态只取决于当前状态和我的动作"——被违反了，因为下一状态还取决于*其他* agent 选了什么，而它们的策略是移动的靶子。
 
-This breaks tabular convergence proofs (Q-learning's guarantee assumes a stationary environment). It breaks naive deep RL too: agents chase each other in loops, never converge to a stable policy. You need multi-agent-specific techniques: centralized training / decentralized execution, counterfactual baselines, league play, self-play.
+这破坏了表格收敛证明（Q-learning 的保证假设环境平稳）。它也破坏朴素深度 RL：agent 互相追着兜圈，永远收敛不到一个稳定策略。你需要多 agent 专属的技术：中心化训练 / 去中心化执行、反事实基线、联赛对弈、自我对弈。
 
-2026 applications: robot swarms, traffic routing, autonomous vehicle fleets, market simulators, multi-agent LLM systems (Phase 16), and any game with more than one intelligent player.
+2026 年的应用：机器人集群、交通路由、自动驾驶车队、市场模拟器、多 agent LLM 系统（Phase 16），以及任何不止一个智能玩家的游戏。
 
-## The Concept
+## 核心概念
 
 ![Four MARL regimes: indep, centralized critic, self-play, league](../assets/marl.svg)
 
-**Formalism: Markov Game.** A generalization of MDP: states `S`, a joint action `a = (a_1, …, a_n)`, transition `P(s' | s, a)`, and per-agent rewards `R_i(s, a, s')`. Each agent `i` maximizes its own return under its own policy `π_i`. If rewards are identical, it is **fully cooperative**. If zero-sum, it is **adversarial**. If mixed, it is **general-sum**.
+**形式化：马尔可夫博弈。** MDP 的推广：状态 `S`、联合动作 `a = (a_1, …, a_n)`、转移 `P(s' | s, a)`，以及每个 agent 各自的奖励 `R_i(s, a, s')`。每个 agent `i` 在自己的策略 `π_i` 下最大化自己的回报。如果奖励相同，就是**完全合作**。如果零和，就是**对抗**。如果混合，就是**一般和**。
 
-**Core challenges:**
+**核心挑战：**
 
-- **Non-stationarity.** `P(s' | s, a_i)` from agent `i`'s view depends on `π_{-i}`, which is changing.
-- **Credit assignment.** With a shared reward, which agent caused it?
-- **Exploration coordination.** Agents must explore complementary strategies, not redundantly explore the same state.
-- **Scalability.** The joint action space grows exponentially in `n`.
-- **Partial observability.** Each agent sees only its own observation; the global state is hidden.
+- **非平稳性。** 从 agent `i` 视角看，`P(s' | s, a_i)` 取决于 `π_{-i}`，而它在变。
+- **信用分配。** 奖励共享时，是哪个 agent 造成的？
+- **探索协调。** agent 必须探索互补的策略，而不是冗余地探索同一个状态。
+- **可扩展性。** 联合动作空间随 `n` 指数增长。
+- **部分可观测。** 每个 agent 只看到自己的观测；全局状态是隐藏的。
 
-**Four dominant regimes:**
+**四种主导范式：**
 
-**1. Independent Q-learning / independent PPO (IQL, IPPO).** Each agent learns its own Q or policy, treating others as part of the environment. Simple, sometimes it works (especially with experience replay acting as a smoothing agent-modeling trick). Theoretical convergence: none. In practice: fine for loosely-coupled tasks, bad for tightly-coupled ones.
+**1. 独立 Q-learning / 独立 PPO（IQL、IPPO）。** 每个 agent 学自己的 Q 或策略，把其他人当成环境的一部分。简单，有时能用（尤其当经验回放充当了一个平滑式的 agent 建模技巧时）。理论收敛：没有。实践中：对松耦合任务没问题，对紧耦合任务很糟。
 
-**2. Centralized training, decentralized execution (CTDE).** Most common modern paradigm. Each agent has its own *policy* `π_i` that conditions on local observation `o_i` — standard decentralized execution at deployment. During *training*, a centralized critic `Q(s, a_1, …, a_n)` conditions on the full global state and joint action. Examples:
-- **MADDPG** (Lowe et al. 2017): DDPG with a centralized critic per agent.
-- **COMA** (Foerster et al. 2017): counterfactual baseline — ask "what would my reward have been if I'd taken action `a'` instead?" — isolates my contribution.
-- **MAPPO** / **IPPO** with shared critic (Yu et al. 2022): PPO with a centralized value function. Dominant in 2026 for cooperative MARL.
-- **QMIX** (Rashid et al. 2018): value decomposition — `Q_tot(s, a) = f(Q_1(s, a_1), …, Q_n(s, a_n))` with monotonic mixing.
+**2. 中心化训练、去中心化执行（CTDE）。** 最常见的现代范式。每个 agent 有自己以局部观测 `o_i` 为条件的*策略* `π_i`——部署时是标准的去中心化执行。*训练*时，一个中心化 critic `Q(s, a_1, …, a_n)` 以完整全局状态和联合动作为条件。例子：
+- **MADDPG**（Lowe 等人 2017）：每个 agent 配一个中心化 critic 的 DDPG。
+- **COMA**（Foerster 等人 2017）：反事实基线——问"如果我当时改取动作 `a'`，我的奖励会是多少？"——把我的贡献孤立出来。
+- 带共享 critic 的 **MAPPO** / **IPPO**（Yu 等人 2022）：带中心化价值函数的 PPO。2026 年合作 MARL 的主导。
+- **QMIX**（Rashid 等人 2018）：价值分解——`Q_tot(s, a) = f(Q_1(s, a_1), …, Q_n(s, a_n))`，带单调混合。
 
-**3. Self-play.** Two copies of the same agent play each other. The opponent's policy *is* my policy from a past snapshot. AlphaGo / AlphaZero / MuZero. OpenAI Five. Works best for zero-sum games; the training signal is symmetric.
+**3. 自我对弈。** 同一个 agent 的两份拷贝互相对打。对手的策略*就是*我过去某个快照的策略。AlphaGo / AlphaZero / MuZero。OpenAI Five。对零和博弈效果最好；训练信号是对称的。
 
-**4. League play.** An extension of self-play to general-sum / adversarial environments: keep a population of past and current policies, sample an opponent from the league, train against them. Adds exploiters (specialize in beating the current best) and main exploiters (specialize in beating exploiters). AlphaStar (StarCraft II). Needed when the game admits "rock-paper-scissors" strategy cycles.
+**4. 联赛对弈。** 自我对弈在一般和 / 对抗环境上的扩展：保留一个由过去和当前策略组成的种群，从联赛里采样一个对手，对着它训练。加入 exploiter（专门打当前最强）和 main exploiter（专门打 exploiter）。AlphaStar（《星际争霸 II》）。当博弈存在"石头剪刀布"式的策略循环时需要它。
 
-**Communication.** Allow agents to send learned messages `m_i` to each other. Works in cooperative settings. Foerster et al. (2016) showed that differentiable inter-agent communication can be trained end-to-end. Today's LLM-based multi-agent systems (Phase 16) essentially communicate in natural language.
+**通信。** 允许 agent 互相发送学到的消息 `m_i`。在合作场景里有效。Foerster 等人（2016）展示了可微的 agent 间通信能端到端训练。今天基于 LLM 的多 agent 系统（Phase 16）本质上是用自然语言通信。
 
-## Build It
+## 动手构建
 
-This lesson uses a 6×6 GridWorld with two cooperative agents. They start in opposite corners and must reach a shared goal. Shared reward: `-1` per step while either agent is still moving, `+10` when both arrive. See `code/main.py`.
+这一课用一个 6×6 GridWorld 配两个合作 agent。它们从相对的角落出发，必须到达一个共享目标。共享奖励：只要还有任一 agent 在动就每步 `-1`，两个都到达时 `+10`。见 `code/main.py`。
 
-### Step 1: the multi-agent env
+### 第 1 步：多 agent 环境
 
 ```python
 class CoopGridWorld:
@@ -71,11 +71,11 @@ class CoopGridWorld:
         return (new1, new2), reward, done
 ```
 
-The *joint* action space is `|A|² = 16`. The global state is two positions.
+*联合*动作空间是 `|A|² = 16`。全局状态是两个位置。
 
-### Step 2: independent Q-learning
+### 第 2 步：独立 Q-learning
 
-Each agent runs its own Q-table keyed on joint state. At each step: both pick ε-greedy actions, collect joint transition, each updates its own Q with the shared reward.
+每个 agent 跑自己的、以联合状态为键的 Q 表。每一步：两个都挑 ε-greedy 动作，收集联合转移，各自用共享奖励更新自己的 Q。
 
 ```python
 def independent_q(env, episodes, alpha, gamma, epsilon):
@@ -93,44 +93,44 @@ def independent_q(env, episodes, alpha, gamma, epsilon):
             s = s_next
 ```
 
-Works on this task because rewards are dense and aligned. Fails on tightly-coupled tasks (e.g., where one agent has to *wait* for the other).
+在这个任务上能用，因为奖励稠密且对齐。在紧耦合任务上会失败（比如一个 agent 必须*等*另一个的那种）。
 
-### Step 3: centralized Q with decomposed-value update
+### 第 3 步：中心化 Q 配分解价值更新
 
-Use one Q over joint actions `Q(s, a_1, a_2)`. Update from shared reward. Decentralize at execution by marginalizing: `π_i(s) = argmax_{a_i} max_{a_{-i}} Q(s, a_1, a_2)`. Trades exponential joint action space for a *correct* global view.
+用一个跨联合动作的 Q `Q(s, a_1, a_2)`。用共享奖励更新。执行时通过边缘化来去中心化：`π_i(s) = argmax_{a_i} max_{a_{-i}} Q(s, a_1, a_2)`。用指数级联合动作空间换一个*正确*的全局视角。
 
-### Step 4: simple self-play (adversarial 2-agent)
+### 第 4 步：简单自我对弈（对抗 2-agent）
 
-Same agent, two roles. Train agent A against agent B; after `K` episodes, copy A's weights into B. Symmetric training, consistent progress. The AlphaZero recipe in miniature.
+同一个 agent，两个角色。让 agent A 对阵 agent B 训练；`K` 个 episode 后，把 A 的权重拷进 B。对称训练，进展一致。微缩版的 AlphaZero 配方。
 
-## Pitfalls
+## 注意事项
 
-- **Non-stationary replay.** Experience replay with independent agents is worse than single-agent because old transitions were generated by now-obsolete opponents. Fix: relabel or weight by recency.
-- **Credit assignment ambiguity.** Shared reward after a long episode; no clear way to say which agent contributed. Fix: counterfactual baselines (COMA), or reward shaping per agent.
-- **Policy drift / chasing.** Each agent's best response changes with each other's update. Fix: centralized critic, slow learning rates, or freeze-one-at-a-time.
-- **Reward hacking via coordination.** Agents find coordinated exploits the designer did not anticipate. Auction agents converge to bid zero. Fix: careful reward design, behavioral constraints.
-- **Exploration redundancy.** Both agents explore the same state-action pairs. Fix: entropy bonuses per-agent, or role-conditioning.
-- **League cycles.** Pure self-play can get stuck in a dominance cycle. Fix: league play with diverse opponents.
-- **Sample explosion.** `n` agents × state space × joint actions. Approximate with function approximation; factored action spaces (one policy output head per agent).
+- **非平稳回放。** 独立 agent 配经验回放比单 agent 还糟，因为旧转移是由现在已过时的对手生成的。修法：重新标注，或按近期性加权。
+- **信用分配模糊。** 长 episode 后的共享奖励；没有清晰办法说是哪个 agent 贡献的。修法：反事实基线（COMA），或对每个 agent 做奖励塑形。
+- **策略漂移 / 互追。** 每个 agent 的最佳响应随对方的更新而变。修法：中心化 critic、慢学习率，或一次冻一个。
+- **靠协调的奖励 hacking。** agent 找到设计者没预料到的协调式漏洞。拍卖 agent 收敛到出价为零。修法：仔细的奖励设计、行为约束。
+- **探索冗余。** 两个 agent 探索同样的状态-动作对。修法：每个 agent 的熵奖励，或角色条件化。
+- **联赛循环。** 纯自我对弈可能卡在一个支配循环里。修法：用多样化对手的联赛对弈。
+- **样本爆炸。** `n` 个 agent × 状态空间 × 联合动作。用函数近似来近似；因式化动作空间（每个 agent 一个策略输出头）。
 
-## Use It
+## 上手使用
 
-The 2026 MARL application map:
+2026 年的 MARL 应用地图：
 
-| Domain | Method | Notes |
+| 领域 | 方法 | 备注 |
 |--------|--------|-------|
-| Cooperative navigation / manipulation | MAPPO / QMIX | CTDE; shared critic + decentralized actors. |
-| Two-player games (chess, Go, poker) | Self-play with MCTS (AlphaZero) | Zero-sum; symmetric training. |
-| Complex multiplayer (Dota, StarCraft) | League play + imitation pretraining | OpenAI Five, AlphaStar. |
-| Autonomous-vehicle fleets | CTDE MAPPO / PPO with attention | Partial obs; variable team sizes. |
-| Auction markets | Game-theoretic equilibrium + RL | Mean-field RL when `n` → ∞. |
-| LLM multi-agent systems (Phase 16) | Natural-language comm + role conditioning | RL loop at the agent-planning layer. |
+| 合作导航 / 操作 | MAPPO / QMIX | CTDE；共享 critic + 去中心化 actor。 |
+| 双人游戏（象棋、围棋、扑克） | 配 MCTS 的自我对弈（AlphaZero） | 零和；对称训练。 |
+| 复杂多人（Dota、星际） | 联赛对弈 + 模仿预训练 | OpenAI Five、AlphaStar。 |
+| 自动驾驶车队 | 带注意力的 CTDE MAPPO / PPO | 部分观测；可变队伍规模。 |
+| 拍卖市场 | 博弈论均衡 + RL | `n` → ∞ 时用平均场 RL。 |
+| LLM 多 agent 系统（Phase 16） | 自然语言通信 + 角色条件化 | RL 循环在 agent 规划层。 |
 
-In 2026, MARL's biggest growth area is LLM-based: swarms of language-model agents negotiating, debating, building software. The RL shows up as preference optimization on *trajectory-level* outputs, not token-level (Phase 16 · 03).
+到了 2026 年，MARL 增长最快的领域是基于 LLM 的：成群的语言模型 agent 谈判、辩论、构建软件。RL 表现为对*轨迹级*输出（而非 token 级）的偏好优化（Phase 16 · 03）。
 
-## Ship It
+## 交付
 
-Save as `outputs/skill-marl-architect.md`:
+存为 `outputs/skill-marl-architect.md`：
 
 ```markdown
 ---
@@ -153,32 +153,32 @@ Given a task with `n` agents, output:
 Refuse independent Q-learning on tightly-coupled cooperative tasks. Refuse to recommend self-play for general-sum with cycle risks. Flag any MARL pipeline without a fixed-opponent eval (cherry-picked self-play numbers are common).
 ```
 
-## Exercises
+## 练习
 
-1. **Easy.** Train independent Q-learning on the 2-agent cooperative GridWorld. How many episodes until mean return > 0? Plot the joint learning curve.
-2. **Medium.** Add a "coordination" task: the goal is reached only when both agents step onto it on the same turn. Does independent Q still converge? What breaks?
-3. **Hard.** Implement a centralized critic for MAPPO-style training and compare convergence speed to independent PPO on the coordination task.
+1. **简单。** 在 2-agent 合作 GridWorld 上训练独立 Q-learning。多少个 episode 后平均回报 > 0？画出联合学习曲线。
+2. **中等。** 加一个"协调"任务：只有两个 agent 在同一回合一起踏上目标时才算到达。独立 Q 还能收敛吗？哪里崩了？
+3. **困难。** 为 MAPPO 风格的训练实现一个中心化 critic，在协调任务上和独立 PPO 对比收敛速度。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|-----------------|-----------------------|
-| Markov game | "Multi-agent MDP" | `(S, A_1, …, A_n, P, R_1, …, R_n)`; each agent has its own reward. |
-| CTDE | "Centralized training, decentralized execution" | Joint critic at training time; each agent's policy uses only local obs. |
-| IPPO | "Independent PPO" | Each agent runs PPO separately. Simple baseline; often underrated. |
-| MAPPO | "Multi-agent PPO" | PPO with a centralized value function conditioned on global state. |
-| QMIX | "Monotonic value decomposition" | `Q_tot = f_monotone(Q_1, …, Q_n)` allows decentralized argmax. |
-| COMA | "Counterfactual multi-agent" | Advantage = my Q minus expected Q marginalizing over my action. |
-| Self-play | "Agent vs past self" | Single agent, two roles; standard for zero-sum games. |
-| League play | "Population training" | Cache past policies, sample opponents from the pool; handles strategy cycles. |
+| 马尔可夫博弈 | "多 agent MDP" | `(S, A_1, …, A_n, P, R_1, …, R_n)`；每个 agent 有自己的奖励。 |
+| CTDE | "中心化训练，去中心化执行" | 训练时用联合 critic；每个 agent 的策略只用局部观测。 |
+| IPPO | "独立 PPO" | 每个 agent 各跑各的 PPO。简单基线；常被低估。 |
+| MAPPO | "多 agent PPO" | 带以全局状态为条件的中心化价值函数的 PPO。 |
+| QMIX | "单调价值分解" | `Q_tot = f_monotone(Q_1, …, Q_n)`，允许去中心化 argmax。 |
+| COMA | "反事实多 agent" | 优势 = 我的 Q 减去对我的动作边缘化后的期望 Q。 |
+| 自我对弈 | "agent 对阵过去的自己" | 单 agent，两个角色；零和游戏的标准做法。 |
+| 联赛对弈 | "种群训练" | 缓存过去的策略，从池里采样对手；处理策略循环。 |
 
-## Further Reading
+## 延伸阅读
 
-- [Lowe et al. (2017). Multi-Agent Actor-Critic for Mixed Cooperative-Competitive Environments (MADDPG)](https://arxiv.org/abs/1706.02275) — CTDE with a centralized critic.
-- [Foerster et al. (2017). Counterfactual Multi-Agent Policy Gradients (COMA)](https://arxiv.org/abs/1705.08926) — counterfactual baselines for credit assignment.
-- [Rashid et al. (2018). QMIX: Monotonic Value Function Factorisation](https://arxiv.org/abs/1803.11485) — value decomposition with monotonicity.
-- [Yu et al. (2022). The Surprising Effectiveness of PPO in Cooperative Multi-Agent Games (MAPPO)](https://arxiv.org/abs/2103.01955) — PPO is surprisingly strong for MARL.
-- [Vinyals et al. (2019). Grandmaster level in StarCraft II using multi-agent reinforcement learning (AlphaStar)](https://www.nature.com/articles/s41586-019-1724-z) — league play at scale.
-- [Silver et al. (2017). Mastering the game of Go without human knowledge (AlphaGo Zero)](https://www.nature.com/articles/nature24270) — pure self-play in zero-sum games.
-- [Sutton & Barto (2018). Ch. 15 — Neuroscience & Ch. 17 — Frontiers](http://incompleteideas.net/book/RLbook2020.pdf) — includes the textbook's short treatment of multi-agent settings and the non-stationarity problem that CTDE is designed to solve.
-- [Zhang, Yang & Başar (2021). Multi-Agent Reinforcement Learning: A Selective Overview](https://arxiv.org/abs/1911.10635) — survey covering cooperative, competitive, and mixed MARL with convergence results.
+- [Lowe et al. (2017). Multi-Agent Actor-Critic for Mixed Cooperative-Competitive Environments (MADDPG)](https://arxiv.org/abs/1706.02275) —— 带中心化 critic 的 CTDE。
+- [Foerster et al. (2017). Counterfactual Multi-Agent Policy Gradients (COMA)](https://arxiv.org/abs/1705.08926) —— 用于信用分配的反事实基线。
+- [Rashid et al. (2018). QMIX: Monotonic Value Function Factorisation](https://arxiv.org/abs/1803.11485) —— 带单调性的价值分解。
+- [Yu et al. (2022). The Surprising Effectiveness of PPO in Cooperative Multi-Agent Games (MAPPO)](https://arxiv.org/abs/2103.01955) —— PPO 在 MARL 上意外地强。
+- [Vinyals et al. (2019). Grandmaster level in StarCraft II using multi-agent reinforcement learning (AlphaStar)](https://www.nature.com/articles/s41586-019-1724-z) —— 大规模联赛对弈。
+- [Silver et al. (2017). Mastering the game of Go without human knowledge (AlphaGo Zero)](https://www.nature.com/articles/nature24270) —— 零和博弈里的纯自我对弈。
+- [Sutton & Barto (2018). Ch. 15 — Neuroscience & Ch. 17 — Frontiers](http://incompleteideas.net/book/RLbook2020.pdf) —— 包含教科书对多 agent 场景以及 CTDE 所要解决的非平稳性问题的简短处理。
+- [Zhang, Yang & Başar (2021). Multi-Agent Reinforcement Learning: A Selective Overview](https://arxiv.org/abs/1911.10635) —— 涵盖合作、竞争、混合 MARL 及收敛结果的综述。

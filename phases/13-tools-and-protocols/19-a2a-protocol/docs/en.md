@@ -1,36 +1,36 @@
-# A2A — Agent-to-Agent Protocol
+# A2A——Agent-to-Agent 协议
 
-> MCP is agent-to-tool. A2A (Agent2Agent) is agent-to-agent — an open protocol for letting opaque agents built on different frameworks collaborate. Released by Google in April 2025, donated to the Linux Foundation in June 2025, reaching v1.0 in April 2026 with 150+ supporters including AWS, Cisco, Microsoft, Salesforce, SAP, and ServiceNow. It absorbed IBM's ACP and added the AP2 payments extension. This lesson walks the Agent Card, Task lifecycle, and the two transport bindings.
+> MCP 是 agent 对工具。A2A（Agent2Agent）是 agent 对 agent——一个让构建于不同框架之上的不透明 agent 协作的开放协议。Google 在 2025 年 4 月发布，2025 年 6 月捐给 Linux Foundation，2026 年 4 月达到 v1.0，拥有 150+ 个支持方，包括 AWS、Cisco、Microsoft、Salesforce、SAP 和 ServiceNow。它吸收了 IBM 的 ACP，并加上了 AP2 支付扩展。本课走一遍 Agent Card、Task 生命周期，以及两种传输绑定。
 
-**Type:** Build
-**Languages:** Python (stdlib, Agent Card + Task harness)
-**Prerequisites:** Phase 13 · 06 (MCP fundamentals), Phase 13 · 08 (MCP client)
-**Time:** ~75 minutes
+**类型：** Build
+**语言：** Python（标准库，Agent Card + Task 脚手架）
+**前置要求：** 阶段 13 · 06（MCP 基础）、阶段 13 · 08（MCP client）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Distinguish agent-to-tool (MCP) from agent-to-agent (A2A) use cases.
-- Publish an Agent Card at `/.well-known/agent.json` with skills and endpoint metadata.
-- Walk the Task lifecycle (submitted → working → input-required → completed / failed / canceled / rejected).
-- Use Messages with Parts (text, file, data) and Artifacts as outputs.
+- 区分 agent 对工具（MCP）和 agent 对 agent（A2A）的用例。
+- 在 `/.well-known/agent.json` 发布一张带 skill 和端点元数据的 Agent Card。
+- 走一遍 Task 生命周期（submitted → working → input-required → completed / failed / canceled / rejected）。
+- 用带 Part（text、file、data）的 Message，以及作为输出的 Artifact。
 
-## The Problem
+## 问题所在
 
-A customer-service agent needs to delegate report-writing to a specialized writer agent. Options pre-A2A:
+一个客服 agent 需要把写报告委派给一个专门的写手 agent。A2A 之前的选项：
 
-- Custom REST API. Works but every pairing is a one-off.
-- Shared codebase. Requires the two agents to run the same framework.
-- MCP. Doesn't fit: MCP is for calling tools, not for two agents collaborating while preserving each agent's opaque internal reasoning.
+- 自定义 REST API。能行，但每一对配对都是一次性的。
+- 共享代码库。要求两个 agent 跑同一个框架。
+- MCP。不契合：MCP 是用来调工具的，不是让两个 agent 在各自保持不透明内部推理的同时协作的。
 
-A2A fills the gap. It models the interaction as one agent sending a Task to another, with a lifecycle, messages, and artifacts. The called agent's internal state stays opaque — the caller sees only task state transitions and eventual outputs.
+A2A 填上这道缺口。它把交互建模为一个 agent 给另一个发一个 Task，配一套生命周期、消息和 artifact。被调用 agent 的内部状态保持不透明——调用方只看到 task 状态转移和最终输出。
 
-A2A is the "let agents across frameworks talk to each other" protocol. It does not replace MCP; the two are complementary.
+A2A 是那个"让跨框架的 agent 互相对话"的协议。它不取代 MCP；两者互补。
 
-## The Concept
+## 核心概念
 
 ### Agent Card
 
-Every A2A-compliant agent publishes a card at `/.well-known/agent.json`:
+每个 A2A 合规的 agent 在 `/.well-known/agent.json` 发布一张 card：
 
 ```json
 {
@@ -52,30 +52,30 @@ Every A2A-compliant agent publishes a card at `/.well-known/agent.json`:
 }
 ```
 
-Discovery is URL-based: fetch the card, learn the URL of the A2A endpoint, enumerate skills.
+发现是基于 URL 的：取这张 card，得知 A2A 端点的 URL，枚举各 skill。
 
-### Signed Agent Cards (AP2)
+### 签名的 Agent Card（AP2）
 
-The AP2 extension (September 2025) adds cryptographic signatures to Agent Cards. A publisher signs its own card with a JWT; consumers verify. Prevents impersonation.
+AP2 扩展（2025 年 9 月）给 Agent Card 加上密码学签名。发布方用一个 JWT 给自己的 card 签名；消费方校验。防止冒充。
 
-### Task lifecycle
+### Task 生命周期
 
 ```
 submitted -> working -> completed | failed | canceled | rejected
-             -> input_required -> working (loop via message)
+             -> input_required -> working (经由 message 循环)
 ```
 
-Clients initiate with `tasks/send`. The called agent transitions through states; clients subscribe to state updates via SSE or poll.
+client 用 `tasks/send` 发起。被调用 agent 穿过各状态；client 经由 SSE 订阅状态更新，或轮询。
 
-### Messages and Parts
+### Message 与 Part
 
-A message carries one or more Parts:
+一条 message 携带一个或多个 Part：
 
-- `text` — plain content.
-- `file` — base64 blob with mimeType.
-- `data` — typed JSON payload (structured input for the called agent).
+- `text`——纯内容。
+- `file`——带 mimeType 的 base64 blob。
+- `data`——定型 JSON 载荷（给被调用 agent 的结构化输入）。
 
-Example:
+例子：
 
 ```json
 {
@@ -88,9 +88,9 @@ Example:
 }
 ```
 
-### Artifacts
+### Artifact
 
-Outputs are Artifacts, not raw strings. An Artifact is a named, typed output:
+输出是 Artifact，不是裸字符串。一个 Artifact 是一个具名、定型的输出：
 
 ```json
 {
@@ -100,89 +100,89 @@ Outputs are Artifacts, not raw strings. An Artifact is a named, typed output:
 }
 ```
 
-Artifacts can be streamed as chunks. The caller accumulates.
+Artifact 可以分块流式传。调用方累积。
 
-### Two transport bindings
+### 两种传输绑定
 
-1. **JSON-RPC over HTTP.** `/a2a` endpoint, POST for requests, optional SSE for streaming. Default binding.
-2. **gRPC.** For enterprise environments where gRPC is native.
+1. **JSON-RPC over HTTP。** `/a2a` 端点，POST 发请求，可选 SSE 做流式。默认绑定。
+2. **gRPC。** 用于 gRPC 原生的企业环境。
 
-Both bindings carry the same logical message shape.
+两种绑定携带相同的逻辑消息形状。
 
-### Opacity preservation
+### 不透明性保持
 
-A key design principle: the called agent's internal state is opaque. The caller sees task state and artifacts. The called agent's chain-of-thought, its tool calls, its sub-agent delegation — all invisible. This is different from MCP, where tool calls are transparent.
+一个关键设计原则：被调用 agent 的内部状态不透明。调用方看到 task 状态和 artifact。被调用 agent 的思维链、它的工具调用、它的子 agent 委派——全都不可见。这和 MCP 不同，MCP 里工具调用是透明的。
 
-Rationale: A2A enables competitors to collaborate without revealing internals. A2A can be "call this customer-service agent" without the caller learning how that agent implements the service.
+理由：A2A 让竞争对手能在不暴露内部的情况下协作。A2A 可以是"调用这个客服 agent"，而调用方不会得知那个 agent 是怎么实现这项服务的。
 
-### Timeline
+### 时间线
 
-- **2025-04-09.** Google announces A2A.
-- **2025-06-23.** Donated to Linux Foundation.
-- **2025-08.** Absorbs IBM's ACP.
-- **2025-09.** AP2 extension (Agent Payments) ships.
-- **2026-04.** v1.0 released with 150+ supporting organizations.
+- **2025-04-09。** Google 宣布 A2A。
+- **2025-06-23。** 捐给 Linux Foundation。
+- **2025-08。** 吸收 IBM 的 ACP。
+- **2025-09。** AP2 扩展（Agent Payments）发布。
+- **2026-04。** v1.0 发布，有 150+ 个支持组织。
 
-### Relationship to MCP
+### 与 MCP 的关系
 
-| Dimension | MCP | A2A |
+| 维度 | MCP | A2A |
 |-----------|-----|-----|
-| Use case | Agent-to-tool | Agent-to-agent |
-| Opacity | Transparent tool calls | Opaque inner reasoning |
-| Typical caller | Agent runtime | Another agent |
-| State | Tool-call result | Task with lifecycle |
-| Authorization | OAuth 2.1 (Phase 13 · 16) | JWT-signed Agent Cards (AP2) |
-| Transport | Stdio / Streamable HTTP | JSON-RPC over HTTP / gRPC |
+| 用例 | agent 对工具 | agent 对 agent |
+| 不透明性 | 透明的工具调用 | 不透明的内部推理 |
+| 典型调用方 | agent 运行时 | 另一个 agent |
+| 状态 | 工具调用结果 | 带生命周期的 Task |
+| 授权 | OAuth 2.1（阶段 13 · 16） | JWT 签名的 Agent Card（AP2） |
+| 传输 | Stdio / Streamable HTTP | JSON-RPC over HTTP / gRPC |
 
-Use MCP when you want to invoke a specific tool. Use A2A when you want to delegate a whole task to another agent. Many production systems use both: an agent uses MCP for its tool layer and A2A for its collaboration layer.
+想调用一个特定工具时用 MCP。想把一整个 task 委派给另一个 agent 时用 A2A。许多生产系统两者都用：一个 agent 把 MCP 用于它的工具层，把 A2A 用于它的协作层。
 
-## Use It
+## 上手使用
 
-`code/main.py` implements a minimal A2A harness: a research agent publishes its card, a writer agent receives a `tasks/send` with parts including a PDF and a text instruction, transitions through working → input_required → working → completed, and returns a text artifact. All stdlib; uses an in-memory transport to focus on message shapes.
+`code/main.py` 实现一个极简 A2A 脚手架：一个研究 agent 发布它的 card，一个写手 agent 收到一个带 part（含一个 PDF 和一条文本指令）的 `tasks/send`，穿过 working → input_required → working → completed，并返回一个文本 artifact。全标准库；用一个内存传输来聚焦于消息形状。
 
-What to look at:
+要看什么：
 
-- Agent Card JSON shape.
-- Task id assignment and state transitions.
-- Messages with mixed-type parts.
-- Input-required branch mid-task.
-- Artifact return on completion.
+- Agent Card 的 JSON 形状。
+- Task id 分配和状态转移。
+- 带混合类型 part 的 message。
+- task 中途的 input-required 分支。
+- 完成时返回的 artifact。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-a2a-agent-spec.md`. Given a new agent that should be callable by other agents, the skill produces the Agent Card JSON, skills schema, and endpoint blueprint.
+本课产出 `outputs/skill-a2a-agent-spec.md`。给定一个应当能被其他 agent 调用的新 agent，这个 skill 产出 Agent Card JSON、skill schema 和端点蓝图。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Trace the full Task lifecycle, including the input-required pause where the called agent asks for a clarification.
+1. 跑 `code/main.py`。追踪完整的 Task 生命周期，包括被调用 agent 索要澄清的 input-required 暂停。
 
-2. Add a signed Agent Card. Sign with HMAC over the card's canonical JSON. Write a verifier and confirm it fails on a mutated card.
+2. 加一张签名的 Agent Card。在 card 的规范化 JSON 上用 HMAC 签。写一个校验器，确认它在被改动的 card 上失败。
 
-3. Implement task streaming: the writer agent emits three incremental artifact chunks over SSE and the caller accumulates them.
+3. 实现 task 流式：写手 agent 经由 SSE 发出三个增量 artifact 分块，调用方把它们累积起来。
 
-4. Design an A2A agent that wraps an MCP server. Map each MCP tool to an A2A skill. Note the trade-offs — what opacity is lost?
+4. 设计一个包住一个 MCP server 的 A2A agent。把每个 MCP 工具映射到一个 A2A skill。记下权衡——丢失了什么不透明性？
 
-5. Read the A2A v1.0 announcement and identify the one feature that is not yet implemented by any framework as of April 2026. (Hint: it relates to multi-hop task delegation.)
+5. 读 A2A v1.0 公告，找出截至 2026 年 4 月还没被任何框架实现的那个特性。（提示：它跟多跳 task 委派有关。）
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| A2A | "Agent-to-Agent protocol" | Open protocol for opaque agent collaboration |
-| Agent Card | "`.well-known/agent.json`" | Published metadata describing an agent's skills and endpoint |
-| Skill | "A callable unit" | A named operation the agent supports (analog to MCP tool) |
-| Task | "Unit of delegation" | A work item with a lifecycle and final artifact |
-| Message | "Task input" | Carries Parts (text, file, data) |
-| Part | "Typed chunk" | `text` / `file` / `data` element of a message |
-| Artifact | "Task output" | Named, typed output returned on completion |
-| AP2 | "Agent Payments Protocol" | Signed Agent Cards extension for trust and payments |
-| Opacity | "Black-box collaboration" | Called agent's internals are hidden from caller |
-| Input-required | "Task pause" | Lifecycle state when the agent needs more info |
+| A2A | "Agent-to-Agent 协议" | 用于不透明 agent 协作的开放协议 |
+| Agent Card | "`.well-known/agent.json`" | 描述一个 agent 的 skill 和端点的已发布元数据 |
+| Skill | "一个可调用单位" | agent 支持的具名操作（类比 MCP tool） |
+| Task | "委派单位" | 带生命周期和最终 artifact 的工作项 |
+| Message | "task 输入" | 携带 Part（text、file、data） |
+| Part | "定型块" | 一条 message 的 `text` / `file` / `data` 元素 |
+| Artifact | "task 输出" | 完成时返回的具名、定型输出 |
+| AP2 | "Agent Payments Protocol" | 用于信任和支付的签名 Agent Card 扩展 |
+| Opacity | "黑盒协作" | 被调用 agent 的内部对调用方隐藏 |
+| Input-required | "task 暂停" | agent 需要更多信息时的生命周期状态 |
 
-## Further Reading
+## 延伸阅读
 
-- [a2a-protocol.org](https://a2a-protocol.org/latest/) — canonical A2A specification
-- [a2aproject/A2A — GitHub](https://github.com/a2aproject/A2A) — reference implementations and SDKs
-- [Linux Foundation — A2A launch press release](https://www.linuxfoundation.org/press/linux-foundation-launches-the-agent2agent-protocol-project-to-enable-secure-intelligent-communication-between-ai-agents) — June 2025 governance transfer
-- [Google Cloud — A2A protocol upgrade](https://cloud.google.com/blog/products/ai-machine-learning/agent2agent-protocol-is-getting-an-upgrade) — roadmap and partner momentum
-- [Google Dev — A2A 1.0 milestone](https://discuss.google.dev/t/the-a2a-1-0-milestone-ensuring-and-testing-backward-compatibility/352258) — v1.0 release notes and backward-compat guidance
+- [a2a-protocol.org](https://a2a-protocol.org/latest/) — 权威 A2A 规范
+- [a2aproject/A2A — GitHub](https://github.com/a2aproject/A2A) — 参考实现与 SDK
+- [Linux Foundation — A2A launch press release](https://www.linuxfoundation.org/press/linux-foundation-launches-the-agent2agent-protocol-project-to-enable-secure-intelligent-communication-between-ai-agents) — 2025 年 6 月治理移交
+- [Google Cloud — A2A protocol upgrade](https://cloud.google.com/blog/products/ai-machine-learning/agent2agent-protocol-is-getting-an-upgrade) — 路线图与合作伙伴势头
+- [Google Dev — A2A 1.0 milestone](https://discuss.google.dev/t/the-a2a-1-0-milestone-ensuring-and-testing-backward-compatibility/352258) — v1.0 发布说明与向后兼容指引

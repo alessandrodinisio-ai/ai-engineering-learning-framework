@@ -1,117 +1,117 @@
-# Bias-Variance Tradeoff
+# 偏差-方差权衡
 
-> Every model error comes from one of three sources: bias, variance, or noise. You can only control the first two.
+> 模型的每一份误差都来自三个来源之一：偏差、方差或噪声。你只能控制前两个。
 
-**Type:** Learn
-**Language:** Python
-**Prerequisites:** Phase 2, Lessons 01-09 (ML basics, regression, classification, evaluation)
-**Time:** ~75 minutes
+**类型：** Learn
+**语言：** Python
+**前置要求：** 阶段 2 第 01-09 课（ML 基础、回归、分类、评估）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Derive the bias-variance decomposition of expected prediction error and explain the role of irreducible noise
-- Diagnose whether a model suffers from high bias or high variance using training and test error patterns
-- Explain how regularization techniques (L1, L2, dropout, early stopping) trade bias for variance
-- Implement experiments that visualize the bias-variance tradeoff across models of increasing complexity
+- 推导期望预测误差的偏差-方差分解，并说明不可约噪声的作用
+- 用训练误差和测试误差的模式诊断模型是高偏差还是高方差
+- 解释正则化技术（L1、L2、dropout、提前停止）如何用偏差换方差
+- 实现实验，可视化随复杂度递增的模型上的偏差-方差权衡
 
-## The Problem
+## 问题所在
 
-You trained a model. It has some error on test data. Where does that error come from?
+你训练了一个模型。它在测试数据上有一些误差。这误差从哪来？
 
-If your model is too simple (linear regression on a curved dataset), it will consistently miss the true pattern. That is bias. If your model is too complex (degree-20 polynomial on 15 data points), it will fit the training data perfectly but give wildly different predictions on new data. That is variance.
+如果你的模型太简单（在弯曲的数据集上用线性回归），它会一贯地错过真实规律。这是偏差。如果你的模型太复杂（在 15 个数据点上用 20 次多项式），它会完美拟合训练数据，却在新数据上给出天差地别的预测。这是方差。
 
-You cannot minimize both at the same time for a fixed model capacity. Push bias down and variance goes up. Push variance down and bias goes up. Understanding this tradeoff is the single most useful diagnostic skill in machine learning. It tells you whether to make your model more complex or less complex, whether to get more data or engineer better features, whether to regularize more or less.
+对一个固定的模型容量，你无法同时让两者都最小。把偏差压下去，方差就上来。把方差压下去，偏差就上来。理解这个权衡是机器学习里最有用的单项诊断技能。它告诉你该让模型更复杂还是更简单、该拿更多数据还是做更好的特征、该多正则化还是少正则化。
 
-## The Concept
+## 核心概念
 
-### Bias: Systematic Error
+### 偏差：系统性误差
 
-Bias measures how far off your model's average prediction is from the true value. If you trained the same model on many different training sets drawn from the same distribution and averaged the predictions, bias is the gap between that average and the truth.
+偏差衡量你模型的平均预测离真实值有多远。如果你在从同一分布抽出的许多不同训练集上训练同一个模型，再把预测平均起来，偏差就是这个平均和真值之间的差距。
 
-High bias means the model is too rigid to capture the real pattern. A straight line fit to a parabola will always miss the curve, no matter how much data you give it. This is underfitting.
-
-```
-High bias (underfitting):
-  Model always predicts roughly the same wrong thing.
-  Training error: HIGH
-  Test error: HIGH
-  Gap between them: SMALL
-```
-
-### Variance: Sensitivity to Training Data
-
-Variance measures how much your predictions change when you train on different subsets of data. If small changes in the training set cause large changes in the model, variance is high.
-
-High variance means the model is fitting noise in the training data, not the underlying signal. A degree-20 polynomial will thread through every training point but oscillate wildly between them. This is overfitting.
+高偏差意味着模型太僵硬，抓不住真实规律。用一条直线拟合一条抛物线，无论你给多少数据，它都会错过那条曲线。这是欠拟合。
 
 ```
-High variance (overfitting):
-  Model fits training data perfectly but fails on new data.
-  Training error: LOW
-  Test error: HIGH
-  Gap between them: LARGE
+高偏差（欠拟合）：
+  模型总是预测出大致相同的错误结果。
+  训练误差：高
+  测试误差：高
+  两者之间的差距：小
 ```
 
-### The Decomposition
+### 方差：对训练数据的敏感度
 
-For any point x, the expected prediction error under squared loss decomposes exactly:
+方差衡量你在不同数据子集上训练时预测变化有多大。如果训练集的小变化导致模型大变化，方差就高。
+
+高方差意味着模型在拟合训练数据里的噪声，而不是底层信号。一个 20 次多项式会穿过每个训练点，却在它们之间剧烈震荡。这是过拟合。
+
+```
+高方差（过拟合）：
+  模型完美拟合训练数据，却在新数据上失败。
+  训练误差：低
+  测试误差：高
+  两者之间的差距：大
+```
+
+### 分解
+
+对任意点 x，平方损失下的期望预测误差恰好分解为：
 
 ```
 Expected Error = Bias^2 + Variance + Irreducible Noise
 
-where:
+其中：
   Bias^2   = (E[f_hat(x)] - f(x))^2
   Variance = E[(f_hat(x) - E[f_hat(x)])^2]
   Noise    = E[(y - f(x))^2]             (sigma^2)
 ```
 
-- `f(x)` is the true function
-- `f_hat(x)` is your model's prediction
-- `E[...]` is the expectation over different training sets
-- `y` is the observed label (true function plus noise)
+- `f(x)` 是真实函数
+- `f_hat(x)` 是你模型的预测
+- `E[...]` 是对不同训练集的期望
+- `y` 是观测到的标签（真实函数加噪声）
 
-The noise term is irreducible. No model can do better than sigma^2 on noisy data. Your job is to find the right balance between bias^2 and variance.
+噪声项是不可约的。在有噪声的数据上，没有模型能做得比 sigma^2 更好。你的任务是在 偏差^2 和方差之间找到正确的平衡。
 
-### Model Complexity vs Error
+### 模型复杂度 vs 误差
 
 ```mermaid
 graph LR
-    A[Simple Model] -->|increase complexity| B[Sweet Spot]
-    B -->|increase complexity| C[Complex Model]
+    A[简单模型] -->|提升复杂度| B[甜点位]
+    B -->|提升复杂度| C[复杂模型]
 
     style A fill:#f9f,stroke:#333
     style B fill:#9f9,stroke:#333
     style C fill:#f99,stroke:#333
 ```
 
-The classic U-shaped curve:
+经典的 U 形曲线：
 
-| Complexity | Bias | Variance | Total Error |
+| 复杂度 | 偏差 | 方差 | 总误差 |
 |-----------|------|----------|-------------|
-| Too low | HIGH | LOW | HIGH (underfitting) |
-| Just right | MODERATE | MODERATE | LOWEST |
-| Too high | LOW | HIGH | HIGH (overfitting) |
+| 太低 | 高 | 低 | 高（欠拟合） |
+| 恰到好处 | 中 | 中 | 最低 |
+| 太高 | 低 | 高 | 高（过拟合） |
 
-### Regularization as Bias-Variance Control
+### 正则化作为偏差-方差的调控
 
-Regularization deliberately increases bias to reduce variance. It constrains the model so it cannot chase noise.
+正则化故意增加偏差来减少方差。它约束模型，让它没法去追噪声。
 
-- **L2 (Ridge):** Shrinks all weights toward zero. Keeps all features but reduces their influence.
-- **L1 (Lasso):** Pushes some weights exactly to zero. Performs feature selection.
-- **Dropout:** Randomly disables neurons during training. Forces redundant representations.
-- **Early stopping:** Stops training before the model fully fits the training data.
+- **L2（Ridge）：** 把所有权重朝零收缩。保留所有特征但削弱它们的影响。
+- **L1（Lasso）：** 把一些权重逼到恰好为零。做特征选择。
+- **Dropout：** 训练时随机禁用神经元。强制形成冗余表示。
+- **提前停止：** 在模型完全拟合训练数据之前停止训练。
 
-The regularization strength (lambda, dropout rate, number of epochs) directly controls where you sit on the bias-variance curve. More regularization means more bias, less variance.
+正则化强度（lambda、dropout 率、epoch 数）直接控制你坐在偏差-方差曲线的哪个位置。正则化越强，偏差越大、方差越小。
 
-### Double Descent: The Modern Perspective
+### 双下降：现代视角
 
-Classical theory says: after the sweet spot, more complexity always hurts. But research since 2019 has shown something unexpected. If you keep increasing model capacity far past the interpolation threshold (where the model has enough parameters to perfectly fit training data), test error can decrease again.
+经典理论说：过了甜点位，复杂度越高总是越糟。但 2019 年以来的研究揭示了一些出人意料的东西。如果你把模型容量一路推过插值阈值（模型参数足以完美拟合训练数据的那一点），测试误差还能再次下降。
 
 ```mermaid
 graph LR
-    A[Underfit Zone] --> B[Classical Sweet Spot]
-    B --> C[Interpolation Threshold]
-    C --> D[Double Descent - Error Drops Again]
+    A[欠拟合区] --> B[经典甜点位]
+    B --> C[插值阈值]
+    C --> D[双下降——误差再次下降]
 
     style A fill:#fdd,stroke:#333
     style B fill:#dfd,stroke:#333
@@ -119,148 +119,148 @@ graph LR
     style D fill:#dfd,stroke:#333
 ```
 
-This "double descent" phenomenon explains why massively overparameterized neural networks (with far more parameters than training examples) still generalize well. The classical bias-variance tradeoff is not wrong, but it is incomplete for the modern regime.
+这个"双下降"现象解释了为什么参数量远超训练样本的超大规模神经网络仍然泛化得好。经典的偏差-方差权衡没错，但对现代场景来说不完整。
 
-Key observations about double descent:
-- It happens in linear models, decision trees, and neural networks
-- More data can actually hurt in the interpolation region (sample-wise double descent)
-- More training epochs can cause it too (epoch-wise double descent)
-- Regularization smooths out the peak but does not eliminate it
+关于双下降的关键观察：
+- 它出现在线性模型、决策树和神经网络里
+- 在插值区，更多数据反而可能有害（样本维度的双下降）
+- 更多训练 epoch 也能引发它（epoch 维度的双下降）
+- 正则化能平滑掉那个峰值，但消不掉它
 
-Why does this happen? At the interpolation threshold, the model has just enough capacity to fit all training points. It is forced into a very specific solution that threads through every point, and small perturbations in the data cause large changes in the fit. This is where variance peaks. Past the threshold, the model has many possible solutions that fit the data perfectly. The learning algorithm (e.g., gradient descent with implicit regularization) tends to pick the simplest one among them. This implicit bias toward simple solutions is why overparameterized models generalize.
+为什么会这样？在插值阈值处，模型容量刚好够拟合所有训练点。它被逼进一个非常特定、穿过每个点的解，数据里的小扰动会导致拟合的大变化。这就是方差达到峰值的地方。过了阈值，模型有许多个能完美拟合数据的可能解。学习算法（比如带隐式正则化的梯度下降）倾向于从中挑最简单的那个。这种朝向简单解的隐式偏好，正是超参数化模型能泛化的原因。
 
-| Regime | Parameters vs Samples | Behavior |
+| 场景 | 参数 vs 样本 | 行为 |
 |--------|----------------------|----------|
-| Underparameterized | p << n | Classical tradeoff applies |
-| Interpolation threshold | p ~ n | Variance peaks, test error spikes |
-| Overparameterized | p >> n | Implicit regularization kicks in, test error drops |
+| 欠参数化 | p << n | 经典权衡适用 |
+| 插值阈值 | p ~ n | 方差达峰，测试误差飙升 |
+| 超参数化 | p >> n | 隐式正则化起作用，测试误差下降 |
 
-For practical purposes: if you are using neural networks or large tree ensembles, do not stop at the interpolation threshold. Either stay well below it (with explicit regularization) or go well past it. The worst place to be is right at the threshold.
+实用结论：如果你在用神经网络或大型树集成，不要停在插值阈值上。要么远在它之下（配显式正则化），要么远在它之上。最糟的位置就是正好卡在阈值上。
 
-### Diagnosing Your Model
+### 诊断你的模型
 
 ```mermaid
 flowchart TD
-    A[Compare train error vs test error] --> B{Large gap?}
-    B -->|Yes| C[High variance - overfitting]
-    B -->|No| D{Both errors high?}
-    D -->|Yes| E[High bias - underfitting]
-    D -->|No| F[Good fit]
+    A[对比训练误差 vs 测试误差] --> B{差距大吗？}
+    B -->|是| C[高方差——过拟合]
+    B -->|否| D{两个误差都高吗？}
+    D -->|是| E[高偏差——欠拟合]
+    D -->|否| F[拟合良好]
 
-    C --> G[More data / Regularize / Simpler model]
-    E --> H[More features / Complex model / Less regularization]
-    F --> I[Deploy]
+    C --> G[更多数据 / 正则化 / 更简单的模型]
+    E --> H[更多特征 / 复杂模型 / 减少正则化]
+    F --> I[部署]
 ```
 
-| Symptom | Diagnosis | Fix |
+| 症状 | 诊断 | 解法 |
 |---------|-----------|-----|
-| High train error, high test error | Bias | More features, complex model, less regularization |
-| Low train error, high test error | Variance | More data, regularization, simpler model, dropout |
-| Low train error, low test error | Good fit | Ship it |
-| Train error decreasing, test error increasing | Overfitting in progress | Early stopping |
+| 训练误差高，测试误差高 | 偏差 | 更多特征、复杂模型、减少正则化 |
+| 训练误差低，测试误差高 | 方差 | 更多数据、正则化、更简单的模型、dropout |
+| 训练误差低，测试误差低 | 拟合良好 | 交付 |
+| 训练误差下降，测试误差上升 | 正在过拟合 | 提前停止 |
 
-### Practical Strategies
+### 实用策略
 
-**When bias is the problem:**
-- Add polynomial or interaction features
-- Use a more flexible model (tree ensemble instead of linear)
-- Reduce regularization strength
-- Train longer (if not yet converged)
+**当偏差是问题时：**
+- 加多项式或交互特征
+- 用更灵活的模型（树集成代替线性）
+- 减少正则化强度
+- 训练更久（如果还没收敛）
 
-**When variance is the problem:**
-- Get more training data
-- Use bagging (random forests)
-- Increase regularization (higher lambda, more dropout)
-- Feature selection (remove noisy features)
-- Use cross-validation to detect it early
+**当方差是问题时：**
+- 拿更多训练数据
+- 用 bagging（随机森林）
+- 加强正则化（更高的 lambda、更多 dropout）
+- 特征选择（去掉噪声特征）
+- 用交叉验证及早发现它
 
-### Ensemble Methods and Variance Reduction
+### 集成方法与方差减少
 
-Ensemble methods are the most practical tool for fighting variance.
+集成方法是对抗方差最实用的工具。
 
-**Bagging (Bootstrap Aggregating)** trains multiple models on different bootstrap samples of the training data, then averages their predictions. Each individual model has high variance, but the average has much lower variance. Random forests are bagging applied to decision trees.
+**Bagging（自助聚合）** 在训练数据的不同自助样本上训练多个模型，再把它们的预测平均。每个单独模型方差高，但平均后方差低得多。随机森林就是把 bagging 用在决策树上。
 
-Why it works mathematically: if you average N independent predictions, each with variance sigma^2, the variance of the average is sigma^2 / N. The models are not truly independent (they all see similar data), so the reduction is less than 1/N, but it is still substantial.
+它为什么数学上管用：如果你把 N 个独立预测平均，每个方差为 sigma^2，那平均的方差是 sigma^2 / N。这些模型并非真正独立（它们都看到相似的数据），所以减少量小于 1/N，但仍然可观。
 
-**Boosting** reduces bias by building models sequentially, where each new model focuses on the errors of the ensemble so far. Gradient boosting and AdaBoost are the main examples. Boosting can overfit if you add too many models, so you need early stopping or regularization.
+**Boosting** 通过顺序地建模型来减少偏差，每个新模型聚焦于到目前为止集成的错误。梯度提升和 AdaBoost 是主要例子。Boosting 如果加太多模型会过拟合，所以你需要提前停止或正则化。
 
-| Method | Primary Effect | Bias Change | Variance Change |
+| 方法 | 主要效果 | 偏差变化 | 方差变化 |
 |--------|---------------|-------------|-----------------|
-| Bagging | Reduces variance | No change | Decreases |
-| Boosting | Reduces bias | Decreases | Can increase |
-| Stacking | Reduces both | Depends on meta-learner | Depends on base models |
-| Dropout | Implicit bagging | Slight increase | Decreases |
+| Bagging | 减少方差 | 不变 | 下降 |
+| Boosting | 减少偏差 | 下降 | 可能上升 |
+| Stacking | 两者都减 | 取决于元学习器 | 取决于基模型 |
+| Dropout | 隐式 bagging | 略增 | 下降 |
 
-**Practical rule:** if your base model has high variance (deep trees, high-degree polynomials), use bagging. If your base model has high bias (shallow stumps, simple linear models), use boosting.
+**实用规则：** 如果你的基模型方差高（深树、高次多项式），用 bagging。如果你的基模型偏差高（浅桩、简单线性模型），用 boosting。
 
-### Learning Curves
+### 学习曲线
 
-Learning curves plot training and validation error as a function of training set size. They are the most practical diagnostic tool you have. Unlike a single train/test comparison, learning curves show you the trajectory of your model and tell you whether more data will help.
+学习曲线把训练误差和验证误差作为训练集大小的函数画出来。它们是你手上最实用的诊断工具。和单次训练/测试对比不同，学习曲线展示模型的轨迹，告诉你更多数据会不会有帮助。
 
 ```mermaid
 flowchart TD
-    subgraph HB["High Bias Learning Curve"]
+    subgraph HB["高偏差学习曲线"]
         direction LR
-        HB1["Small N: both errors high"]
-        HB2["Large N: both errors converge to HIGH error"]
+        HB1["小 N：两个误差都高"]
+        HB2["大 N：两个误差都收敛到高误差"]
         HB1 --> HB2
     end
 
-    subgraph HV["High Variance Learning Curve"]
+    subgraph HV["高方差学习曲线"]
         direction LR
-        HV1["Small N: train low, test high (big gap)"]
-        HV2["Large N: gap shrinks but slowly"]
+        HV1["小 N：训练低，测试高（差距大）"]
+        HV2["大 N：差距缩小但很慢"]
         HV1 --> HV2
     end
 
-    subgraph GF["Good Fit Learning Curve"]
+    subgraph GF["拟合良好学习曲线"]
         direction LR
-        GF1["Small N: some gap"]
-        GF2["Large N: both converge to LOW error"]
+        GF1["小 N：有些差距"]
+        GF2["大 N：两者都收敛到低误差"]
         GF1 --> GF2
     end
 ```
 
-How to read them:
+怎么读它们：
 
-| Scenario | Training Error | Validation Error | Gap | What It Means | What to Do |
+| 场景 | 训练误差 | 验证误差 | 差距 | 它意味着什么 | 该做什么 |
 |----------|---------------|-----------------|-----|---------------|------------|
-| High bias | High | High | Small | Model cannot capture the pattern | More features, complex model, less regularization |
-| High variance | Low | High | Large | Model memorizes training data | More data, regularization, simpler model |
-| Good fit | Moderate | Moderate | Small | Model generalizes well | Ship it |
-| High variance, improving | Low | Decreasing with more data | Shrinking | Variance problem that data can fix | Collect more data |
-| High bias, flat | High | High and flat | Small and flat | More data will NOT help | Change model architecture |
+| 高偏差 | 高 | 高 | 小 | 模型抓不住规律 | 更多特征、复杂模型、减少正则化 |
+| 高方差 | 低 | 高 | 大 | 模型在背训练数据 | 更多数据、正则化、更简单的模型 |
+| 拟合良好 | 中 | 中 | 小 | 模型泛化良好 | 交付 |
+| 高方差，在改善 | 低 | 随数据增多而下降 | 在缩小 | 数据能修复的方差问题 | 收集更多数据 |
+| 高偏差，平直 | 高 | 高且平 | 小且平 | 更多数据**不会**有帮助 | 换模型架构 |
 
-The critical insight: if both curves have plateaued and the gap is small but both errors are high, more data is useless. You need a better model. If the gap is large and still shrinking, more data will help.
+关键洞察：如果两条曲线都到了平台、差距小但两个误差都高，那更多数据没用，你需要更好的模型。如果差距大且仍在缩小，那更多数据会有帮助。
 
-### How to Generate Learning Curves
+### 如何生成学习曲线
 
-There are two approaches:
+有两种思路：
 
-**Approach 1: Vary training set size, fixed model.** Hold the model and hyperparameters constant. Train on increasingly large subsets of the training data. Measure training error and validation error at each size. This is the standard learning curve.
+**思路 1：变训练集大小，固定模型。** 模型和超参数保持不变。在越来越大的训练数据子集上训练。在每个大小上测量训练误差和验证误差。这是标准学习曲线。
 
-**Approach 2: Vary model complexity, fixed data.** Hold the data constant. Sweep a complexity parameter (polynomial degree, tree depth, number of layers). Measure training error and validation error at each complexity. This is a validation curve and shows the bias-variance tradeoff directly.
+**思路 2：变模型复杂度，固定数据。** 数据保持不变。扫一个复杂度参数（多项式次数、树深度、层数）。在每个复杂度上测量训练误差和验证误差。这是验证曲线，直接展示偏差-方差权衡。
 
-Both approaches complement each other. The first tells you if more data will help. The second tells you if a different model will help. Run both before making decisions about your next step.
+两种思路互补。第一个告诉你更多数据会不会有帮助。第二个告诉你换个模型会不会有帮助。在决定下一步之前两个都跑。
 
 ```mermaid
 flowchart TD
-    A[Model underperforming] --> B[Generate learning curve]
-    B --> C{Gap between train and val?}
-    C -->|Large gap, val still decreasing| D[More data will help]
-    C -->|Small gap, both high| E[More data will NOT help]
-    C -->|Large gap, val flat| F[Regularize or simplify]
-    E --> G[Generate validation curve]
-    G --> H[Try more complex model]
+    A[模型表现不佳] --> B[生成学习曲线]
+    B --> C{训练和验证之间的差距？}
+    C -->|差距大，验证仍在下降| D[更多数据会有帮助]
+    C -->|差距小，两者都高| E[更多数据不会有帮助]
+    C -->|差距大，验证平直| F[正则化或简化]
+    E --> G[生成验证曲线]
+    G --> H[试更复杂的模型]
 ```
 
-## Build It
+## 动手构建
 
-The code in `code/bias_variance.py` runs the full bias-variance decomposition experiment. Here is the approach, step by step.
+`code/bias_variance.py` 里的代码运行完整的偏差-方差分解实验。下面是逐步的做法。
 
-### Step 1: Generate Synthetic Data from a Known Function
+### 第 1 步：从已知函数生成合成数据
 
-We use `f(x) = sin(1.5x) + 0.5x` with Gaussian noise. Knowing the true function lets us compute exact bias and variance.
+我们用 `f(x) = sin(1.5x) + 0.5x` 加高斯噪声。知道真实函数让我们能算出精确的偏差和方差。
 
 ```python
 def true_function(x):
@@ -273,9 +273,9 @@ def generate_data(n_samples=30, noise_std=0.5, x_range=(-3, 3), seed=None):
     return x, y
 ```
 
-### Step 2: Bootstrap Sampling and Polynomial Fitting
+### 第 2 步：自助采样与多项式拟合
 
-For each polynomial degree, we draw many bootstrap training sets, fit the polynomial, and record predictions on a fixed test grid. This gives us a distribution of predictions at each test point.
+对每个多项式次数，我们抽许多自助训练集，拟合多项式，并记录在固定测试网格上的预测。这给了我们每个测试点上的预测分布。
 
 ```python
 def fit_polynomial(x_train, y_train, degree, lam=0.0):
@@ -289,11 +289,11 @@ def fit_polynomial(x_train, y_train, degree, lam=0.0):
     return w
 ```
 
-We fit on 200 different bootstrap samples. Each bootstrap sample is drawn from the same underlying distribution but contains different points.
+我们在 200 个不同的自助样本上拟合。每个自助样本都从同一底层分布抽出，但包含不同的点。
 
-### Step 3: Computing Bias^2, Variance Decomposition
+### 第 3 步：计算 偏差^2、方差分解
 
-With 200 sets of predictions at each test point, we can compute the decomposition directly from the definition:
+有了每个测试点上的 200 组预测，我们就能直接按定义计算分解：
 
 ```python
 mean_pred = predictions.mean(axis=0)
@@ -302,14 +302,14 @@ variance = np.mean(predictions.var(axis=0))
 total_error = np.mean(np.mean((predictions - y_true) ** 2, axis=1))
 ```
 
-- `mean_pred` is E[f_hat(x)] estimated from bootstrap samples
-- `bias_sq` is the squared gap between average prediction and truth
-- `variance` is the average spread of predictions across bootstrap samples
-- `total_error` should approximately equal bias^2 + variance + noise
+- `mean_pred` 是从自助样本估计的 E[f_hat(x)]
+- `bias_sq` 是平均预测和真值之间的平方差距
+- `variance` 是预测在各自助样本间的平均散度
+- `total_error` 应该约等于 偏差^2 + 方差 + 噪声
 
-### Step 4: Learning Curves
+### 第 4 步：学习曲线
 
-Learning curves sweep training set size while holding model complexity fixed. They show whether your model is data-limited or capacity-limited.
+学习曲线扫训练集大小，同时固定模型复杂度。它们展示你的模型是受数据限制还是受容量限制。
 
 ```python
 def demo_learning_curves():
@@ -328,19 +328,19 @@ def demo_learning_curves():
             test_mse = np.mean((test_pred - y_test) ** 2)
             train_errors.append(train_mse)
             test_errors.append(test_mse)
-        # Average over runs gives the learning curve point
+        # 对多次运行取平均得到一个学习曲线点
 ```
 
-For a high-variance model (degree 5 with small data), you see:
-- Training error starts low and increases as more data makes memorization harder
-- Test error starts high and decreases as the model gets more signal
-- The gap shrinks with more data
+对于高方差模型（小数据上的 5 次），你会看到：
+- 训练误差开始时低，随着数据增多让记忆变难而上升
+- 测试误差开始时高，随着模型获得更多信号而下降
+- 差距随数据增多而缩小
 
-For a high-bias model (degree 1), both errors converge quickly to the same high value and more data does not help.
+对于高偏差模型（1 次），两个误差很快收敛到同一个高值，更多数据没用。
 
-### Step 5: Regularization Sweep
+### 第 5 步：正则化扫描
 
-The code also includes `demo_regularization_sweep()`, which fixes a high-degree polynomial (degree 15) and sweeps Ridge regularization strength from 0.001 to 100. This shows the bias-variance tradeoff from a different angle: instead of varying model complexity, we vary the constraint strength.
+代码还包含 `demo_regularization_sweep()`，它固定一个高次多项式（15 次），把 Ridge 正则化强度从 0.001 扫到 100。这从另一个角度展示偏差-方差权衡：我们不变模型复杂度，而是变约束强度。
 
 ```python
 def demo_regularization_sweep():
@@ -351,15 +351,15 @@ def demo_regularization_sweep():
         print(f"alpha={alpha:.3f}  bias={r['bias_sq']:.4f}  var={r['variance']:.4f}")
 ```
 
-At low alpha, the degree-15 polynomial is nearly unconstrained. Variance dominates because the model chases noise in each bootstrap sample. At high alpha, the penalty is so strong that the model effectively becomes a near-constant function. Bias dominates. The optimal alpha sits between these extremes.
+alpha 低时，15 次多项式几乎不受约束。方差占主导，因为模型在每个自助样本里追噪声。alpha 高时，惩罚强到模型实际上变成一个近乎常数的函数。偏差占主导。最优 alpha 落在这两个极端之间。
 
-This is the same U-curve from varying polynomial degree, but controlled by a continuous knob instead of a discrete one. In practice, regularization is the preferred way to control the tradeoff because it allows fine-grained control without changing the feature set.
+这和变多项式次数得到的 U 曲线一样，只不过是由一个连续旋钮而不是离散旋钮控制的。实践中，正则化是控制权衡的首选方式，因为它允许细粒度控制而不用改特征集。
 
-## Use It
+## 上手使用
 
-sklearn provides `learning_curve` and `validation_curve` to automate these diagnostics without writing bootstrap loops.
+sklearn 提供 `learning_curve` 和 `validation_curve` 来自动化这些诊断，不用自己写自助循环。
 
-### Validation Curve: Sweep Model Complexity
+### 验证曲线：扫模型复杂度
 
 ```python
 from sklearn.model_selection import validation_curve
@@ -381,9 +381,9 @@ for d in degrees:
     val_scores_all.append(-val_scores.mean())
 ```
 
-This gives you the bias-variance tradeoff curve directly. Where the validation score is worst relative to train score, variance dominates. Where both are bad, bias dominates.
+这直接给你偏差-方差权衡曲线。验证分数相对训练分数最差的地方，方差占主导。两者都差的地方，偏差占主导。
 
-### Learning Curve: Sweep Training Set Size
+### 学习曲线：扫训练集大小
 
 ```python
 from sklearn.model_selection import learning_curve
@@ -397,9 +397,9 @@ train_mse = -train_scores.mean(axis=1)
 val_mse = -val_scores.mean(axis=1)
 ```
 
-Plot `train_mse` and `val_mse` against `train_sizes`. The shape tells you everything about your model.
+把 `train_mse` 和 `val_mse` 对 `train_sizes` 画出来。曲线形状告诉你关于模型的一切。
 
-### Cross-Validation with Regularization Sweep
+### 带正则化扫描的交叉验证
 
 ```python
 from sklearn.model_selection import cross_val_score
@@ -411,53 +411,53 @@ for alpha in alphas:
     print(f"alpha={alpha:>7.3f}  MSE={-scores.mean():.4f} +/- {scores.std():.4f}")
 ```
 
-This sweeps regularization strength for a fixed model complexity. You will see the same bias-variance tradeoff: low alpha means high variance, high alpha means high bias.
+这对固定模型复杂度扫正则化强度。你会看到同样的偏差-方差权衡：alpha 低意味着高方差，alpha 高意味着高偏差。
 
-### Putting It All Together: A Complete Diagnostic Workflow
+### 把它们串起来：一套完整的诊断工作流
 
-In practice, you run these diagnostics in sequence:
+实践中，你按顺序跑这些诊断：
 
-1. Train your model. Compute train and test error.
-2. If both are high: you have a bias problem. Skip to step 4.
-3. If train is low but test is high: you have a variance problem. Generate a learning curve to see if more data will help. If not, regularize.
-4. Generate a validation curve sweeping your main complexity parameter. Find the sweet spot.
-5. At the sweet spot, generate a learning curve. If the gap is still large, you need more data or regularization.
-6. Try Ridge/Lasso with different alpha values using `cross_val_score`. Pick the alpha where cross-validated error is lowest.
+1. 训练你的模型。计算训练和测试误差。
+2. 如果两者都高：你有偏差问题。跳到第 4 步。
+3. 如果训练低但测试高：你有方差问题。生成学习曲线，看更多数据会不会有帮助。如果不会，就正则化。
+4. 生成验证曲线，扫你的主要复杂度参数。找到甜点位。
+5. 在甜点位，生成学习曲线。如果差距仍然大，你需要更多数据或正则化。
+6. 用 `cross_val_score` 试不同 alpha 值的 Ridge/Lasso。挑交叉验证误差最低的那个 alpha。
 
-This takes 10-15 minutes of compute for most tabular datasets and saves hours of guessing.
+对大多数表格数据集，这要花 10-15 分钟算力，能省下几小时的瞎猜。
 
-## Ship It
+## 交付
 
-This lesson produces: `outputs/prompt-model-diagnostics.md`
+本节课产出：`outputs/prompt-model-diagnostics.md`
 
-## Exercises
+## 练习
 
-1. Run the decomposition with `noise_std=0` (no noise). What happens to the irreducible error term? Does the optimal complexity change?
+1. 用 `noise_std=0`（无噪声）跑分解。不可约误差项怎么样了？最优复杂度变了吗？
 
-2. Increase the training set size from 30 to 300. How does this affect the variance component? Does the optimal polynomial degree shift?
+2. 把训练集大小从 30 增加到 300。这对方差分量有什么影响？最优多项式次数移动了吗？
 
-3. Add L2 regularization (Ridge regression) to the experiment. For a fixed high-degree polynomial (degree 15), sweep lambda from 0 to 100. Plot bias^2 and variance as functions of lambda.
+3. 给实验加上 L2 正则化（Ridge 回归）。对一个固定的高次多项式（15 次），把 lambda 从 0 扫到 100。把 偏差^2 和方差作为 lambda 的函数画出来。
 
-4. Modify the true function from a polynomial to `sin(x)`. How does the bias-variance decomposition change? Is there still a clear optimal degree?
+4. 把真实函数从多项式改成 `sin(x)`。偏差-方差分解怎么变？还有清晰的最优次数吗？
 
-5. Implement a simple bootstrap aggregating (bagging) wrapper: train 10 models on bootstrap samples and average predictions. Show that this reduces variance without increasing bias much.
+5. 实现一个简单的自助聚合（bagging）封装：在自助样本上训练 10 个模型并平均预测。说明这能减少方差而不怎么增加偏差。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家怎么说 | 它实际是什么 |
 |------|----------------|----------------------|
-| Bias | "The model is too simple" | Systematic error from wrong assumptions. The gap between the average model prediction and truth. |
-| Variance | "The model is overfitting" | Error from sensitivity to training data. How much predictions change across different training sets. |
-| Irreducible error | "Noise in the data" | Error from randomness in the true data-generating process. No model can eliminate it. |
-| Underfitting | "Not learning enough" | Model has high bias. It misses the real pattern even on training data. |
-| Overfitting | "Memorizing the data" | Model has high variance. It fits noise in training data that does not generalize. |
-| Regularization | "Constraining the model" | Adding a penalty to reduce model complexity, trading bias for lower variance. |
-| Double descent | "More parameters can help" | Test error decreases again when model capacity far exceeds the interpolation threshold. |
-| Model complexity | "How flexible the model is" | The capacity of a model to fit arbitrary patterns. Controlled by architecture, features, or regularization. |
+| 偏差 | "模型太简单" | 来自错误假设的系统性误差。平均模型预测和真值之间的差距。 |
+| 方差 | "模型在过拟合" | 来自对训练数据敏感的误差。预测在不同训练集间变化多大。 |
+| 不可约误差 | "数据里的噪声" | 来自真实数据生成过程随机性的误差。没有模型能消除它。 |
+| 欠拟合 | "学得不够" | 模型有高偏差。它连训练数据上的真实规律都抓不住。 |
+| 过拟合 | "把数据背下来" | 模型有高方差。它拟合了训练数据里不可泛化的噪声。 |
+| 正则化 | "约束模型" | 加一个惩罚来降低模型复杂度，用偏差换更低的方差。 |
+| 双下降 | "更多参数反而有帮助" | 当模型容量远超插值阈值时，测试误差再次下降。 |
+| 模型复杂度 | "模型有多灵活" | 模型拟合任意规律的容量。由架构、特征或正则化控制。 |
 
-## Further Reading
+## 延伸阅读
 
-- [Hastie, Tibshirani, Friedman: Elements of Statistical Learning, Ch. 7](https://hastie.su.domains/ElemStatLearn/) -- the definitive treatment of bias-variance decomposition
-- [Belkin et al., Reconciling modern machine learning practice and the bias-variance trade-off (2019)](https://arxiv.org/abs/1812.11118) -- the double descent paper
-- [Nakkiran et al., Deep Double Descent (2019)](https://arxiv.org/abs/1912.02292) -- epoch-wise and sample-wise double descent
-- [Scott Fortmann-Roe: Understanding the Bias-Variance Tradeoff](http://scott.fortmann-roe.com/docs/BiasVariance.html) -- clear visual explanation
+- [Hastie, Tibshirani, Friedman: Elements of Statistical Learning, Ch. 7](https://hastie.su.domains/ElemStatLearn/) -- 偏差-方差分解的权威论述
+- [Belkin et al., Reconciling modern machine learning practice and the bias-variance trade-off (2019)](https://arxiv.org/abs/1812.11118) -- 双下降的论文
+- [Nakkiran et al., Deep Double Descent (2019)](https://arxiv.org/abs/1912.02292) -- epoch 维度和样本维度的双下降
+- [Scott Fortmann-Roe: Understanding the Bias-Variance Tradeoff](http://scott.fortmann-roe.com/docs/BiasVariance.html) -- 清晰的可视化讲解

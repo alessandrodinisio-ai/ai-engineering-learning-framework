@@ -1,34 +1,34 @@
-# Async Tasks (SEP-1686) — Call-Now, Fetch-Later for Long-Running Work
+# 异步 Tasks（SEP-1686）——现在调用、稍后取结果，应对长跑工作
 
-> Real agent work takes minutes to hours: CI runs, deep-research synthesis, batch exports. Synchronous tool calls drop connections, time out, or block the UI. SEP-1686, merged in 2025-11-25, adds a Tasks primitive: any request can be augmented to become a task, and the result can be fetched later or streamed via state notifications. Drift-risk note: Tasks are experimental through H1 2026; SDK surface is still being designed around the spec.
+> 真实的 agent 工作要花几分钟到几小时：CI 跑批、深度研究合成、批量导出。同步工具调用会掉连接、超时，或阻塞 UI。SEP-1686 在 2025-11-25 合入，加了一个 Tasks 基元：任何请求都可被增强成一个 task，结果可以稍后取，或经由状态 notification 流式获取。漂移风险提示：Tasks 在 2026 上半年是实验性的；SDK 表面仍在围绕规范设计。
 
-**Type:** Build
-**Languages:** Python (stdlib, async task state machine)
-**Prerequisites:** Phase 13 · 07 (MCP server), Phase 13 · 09 (transports)
-**Time:** ~75 minutes
+**类型：** Build
+**语言：** Python（标准库，异步 task 状态机）
+**前置要求：** 阶段 13 · 07（MCP server）、阶段 13 · 09（传输）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Identify when to promote a tool from synchronous to task-augmented (>30 seconds of server-side work).
-- Walk the task lifecycle: `working` → `input_required` → `completed` / `failed` / `cancelled`.
-- Persist task state so crashes do not lose in-flight work.
-- Poll `tasks/status` and fetch `tasks/result` correctly.
+- 识别何时把一个工具从同步提升为 task 增强（server 端工作 >30 秒）。
+- 走一遍 task 生命周期：`working` → `input_required` → `completed` / `failed` / `cancelled`。
+- 持久化 task 状态，让崩溃不丢失在途工作。
+- 正确地轮询 `tasks/status` 并取 `tasks/result`。
 
-## The Problem
+## 问题所在
 
-A `generate_report` tool runs a multi-minute extraction pipeline. Options under the synchronous model:
+一个 `generate_report` 工具跑一条数分钟的抽取管线。同步模型下的选项：
 
-1. Hold the connection open for three minutes. Remote transports drop it; clients time out; UIs freeze.
-2. Return immediately with a placeholder; require the client to poll a custom endpoint. Breaks the MCP uniformity.
-3. Fire-and-forget; no result.
+1. 把连接开三分钟。远程传输会掐断它；client 超时；UI 冻住。
+2. 立刻返回一个占位符；要求 client 轮询一个自定义端点。破坏了 MCP 的统一性。
+3. 发了不管；没有结果。
 
-None are good. SEP-1686 adds a fourth: task augmentation. Any request (typically `tools/call`) can be tagged as a task. The server returns a task id immediately. The client polls `tasks/status` and fetches `tasks/result` when done. Server-side state survives restarts.
+没一个是好的。SEP-1686 加了第四个：task 增强。任何请求（通常是 `tools/call`）都可被标记为一个 task。server 立刻返回一个 task id。client 轮询 `tasks/status`，完成时取 `tasks/result`。server 端状态在重启后存活。
 
-## The Concept
+## 核心概念
 
-### Task augmentation
+### Task 增强
 
-A request becomes a task by setting `params._meta.task.required: true` (or `optional: true`, server decides). The server responds immediately with:
+一个请求靠设 `params._meta.task.required: true`（或 `optional: true`，server 决定）变成 task。server 立刻响应：
 
 ```json
 {
@@ -45,116 +45,116 @@ A request becomes a task by setting `params._meta.task.required: true` (or `opti
 }
 ```
 
-`ttl` is the server's promise to retain state; after ttl the task result is discarded.
+`ttl` 是 server 保留状态的承诺；ttl 过后 task 结果被丢弃。
 
-### Per-tool opt-in
+### 每工具的选择加入
 
-Tool annotations can declare task support:
+工具 annotation 能声明 task 支持：
 
-- `taskSupport: "forbidden"` — this tool always runs synchronously. Safe for fast tools.
-- `taskSupport: "optional"` — client may request task-augmentation.
-- `taskSupport: "required"` — client MUST use task augmentation.
+- `taskSupport: "forbidden"`——这个工具总是同步跑。对快工具安全。
+- `taskSupport: "optional"`——client 可以请求 task 增强。
+- `taskSupport: "required"`——client 必须用 task 增强。
 
-A `generate_report` tool would be `required`. A `notes_search` tool would be `forbidden`.
+一个 `generate_report` 工具会是 `required`。一个 `notes_search` 工具会是 `forbidden`。
 
-### States
+### 状态
 
 ```
-working  -> input_required -> working  (loop via elicitation)
+working  -> input_required -> working  (经由 elicitation 循环)
 working  -> completed
 working  -> failed
 working  -> cancelled
 ```
 
-State machine is append-only: once `completed`, `failed`, or `cancelled`, the task is terminal.
+状态机是只追加的：一旦 `completed`、`failed` 或 `cancelled`，task 就是终态。
 
-### Methods
+### 方法
 
-- `tasks/status {taskId}` — returns current state and a progress hint.
-- `tasks/result {taskId}` — blocks or returns 404 if not yet done.
-- `tasks/cancel {taskId}` — idempotent; terminal states ignore.
-- `tasks/list` — optional; enumerates active and recently-completed tasks.
+- `tasks/status {taskId}`——返回当前状态和一个进度提示。
+- `tasks/result {taskId}`——阻塞，或在尚未完成时返回 404。
+- `tasks/cancel {taskId}`——幂等；终态忽略。
+- `tasks/list`——可选；枚举活跃的和近期完成的 task。
 
-### Streaming state changes
+### 流式状态变更
 
-When the server supports it, the client can subscribe to state notifications:
+server 支持时，client 可以订阅状态 notification：
 
 ```
 server -> notifications/tasks/updated {taskId, state, progress?}
 ```
 
-Clients that stream rather than poll get better UX. Polling is always supported as the minimal surface.
+流式而非轮询的 client 拿到更好的 UX。轮询作为最小表面始终被支持。
 
-### Durable state
+### 持久状态
 
-The spec requires servers that declare task support to persist state. A crash should not lose completed results within ttl. Stores range from SQLite to Redis to the filesystem. The Lesson 13 harness uses the filesystem.
+规范要求声明 task 支持的 server 持久化状态。崩溃不应丢失 ttl 内已完成的结果。存储从 SQLite 到 Redis 到文件系统都行。第 13 课的脚手架用文件系统。
 
-### Cancellation semantics
+### 取消语义
 
-`tasks/cancel` is idempotent. If the task is mid-execution, the server attempts to stop (check executor-cooperative cancellation). If already terminal, the request is a no-op.
+`tasks/cancel` 是幂等的。如果 task 在执行中途，server 尝试停（看执行器是否协作式取消）。如果已是终态，请求是空操作。
 
-### Crash recovery
+### 崩溃恢复
 
-When the server process restarts:
+当 server 进程重启时：
 
-1. Load all persisted task states.
-2. Mark any `working` tasks whose process died as `failed` with error `CRASH_RECOVERY`.
-3. Preserve `completed` / `failed` / `cancelled` for their ttl.
+1. 加载所有持久化的 task 状态。
+2. 把任何进程已死的 `working` task 标记为 `failed`，错误为 `CRASH_RECOVERY`。
+3. 在 ttl 内保留 `completed` / `failed` / `cancelled`。
 
-### Async tasks plus sampling
+### 异步 tasks 加 sampling
 
-A task can itself call `sampling/createMessage`. This is how long-running research tasks work: the server's task thread samples the client's model as needed, while the client's UI shows the task as `working` with periodic progress updates.
+一个 task 本身可以调 `sampling/createMessage`。长跑研究 task 就是这么干的：server 的 task 线程按需采样 client 的模型，而 client 的 UI 把 task 显示为 `working`，配定期进度更新。
 
-### Why this is experimental
+### 为什么这是实验性的
 
-SEP-1686 shipped in 2025-11-25 but the broader roadmap calls out three open issues: durable subscription primitives, subtasks (parent-child task relationships), and result-TTL standardization. Expect the spec to evolve through 2026. Production code should treat Tasks as stable only for the common case and guard against future SDK changes for subtasks.
+SEP-1686 在 2025-11-25 发布，但更宽的路线图点出三个开放问题：持久订阅基元、子任务（父子 task 关系），以及 result-TTL 标准化。预计规范在整个 2026 年演化。生产代码应只对常见情况把 Tasks 当稳定，并对子任务的未来 SDK 变更加守卫。
 
-## Use It
+## 上手使用
 
-`code/main.py` implements a durable task store (filesystem-backed) and a `generate_report` tool that runs in a background thread. Clients call the tool, get a task id immediately, poll `tasks/status` while the worker updates progress, and fetch `tasks/result` when done. Cancellation works; crash recovery is simulated by killing the worker thread and reloading state.
+`code/main.py` 实现一个持久 task 存储（文件系统后端）和一个跑在后台线程的 `generate_report` 工具。client 调那个工具，立刻拿到一个 task id，在 worker 更新进度时轮询 `tasks/status`，完成时取 `tasks/result`。取消好使；崩溃恢复靠杀掉 worker 线程并重载状态来模拟。
 
-What to look at:
+要看什么：
 
-- Task state JSON persisted to `/tmp/lesson-13-tasks/<id>.json`.
-- Worker thread updates `progress` field; poll shows it advancing.
-- Cancellation from client side sets an event; worker checks and exits early.
-- State reload on "crash" marks the in-flight task as `failed` with `CRASH_RECOVERY`.
+- task 状态 JSON 持久化到 `/tmp/lesson-13-tasks/<id>.json`。
+- worker 线程更新 `progress` 字段；轮询显示它在推进。
+- client 侧的取消设置一个事件；worker 检查并提前退出。
+- "崩溃"时的状态重载把在途 task 标记为 `failed`，附 `CRASH_RECOVERY`。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-task-store-designer.md`. Given a long-running tool (research, build, export), the skill designs the task store (state shape, ttl, durability), picks the right taskSupport flag, and sketches progress notifications.
+本课产出 `outputs/skill-task-store-designer.md`。给定一个长跑工具（研究、构建、导出），这个 skill 设计 task 存储（状态形状、ttl、持久性），挑正确的 taskSupport 标志，并勾画进度 notification。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. Kick off a `generate_report` task, poll status, then fetch the result.
+1. 跑 `code/main.py`。启动一个 `generate_report` task，轮询状态，然后取结果。
 
-2. Add a `tasks/cancel` call mid-run. Verify the worker honors it and the state becomes `cancelled`.
+2. 在运行中途加一个 `tasks/cancel` 调用。验证 worker 尊重它，且状态变成 `cancelled`。
 
-3. Simulate crash recovery: kill the worker thread, restart the loader, and observe the `CRASH_RECOVERY` failure mode.
+3. 模拟崩溃恢复：杀掉 worker 线程，重启加载器，观察 `CRASH_RECOVERY` 失败模式。
 
-4. Extend the store to SQLite. Durability wins are the same; query options open up (list all tasks from session X).
+4. 把存储扩展到 SQLite。持久性收益一样；查询选项打开了（列出会话 X 的所有 task）。
 
-5. Read the MCP roadmap post for 2026. Identify the one Tasks-related open issue most likely to affect SDK API design in the next year.
+5. 读 2026 年的 MCP 路线图博文。找出最可能在来年影响 SDK API 设计的那个 Tasks 相关开放问题。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| Task | "Long-running tool call" | Request augmented with `_meta.task` for async execution |
-| SEP-1686 | "Tasks spec" | Spec Evolution Proposal that added Tasks in 2025-11-25 |
-| `_meta.task` | "Task envelope" | Per-request metadata containing id, state, ttl |
-| taskSupport | "Tool flag" | `forbidden` / `optional` / `required` per tool |
-| `tasks/status` | "Poll method" | Fetch current state and optional progress hint |
-| `tasks/result` | "Fetch result" | Returns the completed payload or 404 if not yet done |
-| `tasks/cancel` | "Stop it" | Idempotent cancellation request |
-| ttl | "Retention budget" | Milliseconds the server promises to keep the task state |
-| `notifications/tasks/updated` | "State push" | Server-initiated state-change event |
-| Durable store | "Crash-safe state" | Filesystem / SQLite / Redis persistence layer |
+| Task | "长跑工具调用" | 用 `_meta.task` 增强、用于异步执行的请求 |
+| SEP-1686 | "Tasks 规范" | 在 2025-11-25 加入 Tasks 的 Spec Evolution Proposal |
+| `_meta.task` | "task 外壳" | 含 id、state、ttl 的每请求元数据 |
+| taskSupport | "工具标志" | 每工具的 `forbidden` / `optional` / `required` |
+| `tasks/status` | "轮询方法" | 取当前状态和可选的进度提示 |
+| `tasks/result` | "取结果" | 返回完成载荷，或尚未完成时返回 404 |
+| `tasks/cancel` | "停掉它" | 幂等的取消请求 |
+| ttl | "保留预算" | server 承诺保留 task 状态的毫秒数 |
+| `notifications/tasks/updated` | "状态推送" | server 发起的状态变更事件 |
+| Durable store | "崩溃安全状态" | 文件系统 / SQLite / Redis 持久层 |
 
-## Further Reading
+## 延伸阅读
 
-- [MCP — GitHub SEP-1686 issue](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1686) — the originating proposal and full discussion
-- [WorkOS — MCP async tasks for AI agent workflows](https://workos.com/blog/mcp-async-tasks-ai-agent-workflows) — design walkthrough with rationale
-- [DeepWiki — MCP task system and async operations](https://deepwiki.com/modelcontextprotocol/modelcontextprotocol/2.7-task-system-and-async-operations) — mechanics and state machine
-- [FastMCP — Tasks](https://gofastmcp.com/servers/tasks) — SDK-level task implementation patterns
-- [MCP blog — 2026 roadmap](https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/) — open issues and 2026 priorities including subtasks
+- [MCP — GitHub SEP-1686 issue](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1686) — 起源提案与完整讨论
+- [WorkOS — MCP async tasks for AI agent workflows](https://workos.com/blog/mcp-async-tasks-ai-agent-workflows) — 带理由的设计讲解
+- [DeepWiki — MCP task system and async operations](https://deepwiki.com/modelcontextprotocol/modelcontextprotocol/2.7-task-system-and-async-operations) — 机制与状态机
+- [FastMCP — Tasks](https://gofastmcp.com/servers/tasks) — SDK 层面的 task 实现模式
+- [MCP blog — 2026 roadmap](https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/) — 开放问题与 2026 优先事项，含子任务

@@ -1,26 +1,26 @@
-# Capstone 07 — End-to-End Fine-Tuning Pipeline (Data to SFT to DPO to Serve)
+# 顶点项目 07 —— 端到端微调流水线（数据到 SFT 到 DPO 到服务）
 
-> An 8B model trained on your own data, DPO-aligned on your own preferences, quantized, speculative-decoded, and served at measurable $/1M tokens. The 2026 open stack is Axolotl v0.8, TRL 0.15, Unsloth for iteration, GPTQ/AWQ/GGUF for quantization, vLLM 0.7 with EAGLE-3 for serving. The capstone is to run the whole pipeline reproducibly — YAML in, served endpoint out — and publish a model card under the 2026 Model Openness Framework.
+> 一个在你自己的数据上训练、用你自己的偏好做 DPO 对齐、量化、推测解码、并以可测量的 $/100 万 token 提供服务的 8B 模型。2026 年的开源栈是 Axolotl v0.8、TRL 0.15、迭代用 Unsloth、量化用 GPTQ/AWQ/GGUF、服务用带 EAGLE-3 的 vLLM 0.7。这个顶点项目就是可复现地跑完整条流水线——输入 YAML，输出一个服务端点——并在 2026 Model Openness Framework 下发一张 model card。
 
-**Type:** Capstone
-**Languages:** Python (pipeline), YAML (configs), Bash (scripts)
-**Prerequisites:** Phase 2 (ML), Phase 3 (DL), Phase 7 (transformers), Phase 10 (LLMs from scratch), Phase 11 (LLM engineering), Phase 17 (infrastructure), Phase 18 (safety)
-**Phases exercised:** P2 · P3 · P7 · P10 · P11 · P17 · P18
-**Time:** 35 hours
+**类型：** Capstone
+**语言：** Python（流水线）、YAML（配置）、Bash（脚本）
+**前置要求：** 第 2 阶段（ML）、第 3 阶段（DL）、第 7 阶段（transformer）、第 10 阶段（从零做 LLM）、第 11 阶段（LLM 工程）、第 17 阶段（基础设施）、第 18 阶段（安全）
+**涉及阶段：** P2 · P3 · P7 · P10 · P11 · P17 · P18
+**预计时间：** 35 小时
 
-## Problem
+## 问题所在
 
-Every serious AI team in 2026 keeps a fine-tuning pipeline on tap. Not because they ship a frontier base model, but because downstream adaptation — domain SFT, DPO against labeled preferences, distilled drafts for speculative decoding, serving with EAGLE-3 — is where the measurable wins live. Axolotl v0.8 handles multi-GPU SFT configs. TRL 0.15 handles DPO and GRPO. Unsloth gets you fast single-GPU iteration. vLLM 0.7 with EAGLE-3 pushes decode throughput 2-3x without quality loss. The tooling works; the craft is in the YAMLs, the data hygiene, and the eval discipline.
+2026 年每个像样的 AI 团队都随时备着一条微调流水线。不是因为他们要发一个前沿基座模型，而是因为下游适配——领域 SFT、针对已标注偏好的 DPO、给推测解码蒸馏出的 draft、用 EAGLE-3 提供服务——才是可测量收益所在。Axolotl v0.8 搞定多 GPU 的 SFT 配置。TRL 0.15 搞定 DPO 和 GRPO。Unsloth 让你在单 GPU 上快速迭代。带 EAGLE-3 的 vLLM 0.7 把解码吞吐提到 2-3 倍且不损质量。工具是好用的；手艺在那些 YAML、数据卫生，以及评测纪律上。
 
-You will run an 8B base (Llama 3.3, Qwen3, or Gemma 3) through SFT then DPO on task-specific data, quantize for serving, and measure gains against lm-evaluation-harness, RewardBench-2, MT-Bench-v2, and MMLU-Pro. You will produce a model card under the 2026 Model Openness Framework. The point is reproducibility — one command reruns the whole pipeline end to end.
+你将把一个 8B 基座（Llama 3.3、Qwen3 或 Gemma 3）在任务专属数据上先过 SFT 再过 DPO，量化以提供服务，并对照 lm-evaluation-harness、RewardBench-2、MT-Bench-v2、MMLU-Pro 衡量收益。你将在 2026 Model Openness Framework 下产出一张 model card。重点是可复现性——一条命令端到端重跑整条流水线。
 
-## Concept
+## 核心概念
 
-The pipeline has five stages. **Data**: dedup (MinHash / Datatrove), quality filter (Nemotron-CC style classifier), PII scrub, split-hygiene check against public benchmark contamination. **SFT**: Axolotl YAML, ZeRO-3 on 8xH100, cosine schedule, packed sequences, 2-3 epochs. **DPO or GRPO**: TRL config, 1 epoch, preference pairs either human-labeled or model-judged, beta tuning. **Quantize**: GPTQ + AWQ + GGUF for deployment flexibility. **Serve**: vLLM 0.7 with EAGLE-3 speculative heads (or SGLang with SpecForge), K8s deployment, HPA on queue-wait.
+流水线有五个阶段。**Data（数据）**：去重（MinHash / Datatrove）、质量过滤（Nemotron-CC 风格的分类器）、PII 擦洗、对照公开基准做污染检查的切分卫生。**SFT**：Axolotl YAML、8 卡 H100 上的 ZeRO-3、余弦调度、打包序列、2-3 个 epoch。**DPO 或 GRPO**：TRL 配置、1 个 epoch、偏好对（人标或模型评判）、调 beta。**Quantize（量化）**：GPTQ + AWQ + GGUF，部署更灵活。**Serve（服务）**：带 EAGLE-3 推测头的 vLLM 0.7（或带 SpecForge 的 SGLang）、K8s 部署、按 queue-wait 做 HPA。
 
-Ablations are the deliverable: SFT-only vs SFT+DPO vs SFT+GRPO on three task-specific benchmarks. Serving metrics: tokens/s at batch 1 / 8 / 32, EAGLE-3 acceptance rate, $/1M tokens. Safety eval: Llama Guard 4 pass rate. Model card: bias evaluations, reproducibility seeds, data licensing.
+消融就是交付物：在三个任务专属基准上 仅 SFT vs SFT+DPO vs SFT+GRPO。服务指标：批大小 1 / 8 / 32 下的 tokens/s、EAGLE-3 接受率、$/100 万 token。安全评测：Llama Guard 4 通过率。model card：偏见评估、可复现随机种子、数据许可。
 
-## Architecture
+## 架构
 
 ```
 raw data (HF datasets + internal)
@@ -53,40 +53,40 @@ lm-eval-harness + RewardBench-2 + MT-Bench-v2 + MMLU-Pro
 model card (2026 MOF) + safety eval (Llama Guard 4)
 ```
 
-## Stack
+## 技术栈
 
-- Data: Datatrove for dedup, Nemotron-CC classifier for quality, Presidio for PII
-- Base: Llama 3.3 8B, Qwen3 14B, or Gemma 3 12B
-- SFT: Axolotl v0.8 with ZeRO-3, Flash Attention 3, packed sequences
-- Preference tuning: TRL 0.15 for DPO or GRPO; Unsloth for single-GPU iteration
-- Quantization: GPTQ (Marlin), AWQ, GGUF via llama.cpp
-- Serving: vLLM 0.7 with EAGLE-3 speculative decoding (or SGLang 0.4 + SpecForge)
-- Eval: lm-evaluation-harness, RewardBench-2, MT-Bench-v2, MMLU-Pro
-- Safety eval: Llama Guard 4, ShieldGemma-2
-- Infrastructure: Kubernetes + NVIDIA device plugin, HPA on queue-wait metric
-- Observability: W&B for training, Langfuse for inference
+- 数据：去重用 Datatrove，质量用 Nemotron-CC 分类器，PII 用 Presidio
+- 基座：Llama 3.3 8B、Qwen3 14B 或 Gemma 3 12B
+- SFT：带 ZeRO-3、Flash Attention 3、打包序列的 Axolotl v0.8
+- 偏好调优：DPO 或 GRPO 用 TRL 0.15；单 GPU 迭代用 Unsloth
+- 量化：GPTQ（Marlin）、AWQ、通过 llama.cpp 的 GGUF
+- 服务：带 EAGLE-3 推测解码的 vLLM 0.7（或 SGLang 0.4 + SpecForge）
+- 评测：lm-evaluation-harness、RewardBench-2、MT-Bench-v2、MMLU-Pro
+- 安全评测：Llama Guard 4、ShieldGemma-2
+- 基础设施：Kubernetes + NVIDIA device plugin，按 queue-wait 指标做 HPA
+- 可观测性：训练用 W&B，推理用 Langfuse
 
-## Build It
+## 动手构建
 
-1. **Data pipeline.** Run Datatrove dedup on raw corpus. Apply Nemotron-CC-style quality classifier. Presidio scrubs PII. Write train/val splits with explicit seed.
+1. **数据流水线。** 在原始语料上跑 Datatrove 去重。施加 Nemotron-CC 风格的质量分类器。Presidio 擦洗 PII。用明确的随机种子写出 train/val 切分。
 
-2. **Contamination check.** For every validation split, compute MinHash against MMLU-Pro, MT-Bench-v2, RewardBench-2 test sets. Reject any overlap.
+2. **污染检查。** 对每个验证切分，对照 MMLU-Pro、MT-Bench-v2、RewardBench-2 测试集计算 MinHash。拒绝任何重叠。
 
-3. **Axolotl SFT.** YAML with ZeRO-3, FA3, sequence packing. 2-3 epochs on 8xH100. Log to W&B.
+3. **Axolotl SFT。** 带 ZeRO-3、FA3、序列打包的 YAML。8 卡 H100 上 2-3 个 epoch。记到 W&B。
 
-4. **TRL DPO / GRPO.** Take the SFT checkpoint, run one epoch of DPO on preference pairs (or GRPO with a verifiable reward on math/code). Sweep beta.
+4. **TRL DPO / GRPO。** 拿 SFT 的 checkpoint，在偏好对上跑一个 epoch 的 DPO（或在数学/代码上用可验证奖励跑 GRPO）。扫 beta。
 
-5. **Quantize.** Produce three quants: GPTQ-INT4-Marlin, AWQ-INT4, GGUF-Q4_K_M for llama.cpp. Record size and nominal throughput.
+5. **量化。** 产出三种量化：GPTQ-INT4-Marlin、AWQ-INT4、给 llama.cpp 的 GGUF-Q4_K_M。记录大小和标称吞吐。
 
-6. **Serve with speculative decoding.** vLLM 0.7 config with EAGLE-3 draft heads trained via Red Hat Speculators. Measure acceptance rate and tail latency at batch 1 / 8 / 32. Report $/1M tokens vs Anthropic / OpenAI on the same eval.
+6. **用推测解码提供服务。** vLLM 0.7 配置，配上用 Red Hat Speculators 训练的 EAGLE-3 draft 头。衡量批大小 1 / 8 / 32 下的接受率和尾延迟。在同一份评测上报告 $/100 万 token 跟 Anthropic / OpenAI 的对比。
 
-7. **Eval matrix.** Run lm-eval-harness, RewardBench-2, MT-Bench-v2, MMLU-Pro on base, SFT-only, SFT+DPO, SFT+GRPO. Produce a table.
+7. **评测矩阵。** 在 base、仅 SFT、SFT+DPO、SFT+GRPO 上跑 lm-eval-harness、RewardBench-2、MT-Bench-v2、MMLU-Pro。产出一张表。
 
-8. **Safety eval.** Llama Guard 4 pass rate on the dev set. ShieldGemma-2 output filter.
+8. **安全评测。** 在开发集上的 Llama Guard 4 通过率。ShieldGemma-2 输出过滤器。
 
-9. **Model card.** MOF 2026 template: data, training, eval, safety, license, reproducibility section with YAMLs and commit SHAs.
+9. **model card。** MOF 2026 模板：数据、训练、评测、安全、许可、带 YAML 和 commit SHA 的可复现性章节。
 
-## Use It
+## 上手使用
 
 ```
 $ ./pipeline.sh config/llama3.3-8b-domainX.yaml
@@ -99,50 +99,50 @@ $ ./pipeline.sh config/llama3.3-8b-domainX.yaml
 [card]    model-card.md generated under 2026 MOF
 ```
 
-## Ship It
+## 交付
 
-`outputs/skill-finetuning-pipeline.md` describes the deliverable. A single command runs data through SFT through DPO through quant through serve through eval, and emits a model card + the served endpoint.
+`outputs/skill-finetuning-pipeline.md` 描述交付物。一条命令把数据过 SFT、过 DPO、过量化、过服务、过评测，产出一张 model card 加那个服务端点。
 
-| Weight | Criterion | How it is measured |
+| 权重 | 标准 | 怎么衡量 |
 |:-:|---|---|
-| 25 | Eval delta vs base | Measured gain on target tasks (MMLU-Pro, MT-Bench-v2, task-specific) |
-| 20 | Pipeline reproducibility | One command reruns end to end with identical seeds |
-| 20 | Data hygiene | Dedup rate, PII scrub coverage, contamination check green |
-| 20 | Serving efficiency | tokens/s at bs=1/8/32, EAGLE-3 acceptance rate, $/1M tokens |
-| 15 | Model card + safety eval | 2026 MOF completeness + Llama Guard 4 pass rate |
+| 25 | 对比基座的评测差值 | 在目标任务上测得的收益（MMLU-Pro、MT-Bench-v2、任务专属） |
+| 20 | 流水线可复现性 | 一条命令用相同随机种子端到端重跑 |
+| 20 | 数据卫生 | 去重率、PII 擦洗覆盖率、污染检查为绿 |
+| 20 | 服务效率 | bs=1/8/32 下的 tokens/s、EAGLE-3 接受率、$/100 万 token |
+| 15 | model card + 安全评测 | 2026 MOF 完整度 + Llama Guard 4 通过率 |
 | **100** | | |
 
-## Exercises
+## 练习
 
-1. Run SFT-only vs SFT+DPO vs SFT+GRPO on the same task-specific benchmark. Report which preference method wins and by how much.
+1. 在同一个任务专属基准上跑 仅 SFT vs SFT+DPO vs SFT+GRPO。报告哪种偏好方法赢、赢多少。
 
-2. Swap Llama 3.3 8B for Qwen3 14B. Measure the $/1M tokens at matched quality.
+2. 把 Llama 3.3 8B 换成 Qwen3 14B。在质量持平时衡量 $/100 万 token。
 
-3. Measure EAGLE-3 acceptance rate on domain data vs generic ShareGPT. Report the delta and what it means for latency budgets.
+3. 衡量 EAGLE-3 在领域数据上 vs 通用 ShareGPT 上的接受率。报告差值，以及它对延迟预算意味着什么。
 
-4. Inject 1% of contamination (leak MMLU-Pro answers into training data) and rerun eval. Watch MMLU-Pro accuracy jump unrealistically. Build a contamination-check CI gate that catches this.
+4. 注入 1% 的污染（把 MMLU-Pro 答案泄进训练数据）并重跑评测。看着 MMLU-Pro 准确率不真实地跳高。搭一个能抓住这事的污染检查 CI 闸门。
 
-5. Add LoRA SFT as an alternative to full fine-tune. Measure the quality gap at 10x lower memory.
+5. 加 LoRA SFT 作为全量微调的替代方案。在内存低 10 倍时衡量质量差距。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|-----------------|------------------------|
-| Axolotl | "SFT trainer" | Unified YAML-driven trainer for SFT, DPO, and distillation |
-| TRL | "Preference tuner" | Hugging Face library for DPO, GRPO, PPO on LLMs |
-| GRPO | "Group-relative policy optimization" | DeepSeek R1's RL recipe with verifiable rewards |
-| EAGLE-3 | "Speculative decoding draft" | Draft heads that predict N tokens ahead; vLLM verifies with target model |
-| MOF | "Model Openness Framework" | 2026 standard for grading model releases on data, code, license |
-| Contamination check | "Split hygiene" | MinHash-based detection of test-set leakage into training |
-| Acceptance rate | "EAGLE / MTP metric" | Fraction of drafted tokens the target model accepts |
+| Axolotl | “SFT 训练器” | 统一的、YAML 驱动的训练器，支持 SFT、DPO 和蒸馏 |
+| TRL | “偏好调优器” | Hugging Face 的库，在 LLM 上做 DPO、GRPO、PPO |
+| GRPO | “组相对策略优化” | DeepSeek R1 的 RL 配方，带可验证奖励 |
+| EAGLE-3 | “推测解码 draft” | 预测往前 N 个 token 的 draft 头；vLLM 用目标模型来验证 |
+| MOF | “Model Openness Framework” | 2026 年从数据、代码、许可对模型发布评级的标准 |
+| Contamination check（污染检查） | “切分卫生” | 基于 MinHash 检测测试集泄进训练 |
+| Acceptance rate（接受率） | “EAGLE / MTP 指标” | 目标模型接受的、被 draft 出来的 token 占比 |
 
-## Further Reading
+## 延伸阅读
 
-- [Axolotl documentation](https://axolotl-ai-cloud.github.io/axolotl/) — the reference SFT / DPO trainer
-- [TRL documentation](https://huggingface.co/docs/trl) — DPO and GRPO reference implementations
-- [Unsloth](https://github.com/unslothai/unsloth) — single-GPU iteration reference
-- [DeepSeek R1 paper (arXiv:2501.12948)](https://arxiv.org/abs/2501.12948) — GRPO methodology
-- [vLLM + EAGLE-3 documentation](https://docs.vllm.ai) — reference serving stack
-- [SGLang SpecForge](https://github.com/sgl-project/SpecForge) — alternate speculative-decoding trainer
-- [Model Openness Framework 2026](https://isocpp.org/) — the open-release grading standard
-- [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) — canonical eval runner
+- [Axolotl documentation](https://axolotl-ai-cloud.github.io/axolotl/) —— 参考级的 SFT / DPO 训练器
+- [TRL documentation](https://huggingface.co/docs/trl) —— DPO 和 GRPO 的参考实现
+- [Unsloth](https://github.com/unslothai/unsloth) —— 单 GPU 迭代参考
+- [DeepSeek R1 paper (arXiv:2501.12948)](https://arxiv.org/abs/2501.12948) —— GRPO 方法论
+- [vLLM + EAGLE-3 documentation](https://docs.vllm.ai) —— 参考服务栈
+- [SGLang SpecForge](https://github.com/sgl-project/SpecForge) —— 备选的推测解码训练器
+- [Model Openness Framework 2026](https://isocpp.org/) —— 开源发布评级标准
+- [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) —— 标准评测运行器

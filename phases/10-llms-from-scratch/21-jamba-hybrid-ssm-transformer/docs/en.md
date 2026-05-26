@@ -1,185 +1,185 @@
-# Jamba — Hybrid SSM-Transformer
+# Jamba —— 混合 SSM-Transformer
 
-> State space models (SSMs) and transformers want different things. Transformers buy quality via attention at quadratic cost. SSMs buy linear-time inference and constant memory via a recurrence but lag quality. AI21's Jamba (March 2024) and Jamba 1.5 (August 2024) put them in the same model: 1 Transformer layer for every 7 Mamba layers, MoE on every other block, and a 256k context window that fits on a single 80GB GPU. Mamba-3 (ICLR 2026) tightens the SSM side with complex-valued state spaces and MIMO projections. This lesson reads both architectures end to end and explains why the hybrid recipe has survived three years of scaling when pure-SSM and pure-Transformer long-context attempts have not.
+> 状态空间模型（SSM）和 transformer 想要不同的东西。Transformer 以二次成本的注意力换质量。SSM 以一个递归换线性时间推理和恒定内存，但质量落后。AI21 的 Jamba（2024 年 3 月）和 Jamba 1.5（2024 年 8 月）把它们放进同一个模型：每 7 个 Mamba 层配 1 个 Transformer 层，每隔一个块用 MoE，以及一个能塞进单张 80GB GPU 的 256k context 窗口。Mamba-3（ICLR 2026）用复值状态空间和 MIMO 投影收紧了 SSM 那一侧。本节课端到端读两个架构，并解释为什么混合配方在纯 SSM 和纯 Transformer 的长 context 尝试都没撑住时，挺过了三年的规模化。
 
-**Type:** Learn
-**Languages:** Python (stdlib, layer-mix calculator)
-**Prerequisites:** Phase 10 · 14 (open-model architectures), Phase 10 · 17 (native sparse attention)
-**Time:** ~60 minutes
+**类型：** Learn
+**语言：** Python（stdlib，层混合计算器）
+**前置要求：** 阶段 10 · 14（开放模型架构），阶段 10 · 17（原生稀疏注意力）
+**预计时间：** ~60 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Explain the three primitives in a Jamba block — Transformer layers, Mamba layers, MoE — and the 1:7:even interleaving recipe.
-- State what an SSM's recurrence looks like at a high level and why it enables constant-memory inference.
-- Compute the KV cache footprint of a Jamba model at 256k context and compare to what a pure-Transformer model would need.
-- Name the three Mamba-3 innovations (exponential-trapezoidal discretization, complex-valued state update, MIMO) and the problem each one targets.
+- 解释一个 Jamba 块里的三种原语——Transformer 层、Mamba 层、MoE——以及 1:7:隔一交错的配方。
+- 高层陈述一个 SSM 的递归长什么样，以及为什么它能实现恒定内存推理。
+- 计算一个 Jamba 模型在 256k context 下的 KV cache 占用，和一个纯 Transformer 模型会需要的相比。
+- 说出三个 Mamba-3 创新（指数-梯形离散化、复值状态更新、MIMO）以及每个针对的问题。
 
-## The Problem
+## 问题所在
 
-Attention is quadratic in sequence length. State space models are linear. That difference compounds: at 256k tokens, a Transformer attention map is 65B entries per head; an SSM's recurrent state is fixed-size regardless of sequence length.
+注意力对序列长度是二次的。状态空间模型是线性的。这个差异复合：在 256k token 下，一张 Transformer 注意力图每头 650 亿个条目；一个 SSM 的递归状态不管序列多长都是定长的。
 
-Pure-SSM models (Mamba, Mamba-2) match Transformer perplexity at small scales but lag on state-tracking tasks and fail on some categories of in-context retrieval. The intuition: SSMs compress history into a fixed state, and when history is long, information leaks. Attention remembers everything exactly but pays quadratic cost.
+纯 SSM 模型（Mamba、Mamba-2）在小规模匹配 Transformer 困惑度，但在状态追踪任务上落后，并在某些类别的 in-context 检索上失败。直觉是：SSM 把历史压进一个定长状态，历史长时信息泄漏。注意力精确地记住一切，但付二次成本。
 
-The obvious fix: use both. Put Transformer layers where exact recall matters. Use SSM layers elsewhere. Tune the ratio. Jamba is the first production-grade model to ship this hybrid recipe at scale (52B total, 12B active, 256k context, single 80GB GPU). Jamba 1.5 extends the family to 398B total / 94B active. Mamba-3 (ICLR 2026) is the current-best pure-SSM baseline that hybrids can be rebuilt around.
+显而易见的修法：两个都用。把 Transformer 层放在精确召回要紧的地方。其他地方用 SSM 层。调比例。Jamba 是第一个大规模发布这套混合配方的生产级模型（总 52B，激活 12B，256k context，单张 80GB GPU）。Jamba 1.5 把家族扩到总 398B / 激活 94B。Mamba-3（ICLR 2026）是当前最好的纯 SSM 基线，混合模型可以围绕它重建。
 
-This lesson reads all three papers and produces the mental model for "pick the right ratio."
+本节课读这三篇论文，产出 "挑对比例" 的心智模型。
 
-## The Concept
+## 核心概念
 
-### An SSM in one page
+### 一页讲完 SSM
 
-A state space model processes a sequence `x_1, ..., x_N` via a fixed-size state `h`:
+一个状态空间模型经一个定长状态 `h` 处理序列 `x_1, ..., x_N`：
 
 ```
 h_t = A h_{t-1} + B x_t
 y_t = C h_t
 ```
 
-At each step the state evolves via a linear dynamics `A`, takes input `B x_t`, and emits output `C h_t`. `A, B, C` can be learned. Note the critical property: computing `y_t` needs only `h_{t-1}` and `x_t`, not any earlier `x`. Memory is constant. Inference is O(1) per token.
+每一步状态经一个线性动力学 `A` 演化，吃输入 `B x_t`，发出输出 `C h_t`。`A, B, C` 可以是学来的。注意那个关键性质：计算 `y_t` 只需要 `h_{t-1}` 和 `x_t`，不需要任何更早的 `x`。内存恒定。推理每 token O(1)。
 
-The trick for modeling quality is the structure of `A`. S4 (Gu 2021) used a highly structured matrix that could be evaluated efficiently as a long convolution during training. Mamba (Gu, Dao 2023) replaced the fixed `A, B, C` with data-dependent ones (the "selective" part). Mamba-2 (2024) further simplified the structure. Mamba-3 (2026) re-adds complexity in specific places.
+建模质量的诀窍在 `A` 的结构。S4（Gu 2021）用了一个高度结构化的矩阵，训练时能作为长卷积高效求值。Mamba（Gu, Dao 2023）把固定的 `A, B, C` 换成数据相关的（那个 "选择性" 部分）。Mamba-2（2024）进一步简化了结构。Mamba-3（2026）在特定地方重新加回复杂性。
 
-The key property: for a decoder LLM, an SSM layer is a drop-in replacement for an attention layer, with fixed-size per-layer state instead of a growing KV cache.
+关键性质：对一个解码器 LLM，一个 SSM 层是注意力层的直接替代品，用定长的每层状态而不是增长的 KV cache。
 
-### The Jamba block
+### Jamba 块
 
-A Jamba block interleaves layers according to two numbers:
+一个 Jamba 块按两个数字交错层：
 
-- `l`: the attention-to-Mamba ratio. Jamba uses `l = 8`, meaning 1 Transformer layer for every 7 Mamba layers (7 Mamba + 1 Attention = 8 layers per group).
-- `e`: the MoE frequency. Jamba uses `e = 2`, meaning every other layer applies MoE.
+- `l`：注意力对 Mamba 的比例。Jamba 用 `l = 8`，意思是每 7 个 Mamba 层配 1 个 Transformer 层（每组 7 个 Mamba + 1 个 Attention = 8 层）。
+- `e`：MoE 频率。Jamba 用 `e = 2`，意思是每隔一层应用 MoE。
 
-The layer sequence within a block:
+一个块内的层序列：
 
 ```
 M  M  M  M  M  M  M  A    (7 Mamba + 1 Attention)
-|  M  |  M  |  M  |  M    (where | marks MoE applied)
+|  M  |  M  |  M  |  M    (| 标记应用了 MoE 的地方)
 ```
 
-Each Jamba block is 8 layers. At 4 blocks deep (32 layers total), you get 28 Mamba and 4 Attention layers. 16 of those use MoE.
+每个 Jamba 块是 8 层。4 块深（共 32 层）时，你得到 28 个 Mamba 和 4 个 Attention 层。其中 16 个用 MoE。
 
-### Why the 1:7 ratio
+### 为什么是 1:7 比例
 
-AI21 ran ablations: what ratio of attention-to-Mamba gives the best perplexity-per-parameter AND in-context recall on their long-context evals?
+AI21 跑了消融：什么样的注意力对 Mamba 比例在他们的长 context eval 上给出最佳的每参数困惑度 *和* in-context 召回？
 
-- Too much attention (1:1): quality goes up but memory and speed degrade.
-- Too little attention (1:15): memory is great but in-context retrieval fails.
-- Sweet spot: 1:7 or 1:8.
+- 注意力太多（1:1）：质量上升但内存和速度退化。
+- 注意力太少（1:15）：内存极好但 in-context 检索失败。
+- 甜点区：1:7 或 1:8。
 
-The intuition: the Transformer layers handle exact recall and state tracking. The Mamba layers handle the cheap bulk of processing.
+直觉是：Transformer 层处理精确召回和状态追踪。Mamba 层处理廉价的大宗处理。
 
-### Positional encoding
+### 位置编码
 
-Mamba layers are themselves position-aware (via the recurrence). Attention layers in the original Mamba-based hybrids did not use RoPE — the SSM layers provided position info. Jamba 1.5 adds RoPE to the attention layers for longer-context generalization, a post-hoc refinement based on empirical long-context evaluation.
+Mamba 层本身就感知位置（经递归）。最初基于 Mamba 的混合里的注意力层不用 RoPE——SSM 层提供位置信息。Jamba 1.5 给注意力层加了 RoPE 以做更长 context 的泛化，这是基于经验长 context 评估的事后改进。
 
-### The memory budget
+### 内存预算
 
-For a Jamba-1 shape (32 layers: 28 Mamba + 4 Attention, hidden 4096, 32 attention heads):
+对一个 Jamba-1 形状（32 层：28 Mamba + 4 Attention，hidden 4096，32 个注意力头）：
 
-- KV cache (attention layers only): `2 * 4 * 32 * 128 * 256k * 2 = 8.4 GB` at 256k BF16. Only the 4 attention layers contribute.
-- SSM state: `28 * hidden * state_size` per token prefix, but this is a fixed-size per layer, not scaling with sequence length. Typical Mamba state is 16 per feature, hidden 4096: `28 * 4096 * 16 * 2 = 3.7 MB` total.
+- KV cache（仅注意力层）：256k BF16 下 `2 * 4 * 32 * 128 * 256k * 2 = 8.4 GB`。只有那 4 个注意力层有贡献。
+- SSM 状态：每 token 前缀 `28 * hidden * state_size`，但这是每层定长的，不随序列长度增长。典型 Mamba 状态每特征 16、hidden 4096：总共 `28 * 4096 * 16 * 2 = 3.7 MB`。
 
-Compare to a pure Transformer at 32 layers, same hidden, full MHA at 32 heads: `2 * 32 * 32 * 128 * 256k * 2 = 128 GB` at 256k BF16. An 8x reduction in KV cache. Even against the GQA(8) baseline most 2024 models use (`2 * 32 * 8 * 128 * 256k * 2 = 32 GB`), Jamba's 1:7 hybrid at 16 GB is still 2x smaller.
+和一个 32 层、相同 hidden、32 头全 MHA 的纯 Transformer 对比：256k BF16 下 `2 * 32 * 32 * 128 * 256k * 2 = 128 GB`。KV cache 减少 8 倍。即便对比大多数 2024 年模型用的 GQA(8) 基线（`2 * 32 * 8 * 128 * 256k * 2 = 32 GB`），Jamba 的 1:7 混合在 16 GB 仍小 2 倍。
 
-That is what AI21 means by "256k context on a single 80GB GPU." The KV cache of a full-MHA pure Transformer would not fit; even a GQA baseline leaves no room for weights and activations; Jamba's does.
+这就是 AI21 说的 "256k context 在单张 80GB GPU 上"。一个全 MHA 纯 Transformer 的 KV cache 装不下；即使 GQA 基线也不给权重和激活留空间；Jamba 的能装下。
 
-### Mamba-3: the pure-SSM baseline in 2026
+### Mamba-3：2026 年的纯 SSM 基线
 
-Mamba-3 (ICLR 2026, arXiv:2603.15569) introduces three innovations on the pure-SSM side:
+Mamba-3（ICLR 2026，arXiv:2603.15569）在纯 SSM 那一侧引入三个创新：
 
-1. **Exponential-trapezoidal discretization.** Replaces the Euler-method discretization in Mamba-2 with a more expressive recurrence. Convolution-like operation applied on the state-input within the core recurrence, rather than as an outer convolution on `x_t`.
+1. **指数-梯形离散化。** 用一个更有表达力的递归替换 Mamba-2 里的欧拉法离散化。在核心递归内对状态-输入应用类卷积操作，而不是作为对 `x_t` 的外层卷积。
 
-2. **Complex-valued state update.** Previous Mambas reduced the state matrix from complex (S4) to real diagonal (Mamba) to scaled identity (Mamba-2). Mamba-3 re-adds complex values — equivalent to a data-dependent rotary embedding on the state. This restores state-tracking capabilities that previous real-valued simplifications cost.
+2. **复值状态更新。** 之前的 Mamba 把状态矩阵从复（S4）减到实对角（Mamba）再到缩放单位（Mamba-2）。Mamba-3 重新加回复值——等价于对状态做一个数据相关的旋转 embedding。这恢复了之前实值简化所损失的状态追踪能力。
 
-3. **Multi-input multi-output (MIMO) projections.** Instead of per-feature scalar projections, use matrix-valued projections. Improves modeling power and inference-time hardware utilization without increasing decode latency.
+3. **多输入多输出（MIMO）投影。** 不用每特征的标量投影，而用矩阵值投影。提升建模能力和推理时硬件利用率，而不增加 decode 延迟。
 
-At 1.5B parameters, Mamba-3 improves average downstream accuracy by 0.6 points over Gated DeltaNet; the MIMO variant adds 1.2 more for a total 1.8-point gain. At the same state size, Mamba-3 matches Mamba-2 with half the state.
+在 1.5B 参数下，Mamba-3 比 Gated DeltaNet 把平均下游准确率提升 0.6 个点；MIMO 变体再加 1.2，总计 1.8 个点的提升。在相同状态大小下，Mamba-3 用一半的状态匹配 Mamba-2。
 
-Mamba-3 is not yet shipping in a production hybrid at scale — but it is the obvious candidate for the SSM side of the next Jamba-class model.
+Mamba-3 还没在大规模生产混合里上线——但它是下一个 Jamba 级模型 SSM 那一侧的显而易见的候选。
 
-### When to reach for a hybrid
+### 什么时候上混合
 
-Hybrids win when:
+混合在以下情况胜出：
 
-- Context is long enough that pure Transformer KV cache becomes painful (64k+).
-- Tasks mix short-range structure (good for SSM) with long-range recall (needs Transformer).
-- You want to deploy on single-GPU memory budgets where the Transformer KV cache alone would not fit.
+- Context 长到纯 Transformer KV cache 变得痛苦（64k+）。
+- 任务混合短程结构（对 SSM 好）和长程召回（需要 Transformer）。
+- 你想部署在单 GPU 内存预算上，那里光 Transformer KV cache 就装不下。
 
-Hybrids lose when:
+混合在以下情况败下：
 
-- Context is short (under 16k). The SSM overhead is wasted; pure Transformer is fine.
-- Tasks need everywhere-to-everywhere attention (deep reasoning, multi-document cross-reference). The sparsity of attention layers in the hybrid hurts.
-- You are scaling to trillion-parameter frontier models. Pure-Transformer + MLA + MoE (DeepSeek-V3 style) is currently winning the capability race.
+- Context 短（16k 以下）。SSM 开销被浪费；纯 Transformer 就好。
+- 任务需要处处对处处的注意力（深度推理、多文档交叉引用）。混合里注意力层的稀疏性伤害它。
+- 你在扩到万亿参数前沿模型。纯 Transformer + MLA + MoE（DeepSeek-V3 风格）目前在赢能力竞赛。
 
-### The competitive landscape
+### 竞争格局
 
-| Model | Family | Scale | Unique claim |
+| 模型 | 家族 | 规模 | 独特卖点 |
 |-------|--------|------|-------------|
-| Mamba-2 | pure SSM | 3B | linear time, constant memory |
-| Jamba | hybrid | 52B/12B | 256k on 80GB |
-| Jamba 1.5 Large | hybrid | 398B/94B | enterprise-grade long-context |
-| Mamba-3 | pure SSM | 1.5B (paper) | state-tracking restored |
-| DeepSeek-V3 | pure Transformer + MoE | 671B/37B | frontier capability |
+| Mamba-2 | 纯 SSM | 3B | 线性时间，恒定内存 |
+| Jamba | 混合 | 52B/12B | 80GB 上 256k |
+| Jamba 1.5 Large | 混合 | 398B/94B | 企业级长 context |
+| Mamba-3 | 纯 SSM | 1.5B（论文） | 状态追踪恢复 |
+| DeepSeek-V3 | 纯 Transformer + MoE | 671B/37B | 前沿能力 |
 
-The 2026 landscape: pure-Transformer MoE dominates the frontier, but hybrids own the 256k-plus context niche. Mamba-3's state-tracking wins may push hybrid ratios lower (more SSM, less attention) in the next generation.
+2026 年格局：纯 Transformer MoE 主导前沿，但混合占据 256k 以上 context 的利基。Mamba-3 的状态追踪胜利可能在下一代把混合比例推得更低（更多 SSM，更少注意力）。
 
-## Use It
+## 上手使用
 
-`code/main.py` is a memory calculator for hybrid architectures. Given an SSM-Transformer ratio and a hidden-size / layer-count config, it computes:
+`code/main.py` 是一个混合架构的内存计算器。给定一个 SSM-Transformer 比例和一个 hidden-size / 层数配置，它计算：
 
-- KV cache at target context.
-- SSM state memory.
-- Total memory at context N for a range of model shapes.
+- 目标 context 下的 KV cache。
+- SSM 状态内存。
+- 一系列模型形状在 context N 下的总内存。
 
-The calculator supports:
+计算器支持：
 
-- Pure-Transformer baseline (KV cache grows with N).
-- Jamba-style 1:7 hybrid.
-- Pure-SSM (no KV cache at all).
+- 纯 Transformer 基线（KV cache 随 N 增长）。
+- Jamba 风格 1:7 混合。
+- 纯 SSM（完全没有 KV cache）。
 
-The numbers are direct from the Jamba-1 and Jamba-1.5 papers for published shapes and extrapolated for hypothetical variants.
+数字对已发布形状直接取自 Jamba-1 和 Jamba-1.5 论文，对假想变体外推。
 
-Integration considerations for a real deployment:
+真实部署的集成考量：
 
-- Most production inference servers (vLLM, SGLang) support Jamba and Mamba. Check the specific version.
-- At 256k context, Jamba's memory advantage shows up in concurrent-request throughput. On the same VRAM you fit more Jamba sequences than Transformer sequences.
-- Mamba-3 as a standalone model is not yet shipping in production — research preview at 1.5B.
+- 大多数生产推理服务器（vLLM、SGLang）支持 Jamba 和 Mamba。检查具体版本。
+- 在 256k context 下，Jamba 的内存优势体现在并发请求吞吐上。同样的显存你能塞下比 Transformer 序列更多的 Jamba 序列。
+- 作为独立模型的 Mamba-3 还没在生产里上线——1.5B 的研究预览。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-hybrid-picker.md`. Given a workload specification (context length profile, task mix, memory budget), it recommends between a pure Transformer, a Jamba-style hybrid, and a pure SSM, with explicit reasoning about the memory and quality tradeoffs.
+本节课产出 `outputs/skill-hybrid-picker.md`。给定一个工作负载规格（context 长度画像、任务混合、内存预算），它在纯 Transformer、Jamba 风格混合和纯 SSM 之间推荐，并对内存和质量权衡给出明确推理。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py` to compute KV cache at 256k context for a 32-layer pure Transformer (hidden 4096, 32 heads) and for a Jamba-1 hybrid of the same shape. Verify the ~8x memory reduction the AI21 paper claims.
+1. 跑 `code/main.py` 计算一个 32 层纯 Transformer（hidden 4096，32 头）和一个相同形状的 Jamba-1 混合在 256k context 下的 KV cache。验证 AI21 论文宣称的 ~8 倍内存减少。
 
-2. Modify the calculator to model a 1:3 hybrid (4 Mamba : 1 Attention) and a 1:15 hybrid (14 Mamba : 1 Attention). Plot KV cache vs ratio. At what ratio does the KV cache equal the SSM state memory?
+2. 改计算器去建模一个 1:3 混合（4 Mamba : 1 Attention）和一个 1:15 混合（14 Mamba : 1 Attention）。画 KV cache vs 比例。在什么比例下 KV cache 等于 SSM 状态内存？
 
-3. Read Section 3 of the Jamba paper (arXiv:2403.19887). Explain why AI21 uses Mamba-1 rather than Mamba-2 despite Mamba-2 being faster. Hint: the hybrid ablation section documents this.
+3. 读 Jamba 论文（arXiv:2403.19887）第 3 节。解释为什么 AI21 用 Mamba-1 而不是 Mamba-2，尽管 Mamba-2 更快。提示：混合消融部分记录了这个。
 
-4. Compute the parameter overhead of MoE-every-other-layer in Jamba 1.5 Large (398B total, 94B active). Compare the active ratio to DeepSeek-V3 (37B/671B) and explain why Jamba's architecture pushes the active ratio higher.
+4. 计算 Jamba 1.5 Large（总 398B，激活 94B）里 MoE-隔层 的参数开销。把激活比例和 DeepSeek-V3（37B/671B）对比，解释为什么 Jamba 的架构把激活比例推得更高。
 
-5. Read Section 3 of the Mamba-3 paper (arXiv:2603.15569). Explain in three sentences why a complex-valued state update is equivalent to a data-dependent rotary embedding. Tie the answer to Phase 7 · Lesson 04's RoPE derivation.
+5. 读 Mamba-3 论文（arXiv:2603.15569）第 3 节。用三句话解释为什么复值状态更新等价于一个数据相关的旋转 embedding。把答案和阶段 7 · 第 04 课的 RoPE 推导联系起来。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 人们怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| State space model (SSM) | "Recurrence with a fixed state" | A layer with a learned recurrence `h_t = A h_{t-1} + B x_t`; constant memory per token |
-| Selective SSM | "Mamba's trick" | Data-dependent A, B, C parameters that give the model gating-like selectivity at linear time |
-| Attention-to-Mamba ratio | "How many attention layers" | In Jamba, `l = 8` means 1 attention layer per 7 Mamba layers |
-| Jamba block | "The 8-layer group" | One attention + seven Mamba + MoE on alternate positions |
-| SSM state | "The hidden buffer" | Fixed-size per-layer state that replaces the KV cache for Mamba layers |
-| 256k context | "Jamba's flagship number" | The sequence length Jamba-1 fits on a single 80GB GPU; pure Transformer cannot at that size |
-| Mamba-3 | "2026 pure SSM" | Current-best pure-SSM architecture with complex state + MIMO; the baseline hybrids rebuild around |
-| MIMO | "Multi-input multi-output" | Mamba-3 innovation using matrix-valued projections instead of scalar per-feature |
-| Exponential-trapezoidal discretization | "Mamba-3's recurrence" | More expressive recurrence that subsumes Mamba-2's Euler-method discretization |
-| Hybrid architecture | "Mix attention and SSM" | Any model that interleaves Transformer and SSM layers; Jamba is the production archetype |
+| 状态空间模型（SSM） | "带定长状态的递归" | 一个带习得递归 `h_t = A h_{t-1} + B x_t` 的层；每 token 恒定内存 |
+| 选择性 SSM | "Mamba 的诀窍" | 数据相关的 A、B、C 参数，让模型在线性时间下有类门控的选择性 |
+| 注意力对 Mamba 比例 | "有多少注意力层" | 在 Jamba 里，`l = 8` 意味着每 7 个 Mamba 层 1 个注意力层 |
+| Jamba 块 | "那个 8 层组" | 一个注意力 + 七个 Mamba + 在交替位置的 MoE |
+| SSM 状态 | "那个隐藏缓冲" | Mamba 层用来替代 KV cache 的定长每层状态 |
+| 256k context | "Jamba 的旗舰数字" | Jamba-1 能塞进单张 80GB GPU 的序列长度；纯 Transformer 在那个尺寸做不到 |
+| Mamba-3 | "2026 纯 SSM" | 当前最好的纯 SSM 架构，带复状态 + MIMO；混合模型重建围绕的基线 |
+| MIMO | "多输入多输出" | Mamba-3 的创新，用矩阵值投影而非每特征标量 |
+| 指数-梯形离散化 | "Mamba-3 的递归" | 一个更有表达力的递归，涵盖了 Mamba-2 的欧拉法离散化 |
+| 混合架构 | "混合注意力和 SSM" | 任何交错 Transformer 和 SSM 层的模型；Jamba 是生产原型 |
 
-## Further Reading
+## 延伸阅读
 
-- [Lieber et al. — Jamba: A Hybrid Transformer-Mamba Language Model (arXiv:2403.19887)](https://arxiv.org/abs/2403.19887) — the original Jamba paper, ratio ablations, 256k context claim
-- [AI21 — Jamba 1.5: Hybrid Transformer-Mamba at Scale (arXiv:2408.12570)](https://arxiv.org/abs/2408.12570) — the scaled-up family, 398B/94B and 12B/52B public releases
-- [Gu, Dao — Mamba: Linear-Time Sequence Modeling with Selective State Spaces (arXiv:2312.00752)](https://arxiv.org/abs/2312.00752) — the selective SSM paper Jamba builds on
-- [Dao, Gu — Mamba-2 (arXiv:2405.21060)](https://arxiv.org/abs/2405.21060) — the simplified structured-state-space successor
-- [Lahoti et al. — Mamba-3 (arXiv:2603.15569, ICLR 2026)](https://arxiv.org/abs/2603.15569) — complex-valued state, MIMO, the 2026 pure-SSM frontier
-- [Gu et al. — Efficiently Modeling Long Sequences with Structured State Spaces (arXiv:2111.00396)](https://arxiv.org/abs/2111.00396) — the S4 paper, the SSM genealogy's starting point for LLMs
+- [Lieber et al. — Jamba: A Hybrid Transformer-Mamba Language Model (arXiv:2403.19887)](https://arxiv.org/abs/2403.19887) — 最初的 Jamba 论文，比例消融，256k context 主张
+- [AI21 — Jamba 1.5: Hybrid Transformer-Mamba at Scale (arXiv:2408.12570)](https://arxiv.org/abs/2408.12570) — 扩大的家族，398B/94B 和 12B/52B 公开发布
+- [Gu, Dao — Mamba: Linear-Time Sequence Modeling with Selective State Spaces (arXiv:2312.00752)](https://arxiv.org/abs/2312.00752) — Jamba 建立其上的选择性 SSM 论文
+- [Dao, Gu — Mamba-2 (arXiv:2405.21060)](https://arxiv.org/abs/2405.21060) — 简化的结构化状态空间后继
+- [Lahoti et al. — Mamba-3 (arXiv:2603.15569, ICLR 2026)](https://arxiv.org/abs/2603.15569) — 复值状态、MIMO，2026 纯 SSM 前沿
+- [Gu et al. — Efficiently Modeling Long Sequences with Structured State Spaces (arXiv:2111.00396)](https://arxiv.org/abs/2111.00396) — S4 论文，SSM 谱系给 LLM 的起点

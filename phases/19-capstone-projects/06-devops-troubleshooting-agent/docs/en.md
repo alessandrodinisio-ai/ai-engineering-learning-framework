@@ -1,28 +1,28 @@
-# Capstone 06 — DevOps Troubleshooting Agent for Kubernetes
+# 顶点项目 06 —— 面向 Kubernetes 的 DevOps 排障 agent
 
-> AWS's DevOps Agent went GA, Resolve AI published its K8s playbooks, NeuBird demoed semantic monitoring, and Metoro tied AI SRE to per-service SLOs. The production shape is settled: an alert webhook fires, an agent reads telemetry, walks a graph of K8s objects, ranks root-cause hypotheses, and posts a Slack brief with approval buttons. Read-only by default. Every remediation gated by a human. This capstone is that agent, evaluated on 20 synthetic incidents and compared against AWS's Agent on three shared cases.
+> AWS 的 DevOps Agent 正式 GA，Resolve AI 公开了它的 K8s 排查手册，NeuBird 演示了语义监控，Metoro 把 AI SRE 跟每个服务的 SLO 绑在了一起。生产形态已经定型：一个告警 webhook 触发，一个 agent 读遥测、走一遍 K8s 对象的图、给根因假设排序，再发一条带审批按钮的 Slack 简报。默认只读。每一次修复都要过人类这一关。这个顶点项目就是这样一个 agent，在 20 个合成事故上评测，并在三个共享案例上跟 AWS 的 Agent 对比。
 
-**Type:** Capstone
-**Languages:** Python (agent), TypeScript (Slack integration)
-**Prerequisites:** Phase 11 (LLM engineering), Phase 13 (tools and MCP), Phase 14 (agents), Phase 15 (autonomous), Phase 17 (infrastructure), Phase 18 (safety)
-**Phases exercised:** P11 · P13 · P14 · P15 · P17 · P18
-**Time:** 30 hours
+**类型：** Capstone
+**语言：** Python（agent）、TypeScript（Slack 集成）
+**前置要求：** 第 11 阶段（LLM 工程）、第 13 阶段（工具与 MCP）、第 14 阶段（agent）、第 15 阶段（自主系统）、第 17 阶段（基础设施）、第 18 阶段（安全）
+**涉及阶段：** P11 · P13 · P14 · P15 · P17 · P18
+**预计时间：** 30 小时
 
-## Problem
+## 问题所在
 
-The 2025-2026 SRE narrative became: "AI agents triage incidents, humans approve remediations." AWS DevOps Agent, Resolve AI, NeuBird, Metoro, PagerDuty AIOps all ship this shape in production. The agent reads Prometheus metrics, Loki logs, Tempo traces, kube-state-metrics, and a knowledge graph of K8s objects. It produces a ranked root-cause hypothesis with telemetry citations in under five minutes. It never executes destructive commands without explicit human approval through Slack.
+2025-2026 年的 SRE 叙事变成了：“AI agent 分诊事故，人类批准修复。”AWS DevOps Agent、Resolve AI、NeuBird、Metoro、PagerDuty AIOps 都在生产里出了这套形态。agent 读 Prometheus 指标、Loki 日志、Tempo trace、kube-state-metrics，以及一张 K8s 对象的知识图。它在五分钟内产出一个带遥测引用的、排好序的根因假设。它从不在没有通过 Slack 拿到明确人类批准的情况下执行破坏性命令。
 
-Most of the hard work is scoping and safety, not reasoning. The agent needs a read-only-by-default RBAC surface, a hardened MCP tool server, and audit logs of every command considered vs executed. It needs to know when it is outside its depth and escalate. And it has to run cheap enough that OOM-kill cascades do not generate a $5k agent bill.
+大部分硬活儿是圈定范围和安全，不是推理。agent 需要一个默认只读的 RBAC 面、一个加固过的 MCP 工具服务器，以及对每条“考虑过 vs 执行了”的命令的审计日志。它需要知道自己什么时候超出能力范围并升级上报。而且它得跑得足够便宜，免得一次 OOM-kill 级联生成一张 5000 美元的 agent 账单。
 
-## Concept
+## 核心概念
 
-The agent operates on a knowledge graph. Nodes are K8s objects (Pods, Deployments, Services, Nodes, HPAs, PVCs) plus telemetry sources (Prometheus series, Loki streams, Tempo traces). Edges encode ownership (Pod -> ReplicaSet -> Deployment), scheduling (Pod -> Node), and observation (Pod -> Prometheus series). The graph is kept fresh by a kube-state-metrics sync and re-sampled on every alert.
+agent 在一张知识图上运作。节点是 K8s 对象（Pod、Deployment、Service、Node、HPA、PVC）加遥测来源（Prometheus 时序、Loki 流、Tempo trace）。边编码归属（Pod -> ReplicaSet -> Deployment）、调度（Pod -> Node）和观测（Pod -> Prometheus 时序）。这张图由一个 kube-state-metrics 同步保持新鲜，并在每次告警时重新采样。
 
-When an alert fires, the agent root-causes from the affected object. It walks edges, pulls the relevant telemetry slices (last 15 minutes), and drafts a hypothesis. The hypothesis is ranked by evidence: how many telemetry citations support it, how recent, how specific. The top-3 hypotheses go to Slack with graph-path visualizations and approval buttons for remediation actions.
+告警触发时，agent 从受影响的对象开始定位根因。它走边、拉相关的遥测切片（最近 15 分钟），起草一个假设。假设按证据排序：有多少遥测引用支持它、有多新、有多具体。前三个假设带着图路径可视化和修复动作的审批按钮发到 Slack。
 
-Remediation is gated. Allowed default actions are read-only. Destructive actions (scaling down, rolling back, deleting Pods) require Slack approval; ArgoCD rollback hooks require an auth token the agent never holds. The audit log records every command the agent *considered* — not just executed — so the review process catches near-misses.
+修复是有闸门的。默认允许的动作是只读的。破坏性动作（缩容、回滚、删 Pod）需要 Slack 批准；ArgoCD 回滚 hook 需要一个 agent 从不持有的鉴权 token。审计日志记录 agent *考虑过* 的每条命令——不只是执行了的——这样评审流程能抓到那些险些发生的事。
 
-## Architecture
+## 架构
 
 ```
 PagerDuty / Alertmanager webhook
@@ -53,38 +53,38 @@ PagerDuty / Alertmanager webhook
    audit log: considered vs executed, every command
 ```
 
-## Stack
+## 技术栈
 
-- Observability sources: Prometheus, Loki, Tempo, kube-state-metrics
-- Knowledge graph: Neo4j (managed) or kuzu (embedded) of K8s objects + telemetry edges
-- Agent: LangGraph with per-tool allow-list, read-only by default
-- Tool transport: FastMCP over StreamableHTTP; separate server for destructive tools behind approval gate
-- Models: Claude Sonnet 4.7 for root-cause reasoning, Gemini 2.5 Flash for log summarization
-- Remediation: ArgoCD rollback webhook, PagerDuty escalate, Slack approval card
-- Audit: append-only structured log (considered, executed, approved, outcome)
-- Deployment: K8s deployment with its own narrow RBAC role; separate namespace
+- 可观测性来源：Prometheus、Loki、Tempo、kube-state-metrics
+- 知识图：K8s 对象 + 遥测边的 Neo4j（托管）或 kuzu（嵌入式）
+- agent：带逐工具白名单的 LangGraph，默认只读
+- 工具传输：FastMCP over StreamableHTTP；破坏性工具放在单独的服务器上，置于审批闸门之后
+- 模型：根因推理用 Claude Sonnet 4.7，日志摘要用 Gemini 2.5 Flash
+- 修复：ArgoCD 回滚 webhook、PagerDuty 升级上报、Slack 审批卡片
+- 审计：仅追加的结构化日志（考虑过、执行了、被批准、结果）
+- 部署：用自己专属的窄 RBAC 角色做 K8s 部署；独立 namespace
 
-## Build It
+## 动手构建
 
-1. **Graph ingestion.** Sync kube-state-metrics into Neo4j/kuzu every 30s. Nodes: Pod, Deployment, Node, Service, PVC, HPA. Edges: OWNED_BY, SCHEDULED_ON, EXPOSES, MOUNTS, SCALES. Telemetry overlay edges: OBSERVED_BY (a Pod is observed by a Prometheus series).
+1. **图摄入。** 每 30s 把 kube-state-metrics 同步进 Neo4j/kuzu。节点：Pod、Deployment、Node、Service、PVC、HPA。边：OWNED_BY、SCHEDULED_ON、EXPOSES、MOUNTS、SCALES。遥测叠加边：OBSERVED_BY（一个 Pod 被一个 Prometheus 时序观测）。
 
-2. **Alert receiver.** FastAPI endpoint that accepts PagerDuty or Alertmanager webhooks. Extract the affected object(s) and SLO breach.
+2. **告警接收器。** 一个接收 PagerDuty 或 Alertmanager webhook 的 FastAPI 端点。抽出受影响的对象和 SLO 违例。
 
-3. **Read-only tool surface.** Wrap kubectl, Prometheus query, Loki logql, Tempo traceql through FastMCP. Every tool has a narrow RBAC verb ("get", "list", "describe"). No "delete", "exec", "scale" in the default server.
+3. **只读工具面。** 通过 FastMCP 封装 kubectl、Prometheus query、Loki logql、Tempo traceql。每个工具只有一个窄的 RBAC 动词（“get”、“list”、“describe”）。默认服务器里没有 “delete”、“exec”、“scale”。
 
-4. **Root-cause agent.** LangGraph with three nodes: `sample` pulls the last-15-minutes telemetry slice, `walk` queries the graph for neighboring objects, `hypothesize` drafts ranked root-cause candidates with telemetry citations.
+4. **根因 agent。** 带三个节点的 LangGraph：`sample` 拉最近 15 分钟的遥测切片，`walk` 向图查询相邻对象，`hypothesize` 起草带遥测引用的、排好序的根因候选。
 
-5. **Evidence scoring.** Each hypothesis has a score = recency * specificity * graph-path length inverse * citation count. Return top-3.
+5. **证据评分。** 每个假设有一个分 = 时效性 * 具体度 * 图路径长度的倒数 * 引用数。返回前三。
 
-6. **Slack brief.** Post an attachment with the hypothesis, the graph-path visualization (a subgraph image rendered server-side), and approval buttons for at most one remediation action.
+6. **Slack 简报。** 发一条附件，带上假设、图路径可视化（服务端渲染的子图图像），以及至多一个修复动作的审批按钮。
 
-7. **Remediation gate.** Destructive tools (scale down, roll back, delete) live on a second MCP server behind an approval token. The agent can call them only after the Slack card is approved by a human.
+7. **修复闸门。** 破坏性工具（缩容、回滚、删除）住在第二个 MCP 服务器上，置于一个审批 token 之后。只有 Slack 卡片被人类批准后，agent 才能调用它们。
 
-8. **Audit log.** Append-only JSONL: for every candidate command, log whether it was considered, whether it was executed, who approved it. Ship to S3 daily.
+8. **审计日志。** 仅追加的 JSONL：对每个候选命令，记录它是否被考虑过、是否被执行、谁批准的。每天发到 S3。
 
-9. **Synthetic incident suite.** Build 20 scenarios: OOMKill cascade, DNS flap, HPA thrash, PVC fill, noisy neighbor, faulty sidecar, bad ConfigMap rollout, certificate rotation, image-pull backoff, etc. Score the agent on root-cause accuracy and time-to-hypothesis.
+9. **合成事故套件。** 搭 20 个场景：OOMKill 级联、DNS 抖动、HPA 抖动、PVC 写满、吵闹邻居、故障 sidecar、坏 ConfigMap 上线、证书轮换、镜像拉取退避等。在根因准确率和到达假设的时间上给 agent 打分。
 
-## Use It
+## 上手使用
 
 ```
 webhook: alert.pagerduty.com -> checkout-api SLO breach, error rate 14%
@@ -98,50 +98,50 @@ webhook: alert.pagerduty.com -> checkout-api SLO breach, error rate 14%
           (approval required; agent does not roll back unilaterally)
 ```
 
-## Ship It
+## 交付
 
-`outputs/skill-devops-agent.md` is the deliverable. Given a K8s cluster and alert source, the agent produces ranked root-cause hypotheses and a Slack-gated remediation flow.
+`outputs/skill-devops-agent.md` 是交付物。给定一个 K8s 集群和告警来源，agent 产出排好序的根因假设和一个由 Slack 设闸门的修复流程。
 
-| Weight | Criterion | How it is measured |
+| 权重 | 标准 | 怎么衡量 |
 |:-:|---|---|
-| 25 | RCA accuracy on scenario suite | ≥80% correct root cause across 20 synthetic incidents |
-| 20 | Safety | Destructive-action guard never fires without Slack approval in the audit log |
-| 20 | Time-to-hypothesis | p50 under 5 minutes from alert to Slack brief |
-| 20 | Explainability | Every hypothesis has graph paths and telemetry citations |
-| 15 | Integration completeness | PagerDuty, Slack, ArgoCD, Prometheus end-to-end working |
+| 25 | 场景套件上的 RCA 准确率 | 在 20 个合成事故上根因正确 ≥80% |
+| 20 | 安全性 | 审计日志里破坏性动作守卫从不在没有 Slack 批准的情况下触发 |
+| 20 | 到达假设的时间 | 从告警到 Slack 简报 p50 低于 5 分钟 |
+| 20 | 可解释性 | 每个假设都有图路径和遥测引用 |
+| 15 | 集成完整度 | PagerDuty、Slack、ArgoCD、Prometheus 端到端跑通 |
 | **100** | | |
 
-## Exercises
+## 练习
 
-1. Run your agent on the same three incidents AWS's DevOps Agent is demo'd on. Publish the side-by-side. Report where the agent diverges.
+1. 在 AWS DevOps Agent 演示用的同样三个事故上跑你的 agent。发出并排对比。报告 agent 在哪里出现分歧。
 
-2. Add a "near-miss" audit that flags any command the agent *considered* that would have been destructive without approval. Measure the near-miss rate over one week.
+2. 加一个“险些出事”审计，标出 agent *考虑过* 的、若没有批准本会是破坏性的任何命令。衡量一周内的险些出事率。
 
-3. Swap the hypothesis model from Claude Sonnet 4.7 to a self-hosted Llama 3.3 70B. Measure RCA accuracy delta and dollar per incident.
+3. 把假设模型从 Claude Sonnet 4.7 换成自托管的 Llama 3.3 70B。衡量 RCA 准确率差值和每事故美元成本。
 
-4. Build a causal filter: distinguish correlated telemetry spikes from a true root cause. Train a small classifier on the 20-scenario labels.
+4. 做一个因果过滤器：把相关联的遥测尖峰跟真正的根因区分开。在 20 个场景的标签上训一个小分类器。
 
-5. Add a rollback dry-run: ArgoCD rollback against a staging cluster with the same manifest. Verify the rollback plan in a live cluster before the Slack approval button.
+5. 加一个回滚演练：对一个用相同 manifest 的预发集群做 ArgoCD 回滚。在 Slack 审批按钮之前，在一个真实集群里验证回滚计划。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|-----------------|------------------------|
-| K8s knowledge graph | "Cluster graph" | Nodes = K8s objects + telemetry series; edges = ownership, scheduling, observation |
-| Read-only-by-default | "Scoped RBAC" | Agent's service account has only get/list/describe verbs; destructive verbs live in a separate server behind approval |
-| Audit log | "Considered vs executed" | Append-only record of every candidate command, whether it ran, who approved |
-| Hypothesis ranking | "Evidence score" | Recency × specificity × graph-path length inverse × citation count |
-| Slack approval card | "HITL gate" | Interactive Slack message with remediation buttons; agent cannot proceed until a human clicks |
-| Telemetry citation | "Evidence pointer" | A Prometheus query, Loki selector, or Tempo trace URL that supports a claim |
-| MTTR | "Time to resolution" | Wall-clock from alert fire to SLO recovery |
+| K8s knowledge graph（K8s 知识图） | “集群图” | 节点 = K8s 对象 + 遥测时序；边 = 归属、调度、观测 |
+| Read-only-by-default（默认只读） | “圈定的 RBAC” | agent 的 service account 只有 get/list/describe 动词；破坏性动词住在审批之后的独立服务器里 |
+| Audit log（审计日志） | “考虑过 vs 执行了” | 对每个候选命令的仅追加记录，它是否运行了、谁批准的 |
+| Hypothesis ranking（假设排序） | “证据分” | 时效性 × 具体度 × 图路径长度倒数 × 引用数 |
+| Slack approval card（Slack 审批卡片） | “HITL 闸门” | 带修复按钮的交互式 Slack 消息；人类不点，agent 不能继续 |
+| Telemetry citation（遥测引用） | “证据指针” | 支撑某条断言的一个 Prometheus 查询、Loki 选择器或 Tempo trace URL |
+| MTTR | “解决耗时” | 从告警触发到 SLO 恢复的墙钟时间 |
 
-## Further Reading
+## 延伸阅读
 
-- [AWS DevOps Agent GA](https://aws.amazon.com/blogs/aws/aws-devops-agent-helps-you-accelerate-incident-response-and-improve-system-reliability-preview/) — the canonical 2026 reference
-- [Resolve AI K8s troubleshooting](https://resolve.ai/blog/kubernetes-troubleshooting-in-resolve-ai) — the competitor reference
-- [NeuBird semantic monitoring](https://www.neubird.ai) — semantic-graph approach
-- [Metoro AI SRE](https://metoro.io) — SLO-first production framing
-- [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) — the cluster-state source
-- [LangGraph](https://langchain-ai.github.io/langgraph/) — reference agent orchestrator
-- [FastMCP](https://github.com/jlowin/fastmcp) — Python MCP server framework
-- [ArgoCD rollback](https://argo-cd.readthedocs.io/en/stable/user-guide/commands/argocd_app_rollback/) — the gated remediation target
+- [AWS DevOps Agent GA](https://aws.amazon.com/blogs/aws/aws-devops-agent-helps-you-accelerate-incident-response-and-improve-system-reliability-preview/) —— 2026 年的标准参考
+- [Resolve AI K8s troubleshooting](https://resolve.ai/blog/kubernetes-troubleshooting-in-resolve-ai) —— 竞品参考
+- [NeuBird semantic monitoring](https://www.neubird.ai) —— 语义图方法
+- [Metoro AI SRE](https://metoro.io) —— SLO 优先的生产视角
+- [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) —— 集群状态来源
+- [LangGraph](https://langchain-ai.github.io/langgraph/) —— 参考 agent 编排器
+- [FastMCP](https://github.com/jlowin/fastmcp) —— Python MCP 服务器框架
+- [ArgoCD rollback](https://argo-cd.readthedocs.io/en/stable/user-guide/commands/argocd_app_rollback/) —— 设了闸门的修复目标

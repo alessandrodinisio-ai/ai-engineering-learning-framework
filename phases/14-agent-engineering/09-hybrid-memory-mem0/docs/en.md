@@ -1,48 +1,48 @@
-# Hybrid Memory: Vector + Graph + KV (Mem0)
+# 混合记忆：向量 + 图 + KV（Mem0）
 
-> Mem0 (Chhikara et al., 2025) treats memory as three stores in parallel — vector for semantic similarity, KV for fast fact lookup, graph for entity-relationship reasoning. A scoring layer fuses the three on retrieval. This is the 2026 production standard for external memory.
+> Mem0（Chhikara 等人，2025）把记忆当成三个并行的存储 —— 向量做语义相似、KV 做快速事实查找、图做实体关系推理。检索时一个打分层把三者融合起来。这是 2026 年外部记忆的生产标准。
 
-**Type:** Build
-**Languages:** Python (stdlib)
-**Prerequisites:** Phase 14 · 07 (MemGPT), Phase 14 · 08 (Letta Blocks)
-**Time:** ~75 minutes
+**类型：** Build
+**语言：** Python（标准库）
+**前置要求：** 阶段 14 · 07（MemGPT）、阶段 14 · 08（Letta 块）
+**预计时间：** ~75 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Explain why a single store (vector only, graph only, KV only) is insufficient for agent memory.
-- Name Mem0's three parallel stores and what each one optimizes for.
-- Describe Mem0's fusion scoring — relevance, importance, recency — and why it is a weighted sum, not a hierarchy.
-- Implement a toy three-store memory in stdlib with an `add()` that writes to all three and a `search()` that fuses results.
+- 解释为什么单一存储（只用向量、只用图、只用 KV）对 agent 记忆来说不够。
+- 说出 Mem0 的三个并行存储，以及每个为什么而优化。
+- 描述 Mem0 的融合打分 —— 相关性、重要性、新鲜度 —— 以及为什么它是加权和，而不是层级。
+- 用标准库实现一个玩具三存储记忆，`add()` 写进全部三个，`search()` 融合结果。
 
-## The Problem
+## 问题所在
 
-One store is wrong for one of three query classes:
+对三类查询里的某一类来说，单一存储是错的：
 
-- **Semantic similarity** — "what did we discuss about agent drift last week?" Vector wins; KV and graph miss.
-- **Fact lookup** — "what is the user's phone number?" KV wins; vector is wasteful, graph is overkill.
-- **Relationship reasoning** — "which customers share the same billing entity?" Graph wins; vector and KV cannot answer.
+- **语义相似** —— 「上周我们讨论 agent 漂移时说了啥？」向量赢；KV 和图错过。
+- **事实查找** —— 「用户的电话号码是多少？」KV 赢；向量浪费，图大材小用。
+- **关系推理** —— 「哪些客户共用同一个计费实体？」图赢；向量和 KV 答不了。
 
-Production agents issue all three in one session. A single-store memory is always wrong for two of them. Mem0's contribution is wiring all three behind a single `add`/`search` surface with a scoring function that fuses them.
+生产 agent 在一个会话里这三类都会发出来。单一存储记忆对其中两类总是错的。Mem0 的贡献是把三者都接在一个 `add`/`search` 接触面后面，用一个把它们融合起来的打分函数。
 
-## The Concept
+## 核心概念
 
-### Three stores in parallel
+### 三个并行存储
 
-Mem0 (arXiv:2504.19413, April 2025) on `add(text, user_id, metadata)`:
+Mem0（arXiv:2504.19413，2025 年 4 月）在 `add(text, user_id, metadata)` 上：
 
-1. Extract candidate facts from the text (an LLM-driven step).
-2. Write each fact to the vector store (embedding) for semantic search.
-3. Write each fact to the KV store keyed on (user_id, fact_type, entity) for O(1) lookup.
-4. Write each fact to the graph store (Mem0g) as typed edges for relationship queries.
+1. 从文本里抽取候选事实（一个 LLM 驱动的步骤）。
+2. 把每个事实写进向量存储（embedding）供语义搜索。
+3. 把每个事实写进 KV 存储，键为 (user_id, fact_type, entity)，供 O(1) 查找。
+4. 把每个事实作为带类型的边写进图存储（Mem0g），供关系查询。
 
-On `search(query, user_id)`:
+在 `search(query, user_id)` 上：
 
-1. Vector store returns top-k by embedding cosine.
-2. KV store returns direct hits keyed on query-derived (user_id, type, entity).
-3. Graph store returns subgraph reachable from query entities.
-4. A scoring layer fuses the three.
+1. 向量存储按 embedding 余弦返回 top-k。
+2. KV 存储返回按查询导出的 (user_id, type, entity) 命中的直接结果。
+3. 图存储返回从查询实体可达的子图。
+4. 一个打分层融合三者。
 
-### Fusion scoring
+### 融合打分
 
 ```
 score = w_relevance * relevance(q, record)
@@ -50,96 +50,96 @@ score = w_relevance * relevance(q, record)
       + w_recency * recency(record)
 ```
 
-- **Relevance** — vector cosine, KV exact match, graph path weight.
-- **Importance** — tagged at write time or learned (some facts matter more: names, IDs, policies).
-- **Recency** — exponential decay over time since last write or read.
+- **相关性** —— 向量余弦、KV 精确匹配、图路径权重。
+- **重要性** —— 写入时打标或学习得到（有些事实更重要：名字、ID、政策）。
+- **新鲜度** —— 自上次写入或读取以来按时间指数衰减。
 
-Weights are tuned per product. Higher `w_recency` for chat agents; higher `w_importance` for compliance agents; higher `w_relevance` for retrieval agents.
+权重按产品调。聊天 agent 调高 `w_recency`；合规 agent 调高 `w_importance`；检索 agent 调高 `w_relevance`。
 
-### Mem0g and temporal reasoning
+### Mem0g 与时序推理
 
-Mem0g adds a conflict detector. When a new fact contradicts an existing edge, the existing edge is marked invalid but not deleted. Temporal queries ("what was the user's city in March?") traverse the valid-at-time subgraph.
+Mem0g 加了一个冲突检测器。当一个新事实与现有边矛盾时，现有边被标记为无效但不删除。时序查询（「用户三月份在哪个城市？」）遍历「在该时间有效」的子图。
 
-This is the compliance-grade behavior Letta's invalidation pattern generalizes.
+这是 Letta 的失效模式所一般化的合规级行为。
 
-### Benchmark numbers
+### 基准数字
 
-The Mem0 paper reports (2025):
+Mem0 论文报告（2025）：
 
-- **LoCoMo** (long-form conversation memory): 91.6
-- **LongMemEval** (long-horizon episodic memory): 93.4
-- **BEAM 1M** (1M-token memory benchmark): 64.1
+- **LoCoMo**（长篇对话记忆）：91.6
+- **LongMemEval**（长跨度情景记忆）：93.4
+- **BEAM 1M**（1M-token 记忆基准）：64.1
 
-Comparison baselines (full-context 128k LLM, flat vector store, flat KV) all lose by 10+ points. Benchmarks alone don't justify choice — operational shape does — but the numbers show the fusion design is not a rounding error.
+对比基线（全上下文 128k LLM、扁平向量存储、扁平 KV）都落后 10+ 分。光靠基准不能定选型 —— 运维形态才行 —— 但这些数字表明融合设计不是个舍入误差。
 
-### Scope taxonomy
+### 范围分类
 
-Mem0 splits memory by scope:
+Mem0 按范围拆分记忆：
 
-- **User memory** — persists across sessions, keyed on `user_id`.
-- **Session memory** — persists within one thread.
-- **Agent memory** — per-agent instance state.
+- **User memory** —— 跨会话持久，键为 `user_id`。
+- **Session memory** —— 在一个 thread 内持久。
+- **Agent memory** —— 每个 agent 实例的状态。
 
-Every write picks one scope. Retrieval can query across scopes with per-scope weights. Mixing scopes without thought is how you get "the assistant told Alice about Bob's project" incidents.
+每次写入挑一个范围。检索可以跨范围查询，每个范围有自己的权重。不加思考地混用范围，就是你会碰上「助手把 Bob 的项目告诉了 Alice」这类事故的原因。
 
-### Where this pattern goes wrong
+### 这个模式在哪里会出错
 
-- **Embedding drift.** Vector results that look right on the first hundred queries degrade as the corpus grows. Add periodic re-embedding of the top-N-used records.
-- **KV schema creep.** `(user_id, type, entity)` looks simple until every team adds their own `type`. Audit the type set quarterly.
-- **Graph explosion.** One noisy extractor adds 50 edges per message. Cap graph writes per `add` call; drop low-confidence edges.
+- **embedding 漂移。** 前一百次查询看着对的向量结果，会随语料增长而退化。加上对使用最频繁的 top-N 记录的周期性重嵌入。
+- **KV schema 蔓延。** `(user_id, type, entity)` 看着简单，直到每个团队都加上自己的 `type`。每季度审计一次 type 集合。
+- **图爆炸。** 一个有噪声的抽取器每条消息加 50 条边。给每次 `add` 调用的图写入封顶；丢掉低置信度的边。
 
-## Build It
+## 动手构建
 
-`code/main.py` implements the three-store pattern in stdlib:
+`code/main.py` 用标准库实现三存储模式：
 
-- `VectorStore` — naive token-overlap similarity as an embedding stand-in.
-- `KVStore` — dict keyed on `(user_id, fact_type, entity)`.
-- `GraphStore` — typed edges (subject, relation, object, valid).
-- `Mem0` — top-level facade with `add()`, `search()`, fusion scoring, and scope-aware retrieval.
-- A worked trace on a multi-user, multi-session conversation.
+- `VectorStore` —— 用朴素的 token 重叠相似度顶替 embedding。
+- `KVStore` —— 键为 `(user_id, fact_type, entity)` 的字典。
+- `GraphStore` —— 带类型的边（subject, relation, object, valid）。
+- `Mem0` —— 顶层门面，带 `add()`、`search()`、融合打分和范围感知检索。
+- 在一段多用户、多会话对话上的一条完整轨迹。
 
-Run it:
+运行它：
 
 ```
 python3 code/main.py
 ```
 
-The output shows three separate recall paths plus the fused top-k. Flip the scoring weights at the top of `main()` and watch the ranking change.
+输出展示三条独立的召回路径，外加融合后的 top-k。在 `main()` 顶部翻转打分权重，看排名变化。
 
-## Use It
+## 上手使用
 
-- **Mem0 (Apache 2.0)** — production-ready. Self-host with Postgres + Qdrant + Neo4j, or use the managed cloud.
-- **Letta** — three-tier core/recall/archival; bring your own vector and graph backends.
-- **Zep** — commercial alternative with temporal KG and fact extraction.
-- **Custom builds** — when you need exact control over the extractor (compliance) or fusion weights (voice agents where recency dominates).
+- **Mem0（Apache 2.0）** —— 生产就绪。用 Postgres + Qdrant + Neo4j 自托管，或用托管云。
+- **Letta** —— 三层 core/recall/archival；自带向量和图后端。
+- **Zep** —— 商业替代品，带时序 KG 和事实抽取。
+- **自定义构建** —— 当你需要对抽取器（合规）或融合权重（新鲜度主导的语音 agent）做精确控制时。
 
-## Ship It
+## 交付
 
-`outputs/skill-hybrid-memory.md` generates a three-store memory scaffold with a fusion scorer, scope taxonomy, and temporal invalidation wired in.
+`outputs/skill-hybrid-memory.md` 生成一个三存储记忆脚手架，融合打分器、范围分类和时序失效都接好。
 
-## Exercises
+## 练习
 
-1. Replace the toy vector similarity with a real embedding model (sentence-transformers, Ollama, OpenAI embeddings). Measure recall@10 on a synthetic long conversation. Does the ranking drift over 1000 writes?
-2. Add a temporal query: `search(query, as_of=timestamp)`. Return only records valid at or before that time. Which store needs the most work?
-3. Implement a conflict detector: if an incoming fact contradicts a graph edge, invalidate the old edge and log both. Test on "user lives in Berlin" -> "user lives in Lisbon."
-4. Port the fusion scorer to include a `user_feedback` dimension (thumbs-up on retrieved records). How do you prevent gaming (the agent only returns records it already liked)?
-5. Read the Mem0 docs (`docs.mem0.ai`). Port the toy to `mem0` client calls. Compare retrieval quality on the same 20 test queries.
+1. 把玩具向量相似度换成一个真实的 embedding 模型（sentence-transformers、Ollama、OpenAI embeddings）。在一段合成的长对话上度量 recall@10。排名在 1000 次写入后会漂移吗？
+2. 加一个时序查询：`search(query, as_of=timestamp)`。只返回在那个时间或之前有效的记录。哪个存储要改最多？
+3. 实现一个冲突检测器：如果一个进来的事实与某条图边矛盾，失效旧边并把两者都记录下来。在「用户住柏林」-> 「用户住里斯本」上测试。
+4. 把融合打分器移植成包含一个 `user_feedback` 维度（对检索到的记录点赞）。你怎么防止刷分（agent 只返回它已经喜欢的记录）？
+5. 读 Mem0 文档（`docs.mem0.ai`）。把玩具移植到 `mem0` 客户端调用。在同样的 20 个测试查询上对比检索质量。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| Hybrid memory | "Vector plus graph plus KV" | Three stores written in parallel, fused on retrieval |
-| Fact extraction | "Memory ingestion" | LLM step that breaks text into (entity, relation, fact) tuples |
-| Fusion scoring | "Relevance ranking" | Weighted sum of relevance, importance, recency |
-| Scope | "Memory namespace" | user / session / agent — determines who sees what |
-| Mem0g | "Memory graph" | Typed edges with temporal validity for relationship queries |
-| Temporal invalidation | "Soft delete" | Mark contradicted edges invalid; never delete |
-| Embedding drift | "Retrieval rot" | Vector quality degrades as corpus grows; re-embed periodically |
+| Hybrid memory | 「向量加图加 KV」 | 三个存储并行写入，检索时融合 |
+| Fact extraction | 「记忆摄入」 | 把文本拆成 (entity, relation, fact) 三元组的 LLM 步骤 |
+| Fusion scoring | 「相关性排名」 | 相关性、重要性、新鲜度的加权和 |
+| Scope | 「记忆命名空间」 | user / session / agent —— 决定谁看到什么 |
+| Mem0g | 「记忆图」 | 带时序有效性、用于关系查询的带类型边 |
+| Temporal invalidation | 「软删除」 | 把被推翻的边标记为无效；绝不删除 |
+| Embedding drift | 「检索腐烂」 | 向量质量随语料增长退化；周期性重嵌入 |
 
-## Further Reading
+## 延伸阅读
 
-- [Chhikara et al., Mem0 (arXiv:2504.19413)](https://arxiv.org/abs/2504.19413) — the original paper
-- [Mem0 docs](https://docs.mem0.ai/platform/overview) — production API, SDKs, managed cloud
-- [Packer et al., MemGPT (arXiv:2310.08560)](https://arxiv.org/abs/2310.08560) — the virtual-context predecessor
-- [Letta, Memory Blocks blog](https://www.letta.com/blog/memory-blocks) — the three-tier sibling design
+- [Chhikara et al., Mem0 (arXiv:2504.19413)](https://arxiv.org/abs/2504.19413) —— 原论文
+- [Mem0 docs](https://docs.mem0.ai/platform/overview) —— 生产 API、SDK、托管云
+- [Packer et al., MemGPT (arXiv:2310.08560)](https://arxiv.org/abs/2310.08560) —— 虚拟上下文的前身
+- [Letta, Memory Blocks blog](https://www.letta.com/blog/memory-blocks) —— 三层的兄弟设计

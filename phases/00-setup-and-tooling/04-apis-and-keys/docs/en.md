@@ -1,24 +1,24 @@
-# APIs & Keys
+# API 与密钥
 
-> Every AI API works the same way: send a request, get a response. The details change, the pattern doesn't.
+> 所有 AI API 的工作方式都一样：发请求，收响应。细节会变，套路不变。
 
-**Type:** Build
-**Languages:** Python, TypeScript
-**Prerequisites:** Phase 0, Lesson 01
-**Time:** ~30 minutes
+**类型：** Build
+**语言：** Python、TypeScript
+**前置要求：** 阶段 0，第 01 课
+**预计时间：** ~30 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Store API keys securely using environment variables and `.env` files
-- Make an LLM API call using both the Anthropic Python SDK and raw HTTP
-- Compare SDK-based and raw HTTP request/response formats for debugging
-- Identify and handle common API errors including authentication and rate limits
+- 用环境变量和 `.env` 文件安全地存放 API 密钥
+- 分别用 Anthropic Python SDK 和原始 HTTP 发起一次 LLM API 调用
+- 对比 SDK 和原始 HTTP 的请求/响应格式，方便调试
+- 识别并处理常见的 API 错误，包括鉴权失败和限流
 
-## The Problem
+## 问题所在
 
-Starting from Phase 11, you'll call LLM APIs (Anthropic, OpenAI, Google). In Phase 13-16 you'll build agents that use these APIs in loops. You need to know how API keys work, how to store them safely, and how to make your first API call.
+从阶段 11 开始，你会调用各家 LLM API（Anthropic、OpenAI、Google）。在阶段 13-16，你会构建在循环里使用这些 API 的 agent。你得搞清楚 API 密钥是怎么回事、怎么安全存放、以及怎么发出你的第一个 API 调用。
 
-## The Concept
+## 核心概念
 
 ```mermaid
 sequenceDiagram
@@ -28,31 +28,31 @@ sequenceDiagram
     S->>C: HTTP Response (JSON)
 ```
 
-Every API call has:
-1. An endpoint (URL)
-2. An API key (authentication)
-3. A request body (what you want)
-4. A response body (what you get back)
+每一次 API 调用都包含：
+1. 一个端点（URL）
+2. 一个 API 密钥（鉴权）
+3. 一个请求体（你想要什么）
+4. 一个响应体（你拿回什么）
 
-## Build It
+## 动手构建
 
-### Step 1: Store API keys safely
+### 第 1 步：安全存放 API 密钥
 
-Never put API keys in code. Use environment variables.
+绝不要把 API 密钥写进代码。用环境变量。
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 export OPENAI_API_KEY="sk-..."
 ```
 
-Or use a `.env` file (add it to `.gitignore`):
+或者用 `.env` 文件（记得加进 `.gitignore`）：
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 ```
 
-### Step 2: First API call (Python)
+### 第 2 步：第一个 API 调用（Python）
 
 ```python
 import anthropic
@@ -68,7 +68,7 @@ response = client.messages.create(
 print(response.content[0].text)
 ```
 
-### Step 3: First API call (TypeScript)
+### 第 3 步：第一个 API 调用（TypeScript）
 
 ```typescript
 import Anthropic from "@anthropic-ai/sdk";
@@ -84,7 +84,7 @@ const response = await client.messages.create({
 console.log(response.content[0].text);
 ```
 
-### Step 4: Raw HTTP (no SDK)
+### 第 4 步：原始 HTTP（不用 SDK）
 
 ```python
 import os
@@ -109,36 +109,36 @@ with urllib.request.urlopen(req) as resp:
     print(result["content"][0]["text"])
 ```
 
-This is what the SDKs do under the hood. Understanding the raw HTTP call helps when debugging.
+SDK 在底层干的就是这件事。看懂原始 HTTP 调用，调试时会更得心应手。
 
-## Use It
+## 上手使用
 
-For this course:
+本课程用到：
 
-| API | When you need it | Free tier |
+| API | 什么时候需要 | 免费额度 |
 |-----|-----------------|-----------|
-| Anthropic (Claude) | Phases 11-16 (agents, tools) | $5 credit on signup |
-| OpenAI | Phase 11 (comparison) | $5 credit on signup |
-| Hugging Face | Phases 4-10 (models, datasets) | Free |
+| Anthropic (Claude) | 阶段 11-16（agent、工具） | 注册送 $5 额度 |
+| OpenAI | 阶段 11（对比） | 注册送 $5 额度 |
+| Hugging Face | 阶段 4-10（模型、数据集） | 免费 |
 
-You don't need all of them right now. Set them up when the lesson requires it.
+现在不用全都准备好。哪节课要用，就去配哪个。
 
-## Ship It
+## 交付
 
-This lesson produces:
-- `outputs/prompt-api-troubleshooter.md` - diagnose common API errors
+这节课产出：
+- `outputs/prompt-api-troubleshooter.md` —— 诊断常见的 API 错误
 
-## Exercises
+## 练习
 
-1. Get an Anthropic API key and make your first API call
-2. Try the raw HTTP version and compare the response format to the SDK version
-3. Intentionally use a wrong API key and read the error message
+1. 申请一个 Anthropic API 密钥，发出你的第一个 API 调用
+2. 试试原始 HTTP 版本，把它的响应格式和 SDK 版本对比一下
+3. 故意用一个错误的 API 密钥，读一读报错信息
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家怎么说 | 它实际是什么 |
 |------|----------------|----------------------|
-| API key | "Password for the API" | A unique string that identifies your account and authorizes requests |
-| Rate limit | "They're throttling me" | Maximum requests per minute/hour to prevent abuse and ensure fair usage |
-| Token | "A word" (in API context) | A billing unit: input and output tokens are counted and charged separately |
-| Streaming | "Real-time responses" | Getting the response word by word instead of waiting for the full response |
+| API key | "API 的密码" | 一串唯一字符串，标识你的账号并授权请求 |
+| Rate limit | "它在限我速" | 每分钟/每小时的最大请求数，防滥用、保公平 |
+| Token | "一个词"（在 API 语境下） | 计费单位：输入 token 和输出 token 分开计数、分开计费 |
+| Streaming | "实时响应" | 一个词一个词地拿到响应，而不是干等整段返回 |

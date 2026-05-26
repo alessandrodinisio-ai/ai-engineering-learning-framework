@@ -1,128 +1,128 @@
-# A/B Testing LLM Features — GrowthBook, Statsig, and the Vibes Problem
+# A/B 测试 LLM 特性 —— GrowthBook、Statsig 与"凭感觉"问题
 
-> Traditional A/B testing was not built for non-deterministic LLMs. The critical distinction: evals answer "can the model do the job?" A/B tests answer "do users care?" Both are required; shipping on vibe checks is over. What to test in 2026: prompt engineering (wording), model selection (GPT-4 vs GPT-3.5 vs OSS; accuracy vs cost vs latency), generation parameters (temperature, top-p). Real cases: a chatbot reward-model variant delivered +70% conversation length and +30% retention; Nextdoor AI subject-line experiments delivered +1% CTR after reward-function refinement; Khan Academy Khanmigo iterated on a latency-vs-math-accuracy axis. Platform split: **Statsig** (acquired by OpenAI for $1.1B in September 2025) — sequential testing, CUPED, all-in-one. **GrowthBook** — open-source, warehouse-native, Bayesian + Frequentist + Sequential engines, CUPED, SRM checks, Benjamini-Hochberg + Bonferroni corrections. You pick based on warehouse-SQL preference and whether "acquired by OpenAI" matters to your organization.
+> 传统 A/B 测试不是为非确定性的 LLM 造的。关键区别：eval 回答"模型能不能干这活？"A/B 测试回答"用户在不在乎？"两者都需要；凭感觉上线的时代结束了。2026 年测什么：prompt 工程（措辞）、模型选择（GPT-4 vs GPT-3.5 vs OSS；准确率 vs 成本 vs 延迟）、生成参数（temperature、top-p）。真实案例：一个聊天机器人的奖励模型变体带来 +70% 对话长度和 +30% 留存；Nextdoor 的 AI 主题行实验在奖励函数精调后带来 +1% CTR；Khan Academy 的 Khanmigo 在延迟 vs 数学准确率这个轴上迭代。平台划分：**Statsig**（2025 年 9 月被 OpenAI 以 11 亿美元收购）—— 序贯测试、CUPED、一体化。**GrowthBook** —— 开源、仓库原生、贝叶斯 + 频率派 + 序贯引擎、CUPED、SRM 检查、Benjamini-Hochberg + Bonferroni 校正。你基于对仓库-SQL 的偏好，以及"被 OpenAI 收购"对你的组织重不重要来挑。
 
-**Type:** Learn
-**Languages:** Python (stdlib, toy sequential test simulator)
-**Prerequisites:** Phase 17 · 13 (Observability), Phase 17 · 20 (Progressive Deployment)
-**Time:** ~60 minutes
+**类型：** Learn
+**语言：** Python（标准库，一个玩具级序贯测试模拟器）
+**前置要求：** 阶段 17 · 13（可观测性）、阶段 17 · 20（渐进式部署）
+**预计时间：** ~60 分钟
 
-## Learning Objectives
+## 学习目标
 
-- Distinguish evals ("can the model do the job") from A/B tests ("do users care").
-- Enumerate three testable axes (prompt, model, parameters) and pick the metric for each.
-- Explain CUPED, sequential testing, and Benjamini-Hochberg multiple-comparison corrections.
-- Pick Statsig or GrowthBook based on warehouse-SQL posture and corporate acquisition stance.
+- 区分 eval（"模型能不能干这活"）和 A/B 测试（"用户在不在乎"）。
+- 列举三个可测的轴（prompt、模型、参数），并为每个挑指标。
+- 解释 CUPED、序贯测试和 Benjamini-Hochberg 多重比较校正。
+- 基于仓库-SQL 态度和企业收购立场，挑选 Statsig 还是 GrowthBook。
 
-## The Problem
+## 问题所在
 
-You hand-tuned a system prompt. It feels better. You ship it. Conversion changes by noise. You blame the metric. Or you shipped a new model and conversion didn't move — did the model degrade or was the change too small to detect? You don't know, because you shipped without an A/B.
+你手调了一个系统 prompt。感觉更好。你上线了。转化率在噪声范围内变动。你怪指标。或者你上了一个新模型，转化率没动 —— 是模型退化了，还是改动太小检测不到？你不知道，因为你没做 A/B 就上了。
 
-Evals answer whether the model can do a task on a labeled set. They do not answer whether users prefer the output. Only a controlled online experiment answers that, and only if the experiment has enough power, controls for non-determinism, and corrects for multiple comparisons.
+eval 回答的是模型在一个带标注集上能不能完成任务。它们不回答用户是否更喜欢这个输出。只有受控的在线实验才回答那个，而且只在实验有足够功效、控制了非确定性、对多重比较做了校正的前提下。
 
-## The Concept
+## 核心概念
 
-### Evals vs A/B tests
+### Eval vs A/B 测试
 
-**Evals** — offline, labeled set, judge (rubric or LLM-as-judge or human). Answer: "Is the output correct / helpful / safe on this fixed distribution?"
+**Eval** —— 离线、带标注集、评判（rubric 或 LLM 当评判或人评）。回答："输出在这个固定分布上正确 / 有帮助 / 安全吗？"
 
-**A/B test** — online, live users, randomized. Answer: "Does the new variant move the user-level metric that matters?"
+**A/B 测试** —— 在线、实时用户、随机化。回答："新变体有没有撬动那个重要的用户级指标？"
 
-Both required. Evals catch regressions before exposure; A/B confirms product impact after.
+两者都需要。eval 在暴露前抓回退；A/B 在之后确认产品影响。
 
-### What to test
+### 测什么
 
-1. **Prompt engineering** — wording, system-prompt structure, examples. Metric: task success, user retention, cost/request.
-2. **Model selection** — GPT-4 vs GPT-3.5-Turbo vs Llama-OSS. Metric: accuracy (task) + cost/request + latency P99. Multi-objective.
-3. **Generation parameters** — temperature, top-p, max_tokens. Metric: task-specific (output diversity vs determinism).
+1. **prompt 工程** —— 措辞、系统 prompt 结构、示例。指标：任务成功率、用户留存、单请求成本。
+2. **模型选择** —— GPT-4 vs GPT-3.5-Turbo vs Llama-OSS。指标：准确率（任务）+ 单请求成本 + 延迟 P99。多目标。
+3. **生成参数** —— temperature、top-p、max_tokens。指标：任务特定（输出多样性 vs 确定性）。
 
-### CUPED — variance reduction
+### CUPED —— 方差削减
 
-Controlled-experiments Using Pre-Experiment Data. Regress out pre-period variance before comparing post-period. Typical variance reduction: 30-70%. Effective sample size goes up for free.
+Controlled-experiments Using Pre-Experiment Data（用实验前数据的受控实验）。在比较实验后数据前，把实验前的方差回归掉。典型方差削减：30-70%。有效样本量白白上升。
 
-Implementation: both Statsig and GrowthBook implement.
+实现：Statsig 和 GrowthBook 都实现了。
 
-### Sequential testing
+### 序贯测试
 
-Classical A/B assumes fixed sample size. Sequential tests ("peek-and-decide") control false-positive rate under repeated looks. Always-valid sequential procedures (mSPRT, Howard's confidence sequences) let you stop early on clear winners.
+经典 A/B 假设固定样本量。序贯测试（"偷看再决定"）在反复查看下控制假阳率。始终有效的序贯流程（mSPRT、Howard 的置信序列）让你在明显胜出时提早停止。
 
-### Multiple-comparison corrections
+### 多重比较校正
 
-Running 20 A/B tests at 95% confidence produces one false positive by chance. Bonferroni correction tightens α per-test; Benjamini-Hochberg controls false-discovery rate. GrowthBook implements both.
+在 95% 置信度下跑 20 个 A/B 测试，靠运气就会产生一个假阳。Bonferroni 校正收紧每个测试的 α；Benjamini-Hochberg 控制假发现率。GrowthBook 两者都实现了。
 
-### SRM — sample ratio mismatch
+### SRM —— 样本比例失配
 
-Assignment hash randomizes users to variants. If 50/50 split delivers 47/53, something is broken — SRM check flags it. Both platforms implement.
+分配哈希把用户随机化到各变体。如果 50/50 切分给出 47/53，说明有东西坏了 —— SRM 检查会标记它。两个平台都实现了。
 
 ### Statsig vs GrowthBook
 
-**Statsig**:
-- Acquired by OpenAI for $1.1B (September 2025). Hosted, SaaS.
-- Sequential testing, CUPED, held-out populations.
-- All-in-one: feature flags + experimentation + observability.
-- Best fit: team already wants a bundled product, doesn't care about OpenAI ownership.
+**Statsig**：
+- 被 OpenAI 以 11 亿美元收购（2025 年 9 月）。托管、SaaS。
+- 序贯测试、CUPED、留出人群。
+- 一体化：feature flag + 实验 + 可观测性。
+- 最佳适用：团队已经想要一个捆绑产品，不在乎 OpenAI 所有权。
 
-**GrowthBook**:
-- Open-source (MIT); warehouse-native (reads from Snowflake/BigQuery/Redshift directly).
-- Multiple engines: Bayesian, Frequentist, Sequential.
-- CUPED, SRM, Bonferroni, BH corrections.
-- Self-host or managed cloud.
-- Best fit: warehouse-SQL shop, data team controls the metric layer, wants OSS.
+**GrowthBook**：
+- 开源（MIT）；仓库原生（直接从 Snowflake/BigQuery/Redshift 读）。
+- 多引擎：贝叶斯、频率派、序贯。
+- CUPED、SRM、Bonferroni、BH 校正。
+- 自托管或托管云。
+- 最佳适用：仓库-SQL 团队，数据团队掌控指标层，想要 OSS。
 
-### Non-determinism complicates power
+### 非确定性让功效计算变复杂
 
-Same prompt produces varying outputs. Traditional power calculations assume IID observations. With LLM non-determinism, effective sample size is lower than nominal. Multiply required sample size by ~1.3-1.5x as a safety margin.
+同一 prompt 产生不同输出。传统功效计算假设 IID 观测。有了 LLM 非确定性，有效样本量低于名义值。把所需样本量乘以约 1.3-1.5x 作为安全余量。
 
-### Real case outcomes
+### 真实案例结果
 
-- Chatbot reward model variant: +70% conversation length, +30% retention.
-- Nextdoor subject lines: +1% CTR after reward-function refinement.
-- Khan Academy Khanmigo: iterative latency-vs-math-accuracy trade.
+- 聊天机器人奖励模型变体：+70% 对话长度，+30% 留存。
+- Nextdoor 主题行：奖励函数精调后 +1% CTR。
+- Khan Academy Khanmigo：延迟 vs 数学准确率的迭代权衡。
 
-### The anti-pattern: shipping on vibes
+### 反模式：凭感觉上线
 
-Every senior engineer can name a feature that was shipped because "it feels better" with no A/B. Most of them regressed product metrics the team didn't notice for months. A/B is the forcing function.
+每个资深工程师都能说出一个因为"感觉更好"就上线、没做 A/B 的特性。它们中大多数让团队几个月都没注意到的产品指标退化了。A/B 就是那个逼你做决定的因素。
 
-### Numbers you should remember
+### 你该记住的数字
 
-- Statsig acquired by OpenAI: $1.1B, September 2025.
-- GrowthBook: open-source MIT; Bayesian + Frequentist + Sequential.
-- CUPED variance reduction: 30-70%.
-- LLM non-determinism → +30-50% sample-size buffer.
+- Statsig 被 OpenAI 收购：11 亿美元，2025 年 9 月。
+- GrowthBook：开源 MIT；贝叶斯 + 频率派 + 序贯。
+- CUPED 方差削减：30-70%。
+- LLM 非确定性 → +30-50% 样本量缓冲。
 
-## Use It
+## 上手使用
 
-`code/main.py` simulates a sequential A/B test with fixed and sequential boundaries. Shows how sequential lets you stop early.
+`code/main.py` 用固定边界和序贯边界模拟一个序贯 A/B 测试。展示序贯如何让你提早停止。
 
-## Ship It
+## 交付
 
-This lesson produces `outputs/skill-ab-plan.md`. Given feature change, workload, baseline, picks platform, gates, sample size.
+这一课产出 `outputs/skill-ab-plan.md`。给定特性改动、工作负载、基线，挑平台、闸门、样本量。
 
-## Exercises
+## 练习
 
-1. Run `code/main.py`. For an expected 5% lift with baseline 3% conversion, what sample size to 80% power?
-2. Pick Statsig or GrowthBook for a healthcare-regulated on-prem customer.
-3. Design an A/B that tests GPT-4 vs GPT-3.5 on cost-per-resolved-ticket. What's the primary metric, guardrail metric, secondary?
-4. Your canary passes but A/B shows -1.2% conversion. Do you ship? Write the escalation criteria.
-5. Apply CUPED to a pre-period with 60% of the variance of post. Compute the effective-sample-size boost.
+1. 跑 `code/main.py`。对一个基线 3% 转化率、预期 5% 提升的情况，到 80% 功效需要多少样本量？
+2. 为一个受医疗监管的本地部署客户挑 Statsig 还是 GrowthBook。
+3. 设计一个在"每解决工单成本"上测 GPT-4 vs GPT-3.5 的 A/B。主指标、护栏指标、次要指标各是什么？
+4. 你的 canary 通过了，但 A/B 显示 -1.2% 转化。你上吗？写出升级准则。
+5. 把 CUPED 应用到一个方差为实验后 60% 的实验前期。算有效样本量的提升。
 
-## Key Terms
+## 关键术语
 
-| Term | What people say | What it actually means |
+| 术语 | 大家嘴上怎么说 | 它实际是什么 |
 |------|----------------|------------------------|
-| Eval | "offline test" | Labeled-set evaluation of model capability |
-| A/B test | "experiment" | Live randomized comparison on users |
-| CUPED | "variance reduction" | Pre-period regression to reduce variance |
-| Sequential test | "peek-ok test" | Always-valid procedure allowing early stop |
-| Multiple comparison | "the family error" | Running many tests inflates false positives |
-| Bonferroni | "tight correction" | Divide α by number of tests |
-| Benjamini-Hochberg | "BH FDR" | False-discovery-rate control, less conservative |
-| SRM | "bad split" | Sample ratio mismatch; assignment bug |
-| Statsig | "OpenAI owned" | Commercial all-in-one, acquired 2025 |
-| GrowthBook | "the OSS one" | MIT warehouse-native platform |
-| mSPRT | "sequential probability ratio test" | Classical sequential procedure |
+| Eval | "离线测试" | 对模型能力的带标注集评估 |
+| A/B 测试 | "实验" | 对用户的实时随机化对比 |
+| CUPED | "方差削减" | 用实验前期回归来削减方差 |
+| 序贯测试 | "可偷看的测试" | 允许提早停止的始终有效流程 |
+| 多重比较 | "族系误差" | 跑很多测试会膨胀假阳 |
+| Bonferroni | "收紧校正" | 把 α 除以测试数 |
+| Benjamini-Hochberg | "BH FDR" | 假发现率控制，没那么保守 |
+| SRM | "坏切分" | 样本比例失配；分配 bug |
+| Statsig | "OpenAI 拥有的" | 商用一体化，2025 年被收购 |
+| GrowthBook | "那个 OSS 的" | MIT 仓库原生平台 |
+| mSPRT | "序贯概率比检验" | 经典序贯流程 |
 
-## Further Reading
+## 延伸阅读
 
 - [GrowthBook — How to A/B Test AI](https://blog.growthbook.io/how-to-a-b-test-ai-a-practical-guide/)
 - [Statsig — Beyond Prompts: Data-Driven LLM Optimization](https://www.statsig.com/blog/llm-optimization-online-experimentation)
