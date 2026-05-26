@@ -14,29 +14,26 @@
 ░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒
 ```
 
-> **84% of students already use AI tools. Only 18% feel prepared to use them
-> professionally.** This curriculum closes that gap.
+> **84% 的学生已经在用 AI 工具，可只有 18% 觉得自己能在专业场景里用好它们。**
+> 这套课程要填的就是这道沟。
 >
-> 435 lessons. 20 phases. ~320 hours. Python, TypeScript, Rust, Julia. Every lesson ships
-> a reusable artifact: a prompt, a skill, an agent, an MCP server. Free, open source, MIT.
+> 435 节课，20 个阶段，约 320 小时。Python、TypeScript、Rust、Julia。每节课都交付一件
+> 能复用的东西：一个提示词、一个技能、一个 agent、一个 MCP server。免费，开源，MIT。
 >
-> You don't just learn AI. You build it. End-to-end. By hand.
+> 你不只是学 AI，你亲手把它造出来。从头到尾，全手写。
 
 ## How this works
 
-Most AI material teaches in scattered pieces. A paper here, a fine-tuning post there, a
-flashy agent demo somewhere else. The pieces rarely line up. You ship a chatbot but can't
-explain its loss curve. You hook a function to an agent but can't say what attention does
-inside the model that's calling it.
+大多数 AI 教材都是碎片化教学。这儿一篇论文，那儿一篇微调心得，别处再来个炫酷的 agent
+demo。这些碎片很少能拼到一起。你做出了一个聊天机器人，却讲不清它的 loss 曲线；你给
+agent 挂了个函数，却说不出调用它的那个模型内部，attention 到底在干什么。
 
-This curriculum is the spine. 20 phases, 435 lessons, four languages: Python, TypeScript,
-Rust, Julia. Linear algebra at one end, autonomous swarms at the other. Every algorithm
-gets built from raw math first. Backprop. Tokenizer. Attention. Agent loop. By the time
-PyTorch shows up, you already know what it's doing under the hood.
+这套课程就是那根脊椎。20 个阶段，435 节课，四种语言：Python、TypeScript、Rust、Julia。
+一头是线性代数，另一头是自主 agent 集群。每个算法都先从最原始的数学手写出来。反向传播、
+分词器、注意力、agent 循环——等 PyTorch 登场时，你已经知道它底层在做什么了。
 
-Each lesson runs the same loop: read the problem, derive the math, write the code, run
-the test, keep the artifact. No five-minute videos, no copy-paste deploys, no hand-holding.
-Free, open source, and built to run on your own laptop.
+每节课都跑同一个循环：读懂问题、推导数学、写代码、跑测试、留下产物。没有五分钟速成视频，
+没有复制粘贴式部署，没有手把手喂饭。免费，开源，在你自己的笔记本上就能跑。
 
 ```
 ░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒
@@ -44,9 +41,8 @@ Free, open source, and built to run on your own laptop.
 
 ## The shape of the curriculum
 
-Twenty phases stack on top of each other. Math is the floor. Agents and production are the roof.
-Skip ahead if you already know the lower layers, but don't skip and then wonder why something at
-the top is breaking.
+二十个阶段层层叠起来。数学是地基，agent 和生产部署是屋顶。下层的东西你已经会了，就尽管
+往前跳；但别跳过去之后，又回头纳闷上层为什么塌了。
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{'primaryColor':'#fafaf5','primaryTextColor':'#1a1a1a','primaryBorderColor':'#3553ff','lineColor':'#3553ff','fontFamily':'JetBrains Mono','fontSize':'12px'}}}%%
@@ -80,19 +76,19 @@ flowchart TB
 
 ## The shape of a lesson
 
-Each lesson lives in its own folder, with the same structure across the entire curriculum:
+每节课都待在自己的文件夹里，整套课程结构统一：
 
 ```
 phases/<NN>-<phase-name>/<NN>-<lesson-name>/
-├── code/      runnable implementations (Python, TypeScript, Rust, Julia)
+├── code/      可运行的实现（Python、TypeScript、Rust、Julia）
 ├── docs/
-│   └── en.md  lesson narrative
-└── outputs/   prompts, skills, agents, or MCP servers this lesson produces
+│   └── en.md  课程正文
+└── outputs/   本节课产出的提示词、技能、agent 或 MCP server
 ```
 
-Every lesson follows six beats. The *Build It / Use It* split is the spine — you implement the
-algorithm from scratch first, then run the same thing through the production library. You
-understand what the framework is doing because you wrote the smaller version yourself.
+每节课都走六个节拍。其中 *Build It / Use It*（动手构建 / 上手使用）的拆分是整节课的脊椎——
+你先从零实现算法，再用生产级的库把同样的事跑一遍。你之所以懂框架在做什么，是因为那个更小的
+版本你自己写过。
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{'primaryColor':'#fafaf5','primaryTextColor':'#1a1a1a','primaryBorderColor':'#3553ff','lineColor':'#3553ff','fontFamily':'JetBrains Mono','fontSize':'13px'}}}%%
@@ -106,47 +102,46 @@ flowchart LR
 
 ## Getting started
 
-Three ways in. Pick one.
+三种入门方式。挑一个。
 
-**Option A — read.** Open any completed lesson on
-[aiengineeringfromscratch.com](https://aiengineeringfromscratch.com) or expand a phase under
-[Contents](#contents). No setup, no cloning.
+**方式 A —— 阅读。** 在
+[aiengineeringfromscratch.com](https://aiengineeringfromscratch.com) 上打开任意一节已完成的课程，
+或展开 [目录](#contents) 里的某个阶段。无需配置，无需 clone。
 
-**Option B — clone and run.**
+**方式 B —— clone 下来跑。**
 
 ```bash
-git clone https://github.com/rohitg00/ai-engineering-from-scratch.git
-cd ai-engineering-from-scratch
+git clone https://github.com/fancyboi999/ai-engineering-from-scratch-zh.git
+cd ai-engineering-from-scratch-zh
 python phases/01-math-foundations/01-linear-algebra-intuition/code/vectors.py
 ```
 
-**Option C — find your level *(recommended)*.** Skip ahead intelligently. Inside Claude, Cursor, Codex, OpenClaw, Hermes, or any agent with the curriculum skills installed:
+**方式 C —— 测一测你的水平 *(推荐)*。** 聪明地跳级。在 Claude、Cursor、Codex、OpenClaw、Hermes，或任何装了本课程技能的 agent 里：
 
 ```bash
 /find-your-level
 ```
 
-Ten questions. Maps your knowledge to a starting phase, builds a personalized path with hour
-estimates. After each phase:
+十道题。把你的知识映射到一个起始阶段，生成一条带课时估算的个性化路径。每学完一个阶段：
 
 ```bash
-/check-understanding 3        # quiz yourself on phase 3
+/check-understanding 3        # 测验你对阶段 3 的掌握
 ls phases/03-deep-learning-core/05-loss-functions/outputs/
 # ├── prompt-loss-function-selector.md
 # └── prompt-loss-debugger.md
 ```
 
-### Prerequisites
+### 前置要求
 
-- You can write code (any language; Python helps).
-- You want to understand how AI **actually works**, not just call APIs.
+- 你会写代码（任何语言都行，会 Python 更好）。
+- 你想搞懂 AI **到底是怎么运作的**，而不只是调调 API。
 
-### Built-in agent skills (Claude, Cursor, Codex, OpenClaw, Hermes)
+### 内置 agent 技能（Claude、Cursor、Codex、OpenClaw、Hermes）
 
-| Skill | What it does |
+| 技能 | 作用 |
 |---|---|
-| [`/find-your-level`](.claude/skills/find-your-level/SKILL.md) | Ten-question placement quiz. Maps your knowledge to a starting phase and produces a personalized path with hour estimates. |
-| [`/check-understanding <phase>`](.claude/skills/check-understanding/SKILL.md) | Per-phase quiz, eight questions, with feedback and specific lessons to review. |
+| [`/find-your-level`](.claude/skills/find-your-level/SKILL.md) | 十道题的定级测验。把你的知识映射到一个起始阶段，生成带课时估算的个性化路径。 |
+| [`/check-understanding <phase>`](.claude/skills/check-understanding/SKILL.md) | 按阶段测验，八道题，附反馈和需要复习的具体课程。 |
 
 ```
 ░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒
@@ -154,8 +149,8 @@ ls phases/03-deep-learning-core/05-loss-functions/outputs/
 
 ## Every lesson ships something
 
-Other curricula end with *"congratulations, you learned X."* Each lesson here ends with a
-**reusable tool** you can install or paste into your daily workflow.
+别的课程结尾是一句 *"恭喜，你学会了 X。"* 这里每节课的结尾，是一件你能直接装上、
+或粘进日常工作流的 **可复用工具**。
 
 <table>
 <tr>
@@ -165,26 +160,25 @@ Other curricula end with *"congratulations, you learned X."* Each lesson here en
 <th align="left" width="25%"><img src="site/assets/figures/001-d-mcp-servers.svg" width="96" height="96" alt="FIG_001.D MCP servers"/><br/><sub>FIG_001 · D</sub><br/><b>MCP SERVERS</b></th>
 </tr>
 <tr>
-<td valign="top">Paste into any AI assistant for expert-level help on a narrow task.</td>
-<td valign="top">Drop into Claude, Cursor, Codex, OpenClaw, Hermes, or any agent that reads <code>SKILL.md</code>.</td>
-<td valign="top">Deploy as autonomous workers — you wrote the loop yourself in Phase 14.</td>
-<td valign="top">Plug into any MCP-compatible client. Built end-to-end in Phase 13.</td>
+<td valign="top">粘进任意 AI 助手，在某个细分任务上获得专家级帮助。</td>
+<td valign="top">放进 Claude、Cursor、Codex、OpenClaw、Hermes，或任何能读 <code>SKILL.md</code> 的 agent。</td>
+<td valign="top">作为自主 worker 部署——那个循环你在阶段 14 自己写过。</td>
+<td valign="top">接入任意兼容 MCP 的客户端。在阶段 13 里从头到尾构建。</td>
 </tr>
 </table>
 
-> Install the lot with `python3 scripts/install_skills.py`. Real tools, not homework.
-> By the end of the curriculum, you have a portfolio of 435 artifacts you actually
-> understand because you built them.
+> 用 `python3 scripts/install_skills.py` 一次性全部安装。是真家伙，不是课后作业。
+> 学完整套课程，你会攒下 435 件作品——你是真懂它们，因为它们都是你亲手造的。
 
-### FIG_002 · A worked sample
+### FIG_002 · 一个实例
 
-Phase 14, lesson 1: the agent loop. ~120 lines of pure Python, no dependencies.
+阶段 14，第 1 课：agent 循环。约 120 行纯 Python，零依赖。
 
 <table>
 <tr>
 <td valign="top" width="50%">
 
-**`code/agent_loop.py`** &nbsp; <sub><i>build it</i></sub>
+**`code/agent_loop.py`** &nbsp; <sub><i>动手构建</i></sub>
 
 ```python
 def run(query, tools):
@@ -203,7 +197,7 @@ def run(query, tools):
 </td>
 <td valign="top" width="50%">
 
-**`outputs/skill-agent-loop.md`** &nbsp; <sub><i>ship it</i></sub>
+**`outputs/skill-agent-loop.md`** &nbsp; <sub><i>交付</i></sub>
 
 ```markdown
 ---
