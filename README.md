@@ -7,7 +7,7 @@
   <a href="ROADMAP.md"><img src="https://img.shields.io/badge/lessons-435-3553ff?style=flat-square&labelColor=fafaf5" alt="435 lessons"></a>
   <a href="#contents"><img src="https://img.shields.io/badge/phases-20-3553ff?style=flat-square&labelColor=fafaf5" alt="20 phases"></a>
   <a href="https://github.com/fancyboi999/ai-engineering-from-scratch-zh/stargazers"><img src="https://img.shields.io/github/stars/fancyboi999/ai-engineering-from-scratch-zh?style=flat-square&labelColor=fafaf5&color=3553ff" alt="GitHub stars"></a>
-  <a href="https://ai-engineering-from-scratch-zh.vercel.app"><img src="https://img.shields.io/badge/web-ai-engineering-from-scratch-zh.vercel.app-3553ff?style=flat-square&labelColor=fafaf5" alt="Website"></a>
+  <a href="https://ai-engineering-from-scratch-zh.vercel.app"><img src="https://img.shields.io/badge/website-live-3553ff?style=flat-square&labelColor=fafaf5" alt="Website"></a>
 </p>
 
 ```
