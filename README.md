@@ -1040,34 +1040,6 @@ python3 scripts/audit_lessons.py --json    # 适合 CI 的输出
 及是否有 H1、`code/` 是否非空、`quiz.json` 的 schema（拒绝引发 issue #102 的旧版
 `q/choices/answer` 键），以及课程文档里的相对链接。
 
-```
-░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒
-```
-
-## 赞助这项工作
-
-免费、MIT 许可、435 节课。这套课程仅靠赞助维持。只接受现金。
-
-**触达数据（2026-05-14 核实）：** 月访客 55,593 · 页面浏览 90,709 · 7.5K stars ·
-Twitter/X 是第一大获客渠道。
-
-**当前赞助商：** [CodeRabbit](https://coderabbit.link/rohit-ghumare) · [iii](https://iii.dev?utm_source=ai-engineering-from-scratch&utm_medium=readme&utm_campaign=sponsor)
-
-| Tier | $/mo | What you get |
-|------|------|---|
-| Backer | $25 | 在 BACKERS.md 留名 |
-| Bronze | $250 | README 赞助区一行纯文字 + 上线当天的推文 |
-| Silver | $750 | README 里的小 logo + 在 API 课程中列为受支持的服务商之一 |
-| Gold | $2,000 | README 里的中号 logo + 赞助页面 + 每季度 X / LinkedIn 联合推荐 |
-| Platinum | $5,000 | 首屏顶部的主视觉 logo + 一节专属集成课程，最多 1 个合作方 |
-
-完整价目表、硬性规则、定价锚点和触达数据见 [SPONSORS.md](SPONSORS.md)。
-通过 [GitHub Sponsors](https://github.com/sponsors/rohitg00) 报名。
-
-```
-░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒░░░▒▒▒
-```
-
 ## Star 历史
 
 <a href="https://star-history.com/#fancyboi999/ai-engineering-from-scratch-zh&Date">
