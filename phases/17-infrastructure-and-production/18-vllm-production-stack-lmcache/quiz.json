@@ -1,26 +1,26 @@
 {
   "lesson": "18-vllm-production-stack-lmcache",
-  "title": "vLLM Production Stack with LMCache KV Offloading",
+  "title": "搭配 LMCache KV 卸载的 vLLM 生产技术栈",
   "questions": [
     {
       "stage": "pre",
-      "question": "What problem does LMCache primarily address in a vLLM deployment?",
+      "question": "在 vLLM 部署中，LMCache 主要解决什么问题？",
       "options": [
-        "KV cache pressure in HBM causing preemption and re-prefill of the same prefixes",
-        "Tokenizer GIL contention",
-        "Network egress filtering",
-        "Cold-start image pull"
+        "HBM 中的 KV 缓存压力导致抢占，以及对相同前缀的重复 prefill",
+        "Tokenizer 的 GIL 争用",
+        "网络出站（egress）过滤",
+        "冷启动时的镜像拉取"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What vLLM API introduced pluggable KV cache backends?",
+      "question": "哪个 vLLM API 引入了可插拔的 KV 缓存后端？",
       "options": [
-        "Prefix-caching flag",
+        "前缀缓存开关",
         "PagedAttention v2",
-        "Connector API in vLLM v0.9.0",
+        "vLLM v0.9.0 中的 Connector API",
         "ChunkedPrefill API"
       ],
       "correct": 2,
@@ -28,48 +28,48 @@
     },
     {
       "stage": "check",
-      "question": "What does the vLLM 0.11.0 (January 2026) release add to the KV offload path?",
+      "question": "vLLM 0.11.0（2026 年 1 月）版本为 KV 卸载路径增加了什么？",
       "options": [
-        "An asynchronous offload path so the engine does not block on offload in the common case",
-        "Synchronous-only offload",
-        "Mandatory FP8 KV cache",
-        "Removal of LMCache support"
+        "一条异步卸载路径，使引擎在常见情形下不会因卸载而阻塞",
+        "仅同步卸载",
+        "强制使用 FP8 KV 缓存",
+        "移除了对 LMCache 的支持"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "When should you pick LMCache over native CPU offload?",
+      "question": "什么时候应该选择 LMCache 而非原生的 CPU 卸载？",
       "options": [
-        "When multiple engines share prefixes across tenants, LoRA variants, or repeated RAG context, so cross-engine reuse pays",
-        "When you want to disable KV caching entirely",
-        "When a single engine has HBM pressure and no prefix sharing",
-        "When you are running on CPU only"
+        "当多个引擎跨租户、跨 LoRA 变体或在重复的 RAG 上下文之间共享前缀时，跨引擎复用才划算",
+        "当你想完全禁用 KV 缓存时",
+        "当单个引擎有 HBM 压力且没有前缀共享时",
+        "当你只在 CPU 上运行时"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "What happens to LMCache benefit when KV footprint stays well below HBM?",
+      "question": "当 KV 占用远低于 HBM 时，LMCache 的收益会怎样？",
       "options": [
-        "LMCache automatically disables",
-        "It still doubles throughput",
-        "Configs match baseline with roughly 3-5% overhead and no real benefit",
-        "Engine crashes"
+        "LMCache 会自动禁用",
+        "它仍能把吞吐量翻倍",
+        "各配置与基线持平，伴随约 3-5% 的开销，且没有实际收益",
+        "引擎崩溃"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Why does LMCache compose with disaggregated serving (Phase 17 · 17)?",
+      "question": "为什么 LMCache 能与分离式服务（Phase 17 · 17）组合使用？",
       "options": [
-        "Because LMCache replaces NIXL",
-        "KV transferred from prefill to decode lands in LMCache; later queries can pull from LMCache and skip prefill, so the cache-aware router can pick an engine whose local or LMCache-shared cache matches",
-        "Because LMCache runs on the same GPU as the engine",
-        "It does not — they are mutually exclusive"
+        "因为 LMCache 取代了 NIXL",
+        "从 prefill 传到 decode 的 KV 会落入 LMCache；后续查询可从 LMCache 拉取并跳过 prefill，因此缓存感知路由器可以挑选其本地缓存或 LMCache 共享缓存能匹配的引擎",
+        "因为 LMCache 与引擎跑在同一块 GPU 上",
+        "并不能 —— 它们是互斥的"
       ],
       "correct": 1,
       "explanation": ""

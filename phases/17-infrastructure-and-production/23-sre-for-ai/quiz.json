@@ -1,75 +1,75 @@
 {
   "lesson": "23-sre-for-ai",
-  "title": "SRE for AI — Multi-Agent Incident Response, Runbooks, Predictive Detection",
+  "title": "面向 AI 的 SRE —— 多 agent 事件响应、运行手册、预测性检测",
   "questions": [
     {
       "stage": "pre",
-      "question": "What multi-agent shape does the lesson recommend for AI SRE?",
+      "question": "本课为 AI SRE 推荐哪种多 agent 形态？",
       "options": [
-        "Random selection of one of three agents",
-        "Two agents in series with no supervisor",
-        "One monolithic agent owning everything",
-        "Supervisor agent that breaks the incident into sub-queries for specialized log, metric, and runbook agents, then synthesizes and presents to a human"
+        "从三个 agent 中随机选一个",
+        "两个 agent 串联，无监督者",
+        "一个大一统的 agent 包揽一切",
+        "由 supervisor agent 把事件拆成子查询，分给专精的日志、指标和运行手册 agent，再综合并呈现给人类"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Which auto-remediation set does the lesson call safe?",
+      "question": "本课把哪一组自动修复操作称为安全的？",
       "options": [
-        "Re-architecting service topology",
-        "Altering databases",
-        "Modifying IAM policies",
-        "Restart pod, revert a specific deploy, scale a pool within pre-approved bounds, enable a pre-approved feature flag"
+        "重新设计服务拓扑",
+        "改动数据库",
+        "修改 IAM 策略",
+        "重启 pod、回退某次特定部署、在预先批准的范围内扩缩某个池、启用预先批准的功能开关"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "How does NeuBird Hawkeye use adversarial evaluation to filter hallucinated root causes?",
+      "question": "NeuBird Hawkeye 如何用对抗式评估来过滤掉幻觉出来的根因？",
       "options": [
-        "Two models independently analyze the same incident; agreement = high confidence, disagreement = escalate to human with both hypotheses",
-        "Uses GAN-style training",
-        "Picks the higher-confidence model's answer always",
-        "Runs the same model twice on the same input"
+        "两个模型各自独立分析同一起事件；意见一致 = 高置信，意见不一致 = 连同两种假设一起上报给人类",
+        "使用 GAN 式训练",
+        "总是采纳置信度更高的那个模型的答案",
+        "在相同输入上把同一个模型跑两遍"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What does operational memory solve in AI SRE?",
+      "question": "运营记忆（operational memory）在 AI SRE 中解决了什么？",
       "options": [
-        "Cold start of inference pods",
-        "Network egress filtering",
-        "Loss of tribal knowledge when teams turn over — runbooks and post-mortems live in a vector DB that agents retrieve on every incident",
-        "Token cost attribution"
+        "推理 pod 的冷启动",
+        "网络出站过滤",
+        "团队人员更替时部落知识的流失 —— 运行手册和复盘存放在向量数据库中，agent 在每次事件时都会检索",
+        "token 成本归因"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "What MIT 2025 result does the lesson cite for pre-incident prediction?",
+      "question": "本课为「事前预测」引用了 MIT 2025 年的哪个结果？",
       "options": [
-        "100% prediction with 1-second lead",
-        "89% of outages predicted 10-15 minutes early using logs + GPU temps + API error patterns",
-        "Predictions remain unsolved",
-        "10% with no lead time"
+        "提前 1 秒 100% 预测",
+        "利用日志 + GPU 温度 + API 错误模式，提前 10-15 分钟预测出 89% 的故障",
+        "预测仍未被攻克",
+        "10%，且无提前量"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "What operational constraint does the lesson stress about predictive detection?",
+      "question": "本课强调预测性检测的哪个运营约束？",
       "options": [
-        "Predictions replace runbooks",
-        "Predictions should never be wired to action",
-        "Predictions without actuation are just dashboards — the operational question is what action (pre-drain, page, auto-scale) the prediction triggers",
-        "Predictions are always accurate"
+        "预测可替代运行手册",
+        "预测绝不应接入任何动作",
+        "没有执行动作的预测只是仪表盘 —— 运营层面的问题是：该预测触发了什么动作（预先排空、呼叫值班、自动扩容）",
+        "预测总是准确的"
       ],
       "correct": 2,
       "explanation": ""

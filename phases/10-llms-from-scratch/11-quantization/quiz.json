@@ -1,37 +1,37 @@
 [
   {
-    "question": "How much VRAM does a 70B parameter model in FP16 require just for weights?",
+    "question": "一个 700 亿参数的 FP16 模型仅权重就需要多少 VRAM？",
     "options": ["35 GB", "70 GB", "140 GB", "280 GB"],
     "correct": 2,
-    "explanation": "70 billion parameters * 2 bytes per FP16 parameter = 140 billion bytes = 140 GB. This exceeds a single A100 (80GB), requiring at least two GPUs just to load the weights.",
+    "explanation": "700 亿参数 * 每个 FP16 参数 2 字节 = 1400 亿字节 = 140 GB。这超过了单张 A100（80GB），仅加载权重就至少需要两张 GPU。",
     "stage": "pre"
   },
   {
-    "question": "What is quantization in the context of LLMs?",
-    "options": ["Removing unused model layers", "Reducing the numerical precision of weights (e.g., FP16 to INT4) to decrease memory usage and increase inference speed", "Compressing the training data", "Reducing the vocabulary size"],
+    "question": "在 LLM 的语境下，量化（quantization）是什么？",
+    "options": ["移除未使用的模型层", "降低权重的数值精度（例如 FP16 到 INT4）以减少内存占用并提升推理速度", "压缩训练数据", "减小词表大小"],
     "correct": 1,
-    "explanation": "Quantization maps high-precision floating point weights to lower-precision integers. INT4 quantization stores each weight in 4 bits instead of 16, reducing memory by 4x with minimal accuracy loss.",
+    "explanation": "量化把高精度浮点权重映射到低精度整数。INT4 量化把每个权重存成 4 位而不是 16 位，在准确率损失极小的情况下把内存减少到 1/4。",
     "stage": "pre"
   },
   {
-    "question": "What is the key difference between post-training quantization (PTQ) and quantization-aware training (QAT)?",
-    "options": ["PTQ is more accurate", "PTQ quantizes after training with no retraining; QAT simulates quantization during training so the model learns to tolerate reduced precision", "QAT doesn't use gradients", "PTQ requires more data"],
+    "question": "训练后量化（PTQ）和量化感知训练（QAT）之间的关键区别是什么？",
+    "options": ["PTQ 更准确", "PTQ 在训练后量化、无需再训练；QAT 在训练期间模拟量化，使模型学会容忍降低的精度", "QAT 不使用梯度", "PTQ 需要更多数据"],
     "correct": 1,
-    "explanation": "PTQ is fast (just calibrate and quantize) but can lose accuracy. QAT includes fake quantization during training, allowing the model to adjust its weights to be more robust to precision loss. QAT usually gives better accuracy.",
+    "explanation": "PTQ 很快（只需校准并量化）但可能损失准确率。QAT 在训练期间包含伪量化，让模型调整其权重以更鲁棒地应对精度损失。QAT 通常给出更好的准确率。",
     "stage": "post"
   },
   {
-    "question": "What does 'per-channel' quantization mean and why is it better than 'per-tensor'?",
-    "options": ["It quantizes each output channel separately, using different scale/zero-point for each, reducing quantization error", "It processes one color channel at a time", "It uses separate GPUs per channel", "It's a type of data parallelism"],
+    "question": "「逐通道」（per-channel）量化是什么意思，为什么它比「逐张量」（per-tensor）更好？",
+    "options": ["它对每个输出通道单独量化，为每个通道使用不同的 scale/zero-point，从而减少量化误差", "它一次处理一个颜色通道", "它每个通道使用独立的 GPU", "它是一种数据并行"],
     "correct": 0,
-    "explanation": "Per-tensor uses one scale factor for the entire weight matrix. Per-channel uses a separate scale for each output channel (row). Since different channels have different value ranges, per-channel captures them more accurately.",
+    "explanation": "逐张量对整个权重矩阵使用一个 scale 因子。逐通道为每个输出通道（行）使用独立的 scale。由于不同通道有不同的取值范围，逐通道能更准确地刻画它们。",
     "stage": "post"
   },
   {
-    "question": "Why do 95% of weights in Llama 3 70B fall between -0.1 and +0.1?",
-    "options": ["The model is poorly trained", "Weight decay and normalization during training push weights toward small values, making the full FP16 range wasteful", "The weights haven't converged yet", "This is specific to the Llama architecture"],
+    "question": "为什么 Llama 3 70B 中 95% 的权重落在 -0.1 到 +0.1 之间？",
+    "options": ["模型训练得很差", "训练期间的权重衰减和归一化把权重推向较小的值，使得完整的 FP16 范围被浪费", "权重还没收敛", "这是 Llama 架构特有的"],
     "correct": 1,
-    "explanation": "Weight decay regularization shrinks weights toward zero. Layer normalization keeps activations centered. Combined, they produce weight distributions concentrated near zero, making low-precision quantization effective.",
+    "explanation": "权重衰减正则化把权重收缩向零。层归一化使激活值保持居中。两者结合产生集中在零附近的权重分布，使低精度量化变得有效。",
     "stage": "post"
   }
 ]

@@ -1,75 +1,75 @@
 {
   "lesson": "29-moderation-systems-openai-perspective-llamaguard",
-  "title": "Moderation Systems - OpenAI, Perspective, Llama Guard",
+  "title": "内容审核系统 —— OpenAI、Perspective、Llama Guard",
   "questions": [
     {
       "stage": "pre",
-      "question": "What is OpenAI's omni-moderation-latest (2024)?",
+      "question": "OpenAI 的 omni-moderation-latest（2024）是什么？",
       "options": [
-        "An RLHF reward model",
-        "A reasoning-focused frontier model",
-        "A C2PA watermarking endpoint",
-        "A GPT-4o-based moderation classifier that handles text and images in one call, returning a 13-category response schema (harassment, hate, self-harm, sexual, violence, illicit, with sub-categories), free for most developers"
+        "一个 RLHF 奖励模型",
+        "一个专注推理的前沿模型",
+        "一个 C2PA 水印端点",
+        "一个基于 GPT-4o 的审核分类器，可在一次调用中同时处理文本和图像，返回 13 类响应 schema（骚扰、仇恨、自残、性、暴力、违法，及其子类别），对大多数开发者免费"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Which of these is NOT one of OpenAI Moderation's primary top-level categories?",
+      "question": "以下哪一项不是 OpenAI Moderation 的主要顶层类别之一？",
       "options": [
-        "violence",
-        "election-interference",
-        "self-harm",
-        "harassment"
+        "violence（暴力）",
+        "election-interference（干预选举）",
+        "self-harm（自残）",
+        "harassment（骚扰）"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What are the three layers of the standard 2026 moderation pattern?",
+      "question": "2026 年标准审核模式的三层是什么？",
       "options": [
         "Probe / detector / harness",
-        "Tokenizer / model / detokenizer",
-        "Telescopic / periscopic / microscopic",
-        "Input moderation (pre-generation), Output moderation (post-generation), Custom moderation (domain rules)"
+        "Tokenizer / 模型 / detokenizer",
+        "望远镜式 / 潜望镜式 / 显微镜式",
+        "输入审核（生成前）、输出审核（生成后）、自定义审核（领域规则）"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What is Perspective API (Google Jigsaw) primarily designed to score?",
+      "question": "Perspective API（Google Jigsaw）主要被设计用来对什么打分？",
       "options": [
-        "Watermark strength",
-        "Toxicity (with severe-toxicity, insult, profanity, threat, identity-attack sub-dimensions) as a pre-LLM-era content-moderation baseline",
-        "Reasoning quality",
-        "Reward over user satisfaction"
+        "水印强度",
+        "毒性（toxicity，带有严重毒性、侮辱、脏话、威胁、身份攻击等子维度），作为 LLM 时代之前的内容审核基线",
+        "推理质量",
+        "用户满意度奖励"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "What is one failure mode of input-only moderation?",
+      "question": "仅做输入审核的一种失败模式是什么？",
       "options": [
-        "It cannot run on GPUs",
-        "It does not catch model output failures or hallucinations; encoding attacks (Lessons 12-14) can bypass input classifiers entirely",
-        "It always blocks legitimate content",
-        "It removes the need for output classifiers"
+        "它无法在 GPU 上运行",
+        "它无法捕捉模型输出的失败或幻觉；编码攻击（第 12-14 课）可以完全绕过输入分类器",
+        "它总是拦截合法内容",
+        "它消除了对输出分类器的需求"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "What is the Azure Content Moderator deprecation and migration target?",
+      "question": "Azure Content Moderator 的弃用情况和迁移目标是什么？",
       "options": [
-        "Deprecated February 2024, retired March 15, 2027; migration target is Azure AI Content Safety (LLM-based, integrated with Azure OpenAI)",
-        "Replaced by Perspective API",
-        "Merged into Llama Guard 4",
-        "Deprecated immediately with no replacement"
+        "于 2024 年 2 月弃用，2027 年 3 月 15 日停服；迁移目标是 Azure AI Content Safety（基于 LLM，与 Azure OpenAI 集成）",
+        "被 Perspective API 取代",
+        "并入 Llama Guard 4",
+        "立即弃用且无替代品"
       ],
       "correct": 0,
       "explanation": ""

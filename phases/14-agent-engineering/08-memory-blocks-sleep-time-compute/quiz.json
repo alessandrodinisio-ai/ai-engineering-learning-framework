@@ -1,34 +1,34 @@
 {
   "lesson": "08-memory-blocks-sleep-time-compute",
-  "title": "Memory Blocks and Sleep-Time Compute (Letta)",
+  "title": "记忆块与睡眠时计算（Letta）",
   "questions": [
     {
       "stage": "pre",
-      "question": "What are Letta's three memory tiers?",
+      "question": "Letta 的三个记忆层级是什么？",
       "options": [
-        "Cache, KV, archival",
-        "Core, recall, archival",
-        "RAM, swap, disk",
-        "Working, episodic, semantic"
+        "Cache、KV、archival",
+        "Core、recall、archival",
+        "RAM、swap、disk",
+        "Working、episodic、semantic"
       ],
       "correct": 1,
-      "explanation": "Letta uses core (always visible), recall (conversation history), and archival (external) tiers."
+      "explanation": "Letta 使用 core（始终可见）、recall（对话历史）和 archival（外部）三个层级。"
     },
     {
       "stage": "pre",
-      "question": "Which production problem does sleep-time compute target?",
+      "question": "睡眠时计算（sleep-time compute）针对哪个生产问题？",
       "options": [
-        "Tail latency from doing memory consolidation on the critical path",
-        "Higher accuracy on math problems",
-        "Lower embedding cost",
-        "Faster JSON parsing"
+        "在关键路径上做记忆整合所导致的尾部延迟",
+        "数学问题上更高的准确率",
+        "更低的 embedding 成本",
+        "更快的 JSON 解析"
       ],
       "correct": 0,
-      "explanation": "Sleep-time moves prune/summarize/reconcile off the user-facing path, so primary responses stay fast."
+      "explanation": "睡眠时计算把剪枝/摘要/对账从面向用户的路径上挪走，使主响应保持快速。"
     },
     {
       "stage": "check",
-      "question": "Which property is NOT a memory block field in Letta?",
+      "question": "下列哪个属性不是 Letta 中记忆块的字段？",
       "options": [
         "label",
         "value",
@@ -36,55 +36,55 @@
         "embedding_model_version"
       ],
       "correct": 3,
-      "explanation": "Blocks carry id, label, value, limit, description; embedding model version is not part of the block schema."
+      "explanation": "记忆块携带 id、label、value、limit、description；embedding 模型版本不是记忆块 schema 的一部分。"
     },
     {
       "stage": "check",
-      "question": "Why can the sleep-time agent run a stronger model than the primary?",
+      "question": "为什么睡眠时 agent 能运行比主 agent 更强的模型？",
       "options": [
-        "It receives a private API key",
-        "It is off the critical path, so it is not latency-constrained",
-        "It is exempt from rate limits",
-        "Memory ops cost half tokens"
+        "它收到一个私有 API key",
+        "它不在关键路径上，因此不受延迟约束",
+        "它豁免于限流",
+        "记忆操作只花一半的 token"
       ],
       "correct": 1,
-      "explanation": "Because it does not block user responses, the sleep-time agent can be slower and more expensive."
+      "explanation": "由于它不阻塞用户响应，睡眠时 agent 可以更慢、更贵。"
     },
     {
       "stage": "check",
-      "question": "What pattern do the Human and Persona blocks generalize to?",
+      "question": "Human 块和 Persona 块泛化成了什么模式？",
       "options": [
-        "Vector embeddings",
-        "Arbitrary user-defined typed editable blocks (Task, Project, Safety, ...)",
-        "JSON-RPC channels",
-        "OS processes"
+        "向量 embedding",
+        "任意用户定义的、带类型的可编辑块（Task、Project、Safety……）",
+        "JSON-RPC 通道",
+        "操作系统进程"
       ],
       "correct": 1,
-      "explanation": "Letta generalizes the two MemGPT blocks to any user-defined block with id, label, value, limit, description."
+      "explanation": "Letta 把 MemGPT 的两个块泛化为任何带 id、label、value、limit、description 的用户定义块。"
     },
     {
       "stage": "post",
-      "question": "What is silent drift in this pattern?",
+      "question": "在此模式中，静默漂移（silent drift）是什么？",
       "options": [
-        "A primary agent never seeing that the sleep-time agent rewrote a block underneath it; fix with versioning and visible diffs",
-        "Slow disk writes",
-        "Embedding model upgrades",
-        "Rate-limit jitter"
+        "主 agent 从未察觉睡眠时 agent 在它脚下重写了某个块；用版本化和可见的 diff 修复",
+        "磁盘写入缓慢",
+        "embedding 模型升级",
+        "限流抖动"
       ],
       "correct": 0,
-      "explanation": "Versioning blocks and surfacing diffs in the trace makes sleep-time rewrites visible to the primary loop."
+      "explanation": "对块做版本化、并在 trace 中呈现 diff，能让睡眠时的重写对主循环可见。"
     },
     {
       "stage": "post",
-      "question": "What replaced inline `Thought:` tokens and the send_message/heartbeat pattern in Letta V1?",
+      "question": "在 Letta V1 中，什么替换了内联的 `Thought:` token 以及 send_message/heartbeat 模式？",
       "options": [
-        "Native reasoning emitted on a separate channel and passed through turns",
-        "A second LLM dedicated to thoughts",
-        "A bigger system prompt",
-        "Manual user-typed thoughts"
+        "在单独通道上发出、并贯穿各轮传递的原生推理",
+        "一个专门负责思考的第二个 LLM",
+        "一个更大的 system prompt",
+        "用户手动输入的想法"
       ],
       "correct": 0,
-      "explanation": "Letta V1 (letta_v1_agent) uses provider-level native reasoning, not prompt-shaped thoughts."
+      "explanation": "Letta V1（letta_v1_agent）使用提供商层面的原生推理，而非 prompt 形态的 thought。"
     }
   ]
 }

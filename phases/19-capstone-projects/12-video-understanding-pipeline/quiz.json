@@ -1,74 +1,74 @@
 {
   "lesson": "12-video-understanding-pipeline",
-  "title": "Capstone 12 — Video Understanding Pipeline (Scene, QA, Search)",
+  "title": "毕业项目 12 —— 视频理解流水线（场景、问答、搜索）",
   "questions": [
     {
       "stage": "pre",
-      "question": "Why is a scene-level index still needed even when a long-context VLM can read a 2-hour video natively?",
+      "question": "即便长上下文 VLM 能原生读取一段 2 小时的视频，为什么仍然需要场景级索引？",
       "options": [
-        "Long-context VLMs cannot stream output",
-        "Vector indexes do not support video files",
-        "Ingesting 100 hours of video into a queryable corpus needs scene-level retrieval, even when individual videos can be read whole",
-        "Scene cuts are the only thing a VLM understands"
+        "长上下文 VLM 无法流式输出",
+        "向量索引不支持视频文件",
+        "把 100 小时视频摄入为可查询语料需要场景级检索，即便单个视频能被整段读取",
+        "场景切换是 VLM 唯一能理解的东西"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "pre",
-      "question": "Which three vector types does each scene get in the multi-vector index?",
+      "question": "在多向量索引中，每个场景获得哪三种向量类型？",
       "options": [
-        "Caption embedding, keyframe embedding, and transcript embedding",
-        "Audio waveform, mel-spectrogram, and MFCCs",
-        "Hash, gzip, and CRC",
-        "Pose, depth, and optical flow"
+        "字幕嵌入、关键帧嵌入和转写嵌入",
+        "音频波形、梅尔频谱图和 MFCC",
+        "哈希、gzip 和 CRC",
+        "姿态、深度和光流"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "How are results from the three retrieval streams merged at query time?",
+      "question": "查询时，来自三条检索流的结果是如何合并的？",
       "options": [
-        "By picking the caption hit only",
-        "By averaging cosine similarities",
-        "Via reciprocal rank fusion across the three ranked lists",
-        "By taking the union without scoring"
+        "只挑字幕命中",
+        "对余弦相似度取平均",
+        "对三个排序列表做倒数排名融合（reciprocal rank fusion）",
+        "取并集而不打分"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What does the temporal grounding step refine inside the top scene?",
+      "question": "时间定位（temporal grounding）步骤在顶部场景内部精炼什么？",
       "options": [
-        "The transcript word timestamps from Whisper",
-        "The number of vectors stored in Qdrant",
-        "The (start, end) timestamp window that contains the answer",
-        "The keyframe embedding dimensionality"
+        "来自 Whisper 的转写词级时间戳",
+        "存储在 Qdrant 中的向量数量",
+        "包含答案的 (start, end) 时间戳窗口",
+        "关键帧嵌入的维度"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Which question class is reported separately because it is a known hallucination hotspot?",
+      "question": "因为是已知的幻觉高发区，哪一类问题被单独报告？",
       "options": [
-        "Descriptive questions about scenery",
-        "Speaker identification questions",
-        "Translation questions",
-        "Counting and action-type questions, where VLMs miscount or mis-order events"
+        "关于场景的描述性问题",
+        "说话人识别问题",
+        "翻译问题",
+        "计数和动作类型问题，VLM 在此会数错或把事件顺序弄错"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Which grounding metric does the rubric measure on a held-out set?",
+      "question": "细则在留出集上衡量哪个定位指标？",
       "options": [
-        "Temporal-grounding intersection-over-union (IoU)",
-        "Acceptance rate",
-        "Perplexity",
+        "时间定位的交并比（IoU）",
+        "接受率",
+        "困惑度",
         "MRR@10"
       ],
       "correct": 0,
@@ -76,12 +76,12 @@
     },
     {
       "stage": "post",
-      "question": "Why does the pipeline require cited timestamps in answers?",
+      "question": "为什么流水线要求答案中带有引用的时间戳？",
       "options": [
-        "They reduce the embedding dimension",
-        "Timestamps are required by Whisper output",
-        "Timestamps are required by Qdrant payloads",
-        "They let the viewer jump to the exact (video_id, start, end) so users can verify the claim"
+        "它们能降低嵌入维度",
+        "Whisper 输出要求时间戳",
+        "Qdrant 载荷要求时间戳",
+        "它们让观看者跳到精确的 (video_id, start, end)，以便用户核验论断"
       ],
       "correct": 3,
       "explanation": ""

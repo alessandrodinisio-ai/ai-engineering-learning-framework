@@ -1,90 +1,90 @@
 {
   "lesson": "06-tool-use-and-function-calling",
-  "title": "Tool Use and Function Calling",
+  "title": "工具使用与 Function Calling",
   "questions": [
     {
       "stage": "pre",
-      "question": "What signal does Toolformer use to decide whether to keep a candidate tool annotation?",
+      "question": "Toolformer 用什么信号来决定是否保留一个候选工具标注？",
       "options": [
-        "Human label agreement",
-        "Whether including the tool result reduces next-token loss on surrounding text",
-        "Whether the tool returns within 100 ms",
-        "Whether the tool emits valid JSON"
+        "人类标注的一致性",
+        "纳入工具结果是否降低了周围文本上的下一个 token 损失",
+        "工具是否在 100 毫秒内返回",
+        "工具是否发出有效的 JSON"
       ],
       "correct": 1,
-      "explanation": "Toolformer's self-supervised signal keeps annotations whose tool results lower next-token loss."
+      "explanation": "Toolformer 的自监督信号会保留那些其工具结果能降低下一个 token 损失的标注。"
     },
     {
       "stage": "pre",
-      "question": "What is the BFCL V4 split that the lesson reports?",
+      "question": "本课报告的 BFCL V4 的占比拆分是什么？",
       "options": [
-        "100% single-turn",
-        "40% agentic, 30% multi-turn, 10% live, 10% non-live, 10% hallucination",
-        "50% live, 50% synthetic",
-        "33% agentic, 33% planning, 33% reflection"
+        "100% 单轮",
+        "40% agentic、30% multi-turn、10% live、10% non-live、10% hallucination",
+        "50% live、50% synthetic",
+        "33% agentic、33% planning、33% reflection"
       ],
       "correct": 1,
-      "explanation": "BFCL V4 weights are 40 agentic / 30 multi-turn / 10 live / 10 non-live / 10 hallucination."
+      "explanation": "BFCL V4 的权重是 40 agentic / 30 multi-turn / 10 live / 10 non-live / 10 hallucination。"
     },
     {
       "stage": "check",
-      "question": "Why is a tool's description load-bearing?",
+      "question": "为什么一个工具的描述（description）是承重的？",
       "options": [
-        "It is what the user sees in the UI",
-        "The model reads it to choose the right tool; bad descriptions are the top cause of wrong-tool failures",
-        "It controls billing buckets",
-        "It is required by JSON Schema"
+        "它是用户在 UI 中看到的东西",
+        "模型靠读它来选对工具；糟糕的描述是选错工具失败的首要原因",
+        "它控制计费分桶",
+        "JSON Schema 要求它"
       ],
       "correct": 1,
-      "explanation": "Tool descriptions are the model's primary signal for tool selection; poor descriptions cause wrong-tool routing."
+      "explanation": "工具描述是模型选择工具的主要信号；糟糕的描述会导致路由到错误的工具。"
     },
     {
       "stage": "check",
-      "question": "What role does tool_use_id play in parallel tool calling?",
+      "question": "在并行工具调用中，tool_use_id 起什么作用？",
       "options": [
-        "It compresses the JSON payload",
-        "It correlates each tool result with its originating call so results returning out of order route correctly",
-        "It authorizes the call against an API key",
-        "It enables caching"
+        "它压缩 JSON 负载",
+        "它把每个工具结果与其发起调用关联起来，使乱序返回的结果也能正确路由",
+        "它用 API key 授权这次调用",
+        "它启用缓存"
       ],
       "correct": 1,
-      "explanation": "tool_use_id is the correlation token; swapping them routes results to the wrong call."
+      "explanation": "tool_use_id 是关联令牌；把它们互换会把结果路由到错误的调用。"
     },
     {
       "stage": "check",
-      "question": "Which class of failure does V3 state-based evaluation try to catch?",
+      "question": "V3 基于状态的评估试图捕捉哪一类失败？",
       "options": [
-        "Token leakage",
-        "AST-matching tool calls that look right but leave the API in the wrong state",
-        "Slow tool execution",
-        "Schema versioning drift"
+        "token 泄露",
+        "通过 AST 匹配看起来正确、但让 API 处于错误状态的工具调用",
+        "工具执行缓慢",
+        "schema 版本漂移"
       ],
       "correct": 1,
-      "explanation": "State-based evaluation checks the resulting API state (e.g. file actually created) rather than syntactic call matching."
+      "explanation": "基于状态的评估检查最终的 API 状态（例如文件确实被创建了），而非语法上的调用匹配。"
     },
     {
       "stage": "post",
-      "question": "Which 2026 problem does the lesson NOT list among the open ones for function calling?",
+      "question": "本课没有把下列哪个 2026 年问题列为 function calling 的开放问题之一？",
       "options": [
-        "Long-horizon tool chaining",
-        "Dynamic decision-making across many tools",
-        "Memory across turns",
-        "Token-level decoding speed"
+        "长程工具链接",
+        "跨众多工具的动态决策",
+        "跨轮记忆",
+        "token 级解码速度"
       ],
       "correct": 3,
-      "explanation": "The open problems are memory, dynamic decision-making, long-horizon chains, and hallucination detection; decoding speed is not on the list."
+      "explanation": "开放问题是记忆、动态决策、长程链接和幻觉检测；解码速度不在列表中。"
     },
     {
       "stage": "post",
-      "question": "Why is a generic run_shell(cmd) tool called a red flag in this lesson?",
+      "question": "为什么本课把一个通用的 run_shell(cmd) 工具称为危险信号？",
       "options": [
-        "It is slow",
-        "It widens the sandbox boundary; specific tools like git_status() bound read/write surface and risk",
-        "It cannot be called in parallel",
-        "Providers reject it"
+        "它很慢",
+        "它扩大了沙箱边界；像 git_status() 这样的特定工具能限定读/写面和风险",
+        "它无法并行调用",
+        "提供商会拒绝它"
       ],
       "correct": 1,
-      "explanation": "Narrow tools constrain the sandbox surface; a generic shell tool grants the full surface of the host."
+      "explanation": "窄工具约束了沙箱面；一个通用的 shell 工具授予了主机的全部操作面。"
     }
   ]
 }

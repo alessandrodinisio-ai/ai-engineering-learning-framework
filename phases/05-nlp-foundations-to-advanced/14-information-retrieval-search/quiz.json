@@ -1,102 +1,102 @@
 {
   "lesson": "14-information-retrieval-search",
-  "title": "Information Retrieval and Search",
+  "title": "信息检索与搜索",
   "questions": [
     {
       "stage": "pre",
-      "question": "What does BM25 score a document on?",
+      "question": "BM25 给文档打分依据的是什么？",
       "options": [
-        "Edit distance to the query",
-        "Term frequency, IDF, and document-length-normalized presence of query terms",
-        "Embedding cosine to the query",
-        "PageRank over the corpus"
+        "与查询的编辑距离",
+        "词频、IDF，以及经文档长度归一化的查询词出现情况",
+        "与查询的嵌入余弦",
+        "全语料上的 PageRank"
       ],
       "correct": 1,
-      "explanation": "BM25 weighs TF saturation, IDF, and length normalization to score lexical matches."
+      "explanation": "BM25 综合 TF 饱和、IDF 和长度归一化来给词面匹配打分。"
     },
     {
       "stage": "pre",
-      "question": "What is the main weakness of dense-only retrieval that BM25 catches?",
+      "question": "仅用稠密检索的主要弱点是什么，而 BM25 能弥补？",
       "options": [
-        "Multilingual queries",
-        "Latency",
-        "Long documents",
-        "Exact keyword and identifier matches (product codes, error strings, named entities) that semantic embeddings can miss"
+        "多语言查询",
+        "延迟",
+        "长文档",
+        "语义嵌入可能漏掉的精确关键词和标识符匹配（产品代码、错误字符串、命名实体）"
       ],
       "correct": 3,
-      "explanation": "Dense embeddings can blur identifiers and exact strings; BM25 nails them."
+      "explanation": "稠密嵌入可能模糊化标识符和精确字符串；BM25 能精准命中它们。"
     },
     {
       "stage": "check",
-      "question": "Why does Reciprocal Rank Fusion (RRF) ignore raw scores from each retriever?",
+      "question": "为什么倒数排名融合（RRF）忽略各检索器的原始分数？",
       "options": [
-        "RRF requires probabilities",
-        "Raw scores are illegal to use",
-        "Speeds up sorting",
-        "BM25 and dense scores live in different scales; using only rank positions makes the fusion robust to calibration"
+        "RRF 需要概率",
+        "使用原始分数不合法",
+        "加速排序",
+        "BM25 和稠密分数处于不同量纲；只用排名位置使融合对校准不敏感、更稳健"
       ],
       "correct": 3,
-      "explanation": "RRF uses 1/(k + rank), so the two scoring systems' scales do not have to match."
+      "explanation": "RRF 使用 1/(k + rank)，所以两套评分系统的量纲不必匹配。"
     },
     {
       "stage": "check",
-      "question": "Why run a cross-encoder reranker only on the top-30 fused results?",
+      "question": "为什么只对融合后前 30 个结果运行 cross-encoder 重排器？",
       "options": [
-        "Rerankers reduce recall",
-        "Top-30 is required by FAISS",
-        "Cross-encoders are required at every step",
-        "Cross-encoders are slow per pair; amortizing them on a small candidate pool gives high accuracy with acceptable latency"
+        "重排器会降低召回率",
+        "FAISS 要求 top-30",
+        "每一步都需要 cross-encoder",
+        "cross-encoder 对每个 pair 都很慢；把它分摊在一个小的候选池上能以可接受的延迟获得高准确率"
       ],
       "correct": 3,
-      "explanation": "Cross-encoders score query+doc jointly; running them only on the small fused candidate pool keeps latency manageable."
+      "explanation": "cross-encoder 对 query+doc 联合打分；只在小的融合候选池上运行可让延迟可控。"
     },
     {
       "stage": "check",
-      "question": "Which metric is most important to optimize for RAG retrievers?",
+      "question": "对 RAG 检索器而言，最重要优化的指标是哪个？",
       "options": [
         "BLEU",
-        "Throughput",
-        "Recall@k, since the reader cannot answer if the correct passage is missing from the top-k",
-        "Latency"
+        "吞吐量",
+        "Recall@k，因为如果正确段落不在 top-k 内，阅读器就无法作答",
+        "延迟"
       ],
       "correct": 2,
-      "explanation": "If the right passage is not in the retrieved top-k, the reader is guaranteed to fail."
+      "explanation": "如果正确段落不在检索到的 top-k 中，阅读器必定失败。"
     },
     {
       "stage": "post",
-      "question": "Where do most production RAG failures originate, per 2026 industry experience?",
+      "question": "根据 2026 年的行业经验，大多数生产级 RAG 故障源自哪里？",
       "options": [
-        "Reranker tuning",
-        "Ingestion and chunking, not the model; bad context defeats good readers",
-        "Prompt verbosity",
-        "The LLM choice"
+        "重排器调优",
+        "摄取和分块，而非模型；糟糕的上下文会击败优秀的阅读器",
+        "prompt 冗长",
+        "LLM 的选择"
       ],
       "correct": 1,
-      "explanation": "Roughly 80% of RAG failures trace to chunking and ingestion quality, not the generative model."
+      "explanation": "约 80% 的 RAG 故障可追溯到分块和摄取质量，而非生成模型。"
     },
     {
       "stage": "post",
-      "question": "What is the 'parent-doc' retrieval pattern?",
+      "question": "什么是 'parent-doc'（父文档）检索模式？",
       "options": [
-        "Pick the longest document",
-        "Retrieve small child chunks for precision, then expand to the parent block when multiple children from the same parent appear, preserving context",
-        "Embed only parent documents",
-        "Use parent doc embeddings only"
+        "挑选最长的文档",
+        "检索小的子块以获得精确度，当同一父块出现多个子块时再扩展到父块，从而保留上下文",
+        "只嵌入父文档",
+        "只用父文档嵌入"
       ],
       "correct": 1,
-      "explanation": "Child-level retrieval is precise; expanding to the parent preserves the surrounding context the reader needs."
+      "explanation": "子块级检索很精确；扩展到父块则保留了阅读器所需的周边上下文。"
     },
     {
       "stage": "post",
-      "question": "When should you ship three-way retrieval (BM25 + dense + SPLADE)?",
+      "question": "什么时候应该上线三路检索（BM25 + 稠密 + SPLADE）？",
       "options": [
-        "Only on under 1000 documents",
-        "Only for English-only corpora",
-        "When infrastructure supports learned-sparse indexes and queries mix proper nouns with semantic intent",
-        "Always"
+        "仅当文档少于 1000 篇时",
+        "仅对纯英语语料",
+        "当基础设施支持学习型稀疏索引，且查询混合了专有名词与语义意图时",
+        "总是"
       ],
       "correct": 2,
-      "explanation": "Three-way retrieval outperforms two-way in 2026 benchmarks for mixed lexical-semantic queries, given SPLADE infrastructure."
+      "explanation": "在具备 SPLADE 基础设施的前提下，对于词面-语义混合查询，三路检索在 2026 年的基准上优于两路检索。"
     }
   ]
 }

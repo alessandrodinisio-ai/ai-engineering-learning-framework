@@ -1,46 +1,46 @@
-# Forking Guide
+# Fork 指南
 
-This course is MIT licensed. You're free to fork it and adapt it for your needs. Here's how to do it well.
+本课程采用 MIT 许可证。你可以自由 fork 它并按自己的需要改编。下面说说怎么把这件事做好。
 
-## For Teams
+## 面向团队
 
-Want to use this as internal training? Fork and customize:
+想拿它做内部培训？fork 下来定制：
 
-1. Fork the repository
-2. Remove phases your team doesn't need
-3. Add company-specific examples and data
-4. Add internal tool integrations to the outputs
-5. Keep the attribution — it helps the community grow
+1. Fork 本仓库
+2. 删掉团队用不到的阶段
+3. 加入公司专属的示例和数据
+4. 把内部工具的集成加进产出物里
+5. 保留署名——这有助于社区成长
 
-## For Schools & Universities
+## 面向学校与大学
 
-Want to use this as course material?
+想拿它做课程材料？
 
-1. Fork the repository
-2. Map phases to your semester schedule
-3. Add grading rubrics to exercises
-4. Add your own assignments and exams
-5. Consider contributing improvements back upstream
+1. Fork 本仓库
+2. 把各阶段映射到你的学期排课表
+3. 给练习加上评分标准
+4. 加上你自己的作业和考试
+5. 也欢迎把改进回馈到上游
 
-## For Bootcamps
+## 面向训练营
 
-Running a paid bootcamp? That's fine under MIT.
+在办收费训练营？在 MIT 许可证下完全没问题。
 
-1. Fork and structure for your cohort timeline
-2. Add video content, live sessions, mentorship
-3. The code and docs are yours to build on
-4. Consider sponsoring the project or contributing back
+1. Fork 下来，按你的班期时间线重新编排
+2. 加上视频内容、直播课、导师辅导
+3. 代码和文档随你拿去搭建
+4. 也欢迎赞助本项目或回馈贡献
 
-## For Other Languages
+## 面向其他编程语言
 
-Want to teach this curriculum in a different programming language?
+想用另一种编程语言来教这套课程？
 
-1. Fork the repository
-2. Re-implement code examples in your language
-3. Keep the lesson structure and documentation
-4. Submit a PR to link your fork from the main README
+1. Fork 本仓库
+2. 用你的语言重新实现代码示例
+3. 保留课程结构和文档
+4. 提一个 PR，从主 README 链接到你的 fork
 
-## Keeping Your Fork Updated
+## 让你的 fork 保持更新
 
 ```bash
 git remote add upstream https://github.com/rohitg00/ai-engineering-from-scratch.git
@@ -49,9 +49,9 @@ git fetch upstream
 git merge upstream/main
 ```
 
-## Attribution
+## 署名
 
-Not required by MIT, but appreciated:
+MIT 许可证并不强制要求，但我们会很感激：
 
 ```
 Based on AI Engineering from Scratch

@@ -1,46 +1,46 @@
 ---
-name: New lesson proposal
-about: Pitch a lesson before writing it
+name: 新课程提案
+about: 在动手写之前先提一节课程的设想
 title: "[lesson] Phase NN · "
 labels: new-lesson
 ---
 
-## Lesson
+## 课程
 
-- Phase: <!-- e.g. Phase 5 (NLP) -->
-- Proposed number: <!-- e.g. 03 (lessons are numbered within a phase) -->
-- Working title:
-- Type: Build | Learn
-- Languages: <!-- Python, TypeScript, Rust, Julia -->
-- Estimated time: <!-- e.g. ~75 min -->
+- 阶段: <!-- 例如 Phase 5（NLP） -->
+- 提议编号: <!-- 例如 03（课程在每个阶段内部编号） -->
+- 暂定标题:
+- 类型: 动手实现 | 概念讲解
+- 语言: <!-- Python、TypeScript、Rust、Julia -->
+- 预计耗时: <!-- 例如 ~75 分钟 -->
 
-## Why it belongs
+## 为什么需要这节课
 
-<!-- Two or three sentences. What can't a learner do without this lesson? Why here in the sequence? -->
+<!-- 两三句话。没有这节课，学习者做不到什么？为什么放在这个顺序上？ -->
 
-## Prerequisites
+## 前置课程
 
-<!-- Which prior lessons does this depend on? -->
+<!-- 这节课依赖哪些前面的课程？ -->
 
-## What the learner ships
+## 学习者最终产出什么
 
-<!-- Every lesson produces a reusable artifact. Which one? -->
+<!-- 每节课都会产出一个可复用的成果物。是哪一个？ -->
 
-- [ ] Prompt
-- [ ] Skill
-- [ ] Agent
-- [ ] MCP server
-- [ ] Tool / script
+- [ ] 提示词（Prompt）
+- [ ] 技能（Skill）
+- [ ] 智能体（Agent）
+- [ ] MCP 服务器
+- [ ] 工具 / 脚本
 
-## Outline
+## 大纲
 
-1. **The Problem** — what pain does this solve?
-2. **The Concept** — core mental model, no code yet
-3. **Build It** — from-scratch implementation plan
-4. **Use It** — which framework / library to show after
-5. **Ship It** — the artifact to produce
-6. **Exercises** — 3 proposed
+1. **The Problem** — 这节课解决什么痛点？
+2. **The Concept** — 核心心智模型，先不写代码
+3. **Build It** — 从零实现的方案
+4. **Use It** — 之后展示哪个框架 / 库
+5. **Ship It** — 要产出的成果物
+6. **Exercises** — 提议 3 道练习
 
-## Open questions
+## 待讨论的问题
 
-<!-- Anything you want input on before starting. -->
+<!-- 开始之前你希望听取意见的任何事情。 -->

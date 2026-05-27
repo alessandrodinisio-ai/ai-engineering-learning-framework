@@ -2,66 +2,66 @@
   {
     "id": "ml-intro-pre-1",
     "stage": "pre",
-    "question": "In supervised learning, what does the model receive during training?",
+    "question": "在监督学习中，模型在训练时会收到什么？",
     "options": [
-      "Only input data with no labels",
-      "Input-output pairs where the correct answer is provided",
-      "A reward signal for each action taken",
-      "A set of rules written by a human expert"
+      "只有输入数据，没有标签",
+      "提供了正确答案的输入-输出对",
+      "对每个所采取动作的奖励信号",
+      "一组由人类专家编写的规则"
     ],
     "correct": 1,
-    "explanation": "Supervised learning trains on input-output pairs (labeled data). The model learns to map inputs to known correct outputs."
+    "explanation": "监督学习在输入-输出对（带标签数据）上训练。模型学习把输入映射到已知的正确输出。"
   },
   {
     "id": "ml-intro-pre-2",
     "stage": "pre",
-    "question": "What is the purpose of splitting data into training and test sets?",
+    "question": "把数据分成训练集和测试集的目的是什么？",
     "options": [
-      "To make training faster by using less data",
-      "To have backup data in case the training data is lost",
-      "To evaluate whether the model generalizes to data it has never seen during training",
-      "To balance the classes in the dataset"
+      "通过使用更少数据让训练更快",
+      "以便在训练数据丢失时有备份数据",
+      "为了评估模型是否能泛化到它在训练中从未见过的数据",
+      "为了平衡数据集中的类别"
     ],
     "correct": 2,
-    "explanation": "The test set measures generalization. If you evaluate on training data, you measure memorization, not learning."
+    "explanation": "测试集衡量泛化能力。如果你在训练数据上评估，衡量的是记忆而非学习。"
   },
   {
     "id": "ml-intro-post-1",
     "stage": "post",
-    "question": "A model gets 98% accuracy on training data but 55% on test data. What is this an example of?",
+    "question": "某模型在训练数据上达到 98% 准确率，但在测试数据上只有 55%。这是哪种情况的例子？",
     "options": [
-      "Underfitting: the model is too simple",
-      "Overfitting: the model memorized training noise instead of learning general patterns",
-      "Data drift: the test distribution changed",
-      "Good generalization: the model learned the true patterns"
+      "欠拟合：模型太简单",
+      "过拟合：模型记住了训练噪声，而不是学到通用模式",
+      "数据漂移：测试分布发生了变化",
+      "良好泛化：模型学到了真实模式"
     ],
     "correct": 1,
-    "explanation": "A large gap between training accuracy (high) and test accuracy (low) is the hallmark of overfitting. The model memorized the training data."
+    "explanation": "训练准确率（高）与测试准确率（低）之间的巨大差距是过拟合的标志。模型只是记住了训练数据。"
   },
   {
     "id": "ml-intro-post-2",
     "stage": "post",
-    "question": "An e-commerce site wants to group customers into segments based on purchase behavior without any predefined labels. Which type of ML is this?",
+    "question": "某电商网站希望在没有任何预定义标签的情况下，根据购买行为把客户分组。这属于哪种类型的机器学习？",
     "options": [
-      "Supervised learning (classification)",
-      "Supervised learning (regression)",
-      "Unsupervised learning (clustering)",
-      "Reinforcement learning"
+      "监督学习（分类）",
+      "监督学习（回归）",
+      "无监督学习（聚类）",
+      "强化学习"
     ],
     "correct": 2,
-    "explanation": "Finding natural groupings in data without predefined labels is clustering, which is a form of unsupervised learning."
+    "explanation": "在没有预定义标签的情况下寻找数据中的自然分组就是聚类，它是无监督学习的一种形式。"
   },
   {
     "id": "ml-intro-post-3",
     "stage": "post",
-    "question": "Which scenario is NOT a good use case for machine learning?",
+    "question": "以下哪个场景不是机器学习的良好用例？",
     "options": [
-      "Predicting customer churn from historical behavior data",
-      "Detecting fraudulent transactions in a stream of millions of payments",
-      "Converting temperatures from Celsius to Fahrenheit",
-      "Classifying images of skin lesions as benign or malignant"
+      "从历史行为数据预测客户流失",
+      "在数百万笔支付流中检测欺诈交易",
+      "把温度从摄氏度转换为华氏度",
+      "把皮肤病变图像分类为良性或恶性"
     ],
     "correct": 2,
-    "explanation": "Celsius to Fahrenheit is a fixed formula (F = 9/5 * C + 32). Simple, well-defined rules do not need ML. ML adds complexity with no benefit."
+    "explanation": "摄氏度转华氏度是一个固定公式（F = 9/5 * C + 32）。简单、定义明确的规则不需要机器学习。在这里用机器学习只会增加复杂度而毫无益处。"
   }
 ]

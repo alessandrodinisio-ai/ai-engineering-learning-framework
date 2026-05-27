@@ -1,102 +1,102 @@
 {
   "lesson": "03-word-embeddings-word2vec",
-  "title": "Word Embeddings — Word2Vec from Scratch",
+  "title": "词嵌入 — 从零实现 Word2Vec",
   "questions": [
     {
       "stage": "pre",
-      "question": "What is the distributional hypothesis?",
+      "question": "什么是分布假设（distributional hypothesis）？",
       "options": [
-        "You shall know a word by the company it keeps",
-        "Words are uniformly distributed across documents",
-        "All words can be embedded in 300 dimensions",
-        "Frequent words carry the most meaning"
+        "观其伴而知其义（通过一个词的伴随上下文来了解它）",
+        "词在各文档中均匀分布",
+        "所有词都能嵌入到 300 维中",
+        "高频词携带最多的含义"
       ],
       "correct": 0,
-      "explanation": "Firth's (1957) distributional hypothesis: similar contexts imply similar meanings."
+      "explanation": "Firth（1957）的分布假设：相似的上下文意味着相似的含义。"
     },
     {
       "stage": "pre",
-      "question": "Why is plain softmax over the vocabulary impractical in Word2Vec?",
+      "question": "为什么在 Word2Vec 中对整个词汇表做普通 softmax 不切实际？",
       "options": [
-        "Computing softmax over 100k+ vocabulary terms is prohibitively expensive per training step",
-        "Softmax cannot model probabilities",
-        "Softmax has no gradient",
-        "It causes vanishing gradients"
+        "在每个训练步对 10 万以上的词汇项计算 softmax 代价高得无法承受",
+        "softmax 无法建模概率",
+        "softmax 没有梯度",
+        "它会导致梯度消失"
       ],
       "correct": 0,
-      "explanation": "Full-vocabulary softmax is too expensive; negative sampling reformulates it as binary classification."
+      "explanation": "全词汇表 softmax 代价太高；负采样把它重新表述为二分类问题。"
     },
     {
       "stage": "check",
-      "question": "What is the difference between skip-gram and CBOW?",
+      "question": "skip-gram 和 CBOW 有什么区别？",
       "options": [
-        "Skip-gram uses bigrams; CBOW uses unigrams",
-        "Skip-gram predicts context words from the center; CBOW predicts the center from context",
-        "Skip-gram predicts the center word from context; CBOW does the reverse",
-        "Skip-gram trains a deep network; CBOW is shallow"
+        "skip-gram 用 bigram；CBOW 用 unigram",
+        "skip-gram 由中心词预测上下文词；CBOW 由上下文预测中心词",
+        "skip-gram 由上下文预测中心词；CBOW 则相反",
+        "skip-gram 训练深层网络；CBOW 是浅层的"
       ],
       "correct": 1,
-      "explanation": "Skip-gram: center -> context. CBOW: context -> center."
+      "explanation": "skip-gram：中心词 -> 上下文。CBOW：上下文 -> 中心词。"
     },
     {
       "stage": "check",
-      "question": "In negative sampling, what is the objective for the positive pair (center, context)?",
+      "question": "在负采样中，对正样本对（中心词，上下文）的目标是什么？",
       "options": [
-        "Maximize sigmoid(W[center] dot W'[context]) so it is close to 1",
-        "Force them to be orthogonal",
-        "Minimize their dot product",
-        "Decorrelate the vectors"
+        "最大化 sigmoid(W[center] dot W'[context])，使其接近 1",
+        "强制它们正交",
+        "最小化它们的点积",
+        "去相关这些向量"
       ],
       "correct": 0,
-      "explanation": "Positive pairs train sigmoid near 1; sampled negatives train sigmoid near 0."
+      "explanation": "正样本对训练 sigmoid 接近 1；采样的负样本训练 sigmoid 接近 0。"
     },
     {
       "stage": "check",
-      "question": "After training Word2Vec, which weight matrix becomes the word embeddings?",
+      "question": "训练完 Word2Vec 后，哪个权重矩阵成为词嵌入？",
       "options": [
-        "A separate post-training projection",
-        "The input-to-hidden W matrix (center-word table)",
-        "Both, multiplied together",
-        "The hidden-to-output W' matrix"
+        "一个独立的训练后投影",
+        "输入到隐藏层的 W 矩阵（中心词查找表）",
+        "两者相乘",
+        "隐藏层到输出的 W' 矩阵"
       ],
       "correct": 1,
-      "explanation": "The center-word table W is the standard embedding output; W' is often discarded or averaged in."
+      "explanation": "中心词查找表 W 是标准的嵌入输出；W' 通常被丢弃或被平均进去。"
     },
     {
       "stage": "post",
-      "question": "Why does Word2Vec fail on polysemy (e.g. 'bank')?",
+      "question": "为什么 Word2Vec 在一词多义（例如 'bank'）上会失败？",
       "options": [
-        "The window size is too small",
-        "It ignores rare words",
-        "Negative sampling drops rare meanings",
-        "It assigns one static vector per word, so 'river bank' and 'financial bank' share the same vector"
+        "窗口大小太小",
+        "它忽略稀有词",
+        "负采样丢掉了稀有含义",
+        "它给每个词分配一个静态向量，所以 'river bank'（河岸）和 'financial bank'（银行）共享同一个向量"
       ],
       "correct": 3,
-      "explanation": "Static embeddings cannot disambiguate senses; contextual embeddings (ELMo/BERT) fix this."
+      "explanation": "静态嵌入无法消歧词义；上下文嵌入（ELMo/BERT）解决了这个问题。"
     },
     {
       "stage": "post",
-      "question": "When would you still reach for Word2Vec over a transformer in 2026?",
+      "question": "在 2026 年，什么情况下你仍会选用 Word2Vec 而非 transformer？",
       "options": [
-        "Lightweight, on-device, domain-specific retrieval where a single row lookup is the latency budget",
-        "When you need contextual disambiguation",
-        "When inputs are very long",
-        "When dialog quality matters"
+        "轻量、设备端、领域特定的检索，其中单行查找就是全部的延迟预算",
+        "当你需要上下文消歧时",
+        "当输入非常长时",
+        "当对话质量重要时"
       ],
       "correct": 0,
-      "explanation": "Word2Vec wins on tiny latency budgets, on-device inference, or fast domain-specific training."
+      "explanation": "在极小的延迟预算、设备端推理或快速领域特定训练上，Word2Vec 占优。"
     },
     {
       "stage": "post",
-      "question": "What enables the famous analogy 'king - man + woman ~ queen'?",
+      "question": "是什么让著名的类比 'king - man + woman ~ queen' 成为可能？",
       "options": [
-        "The model encodes royalty as a flag bit",
-        "Skip-gram trains on royal vocabularies",
-        "Vector arithmetic captures linear directions like 'royal' that transfer across genders",
-        "Cosine similarity is invariant to gender"
+        "模型把“皇室”编码为一个标志位",
+        "skip-gram 在皇室词汇上训练",
+        "向量算术捕捉到了像“皇室”这样可跨性别迁移的线性方向",
+        "余弦相似度对性别不变"
       ],
       "correct": 2,
-      "explanation": "Directions in embedding space encode relational features, so adding/subtracting moves systematically."
+      "explanation": "嵌入空间中的方向编码了关系特征，因此加减会带来系统性的位移。"
     }
   ]
 }

@@ -1,90 +1,90 @@
 {
   "lesson": "29-production-runtimes",
-  "title": "Production Runtimes: Queue, Event, Cron",
+  "title": "生产运行时：队列、事件、cron",
   "questions": [
     {
       "stage": "pre",
-      "question": "What are the six runtime shapes the lesson lists?",
+      "question": "本课列出哪六种运行时形态？",
       "options": [
-        "Request-response, streaming, durable execution, queue-based, event-driven, scheduled",
-        "Read, write, exec, fork, exit, wait",
-        "REST, gRPC, GraphQL, WebSocket, SSE, MQTT",
-        "Map, filter, reduce, fold, scan, group"
+        "请求-响应、流式、持久化执行、基于队列、事件驱动、定时调度",
+        "Read、write、exec、fork、exit、wait",
+        "REST、gRPC、GraphQL、WebSocket、SSE、MQTT",
+        "Map、filter、reduce、fold、scan、group"
       ],
       "correct": 0,
-      "explanation": "These are the six runtime shapes; pick a shape before picking a framework."
+      "explanation": "这是六种运行时形态；先选形态再选框架。"
     },
     {
       "stage": "pre",
-      "question": "When is request-response a poor fit?",
+      "question": "什么时候请求-响应是糟糕的选择？",
       "options": [
-        "On a 1-second classification",
-        "When the task takes longer than about 30 seconds and users hang up while workers pile up",
-        "On REST APIs",
-        "On internal services"
+        "在一个 1 秒的分类上",
+        "当任务耗时超过约 30 秒、用户挂断而 worker 堆积时",
+        "在 REST API 上",
+        "在内部服务上"
       ],
       "correct": 1,
-      "explanation": "Synchronous HTTP is only viable for short tasks; long tasks need queue/durable/event shapes."
+      "explanation": "同步 HTTP 只对短任务可行；长任务需要队列/持久化/事件形态。"
     },
     {
       "stage": "check",
-      "question": "What is durable execution's core property?",
+      "question": "持久化执行的核心属性是什么？",
       "options": [
-        "Faster inference",
-        "State is checkpointed after every step so the runtime can resume from the last successful step on failure",
-        "Lower token cost",
-        "Native voice support"
+        "更快的推理",
+        "每一步之后对状态做检查点，使运行时在失败时能从上一个成功步骤恢复",
+        "更低的 token 成本",
+        "原生语音支持"
       ],
       "correct": 1,
-      "explanation": "Checkpoint-and-resume is the differentiator; LangGraph is the lesson's reference."
+      "explanation": "检查点-恢复是关键差异；LangGraph 是本课的参考。"
     },
     {
       "stage": "check",
-      "question": "Which Anthropic observation justifies queue-based runtimes for long-horizon agents?",
+      "question": "Anthropic 的哪个观察为长程 agent 的基于队列运行时提供了正当理由？",
       "options": [
-        "Tasks always complete in 5 seconds",
-        "Computer use announcement: dozens-to-hundreds of steps per task is normal",
-        "Tasks must run synchronously",
-        "Cron solves everything"
+        "任务总在 5 秒内完成",
+        "计算机使用的公告：每个任务数十到数百步是常态",
+        "任务必须同步运行",
+        "cron 解决一切"
       ],
       "correct": 1,
-      "explanation": "Anthropic flagged dozens-to-hundreds of steps per task as normal; that workload needs queues or durable runtimes."
+      "explanation": "Anthropic 指出每个任务数十到数百步是常态；这种工作负载需要队列或持久化运行时。"
     },
     {
       "stage": "check",
-      "question": "What does the lesson mean by 'observability is load-bearing'?",
+      "question": "本课所说的「可观测性是承重的」是什么意思？",
       "options": [
-        "Logs are pretty",
-        "Without OTel GenAI spans and a Langfuse/Phoenix/Opik backend you cannot debug a multi-step agent that failed at step 40",
-        "Disk gets full",
-        "Providers require it for billing"
+        "日志很漂亮",
+        "没有 OTel GenAI span 和一个 Langfuse/Phoenix/Opik 后端，你无法调试一个在第 40 步失败的多步 agent",
+        "磁盘满了",
+        "提供商为计费而要求它"
       ],
       "correct": 1,
-      "explanation": "Observability is not optional for multi-step agents; it is the difference between debugging and replaying from scratch."
+      "explanation": "对多步 agent 而言，可观测性不是可选的；它决定了你是调试还是从头重放。"
     },
     {
       "stage": "post",
-      "question": "Why must queue workers have a dead-letter queue (DLQ)?",
+      "question": "为什么队列 worker 必须有死信队列（DLQ）？",
       "options": [
-        "Without DLQ, failed jobs vanish silently",
-        "DLQ is required by AWS",
-        "DLQ makes jobs faster",
-        "DLQ is encrypted"
+        "没有 DLQ，失败的任务会静默消失",
+        "DLQ 是 AWS 要求的",
+        "DLQ 让任务更快",
+        "DLQ 是加密的"
       ],
       "correct": 0,
-      "explanation": "Failed jobs without DLQ disappear; DLQ is the parking lot for failed jobs."
+      "explanation": "没有 DLQ 的失败任务会消失；DLQ 是失败任务的停车场。"
     },
     {
       "stage": "post",
-      "question": "What does the lesson recommend pairing cron-shaped agents with?",
+      "question": "本课建议把 cron 形态的 agent 与什么配对？",
       "options": [
-        "GPU autoscalers",
-        "Durable execution so a failing nightly run resumes next tick",
-        "Streaming SSE",
+        "GPU 自动扩缩器",
+        "持久化执行，使一次失败的夜间运行能在下一个时刻恢复",
+        "流式 SSE",
         "WebRTC"
       ],
       "correct": 1,
-      "explanation": "Cron + durable execution recovers cleanly from failed scheduled runs."
+      "explanation": "cron + 持久化执行能从失败的定时运行中干净地恢复。"
     }
   ]
 }

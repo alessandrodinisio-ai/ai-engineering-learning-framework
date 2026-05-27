@@ -1,0 +1,33 @@
+name: build
+
+# 中文翻译版的轻量 CI：只验证站点能正常构建（node site/build.js 生成 data.js）。
+# 不做原仓库那套课程审计 / catalog auto-regen（那是上游维护用的，会干扰翻译版推送）。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "README.md"
+      - "ROADMAP.md"
+      - "glossary/**"
+      - "phases/**"
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: build data.js
+        run: node site/build.js
+      - name: verify output
+        run: |
+          test -f site/data.js || { echo "data.js 未生成"; exit 1; }
+          grep -q "const PHASES" site/data.js || { echo "PHASES 缺失"; exit 1; }
+          echo "✅ 站点构建成功，data.js 已生成"

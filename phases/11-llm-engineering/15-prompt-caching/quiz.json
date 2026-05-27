@@ -1,63 +1,63 @@
 {
   "lesson": "15-prompt-caching",
-  "title": "Prompt Caching and Context Caching",
+  "title": "Prompt 缓存与上下文缓存",
   "questions": [
     {
       "stage": "post",
-      "question": "What discount does Anthropic apply to cache reads versus the base input rate?",
+      "question": "相比基础输入费率，Anthropic 对缓存读取（cache read）给予多少折扣？",
       "options": [
-        "25% off",
-        "50% off",
-        "75% off",
-        "90% off"
+        "打 7.5 折（便宜 25%）",
+        "打 5 折（便宜 50%）",
+        "打 2.5 折（便宜 75%）",
+        "打 1 折（便宜 90%）"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Why must dynamic timestamps go below the cache breakpoint, not above it?",
+      "question": "为什么动态时间戳必须放在缓存断点（cache breakpoint）之下，而不是之上？",
       "options": [
-        "Caches only hit when the prefix is byte-identical; a changing timestamp breaks the match for everything after it",
-        "Timestamps confuse the tokenizer",
-        "They cost more tokens than static text",
-        "Anthropic explicitly rejects timestamps in cached blocks"
+        "缓存只在前缀逐字节相同时才命中；一个变化的时间戳会破坏它之后所有内容的匹配",
+        "时间戳会让 tokenizer 困惑",
+        "它们比静态文本花费更多 token",
+        "Anthropic 明确拒绝缓存块中的时间戳"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "OpenAI's prompt caching is configured how?",
+      "question": "OpenAI 的 prompt 缓存是如何配置的？",
       "options": [
-        "Explicit cache_control markers",
-        "A CachedContent API you create and reference",
-        "Automatic prefix matching with no configuration",
-        "A system-level flag you toggle per project"
+        "显式的 cache_control 标记",
+        "你创建并引用的 CachedContent API",
+        "无需配置的自动前缀匹配",
+        "你为每个项目切换的系统级开关"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "For Anthropic, what write premium does the 1-hour extended TTL cost vs the 5-minute default?",
+      "question": "对 Anthropic 而言，相比 5 分钟的默认值，1 小时的延长 TTL 会带来多少写入溢价（write premium）？",
       "options": [
-        "Same",
-        "2x the write premium (50% over baseline)",
-        "4x the write premium",
-        "No write premium"
+        "相同",
+        "2 倍写入溢价（比基线高 50%）",
+        "4 倍写入溢价",
+        "无写入溢价"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "How many reuses are needed to break even on Anthropic's 25% write premium?",
+      "question": "要在 Anthropic 的 25% 写入溢价上达到收支平衡，需要多少次复用？",
       "options": [
-        "1",
-        "2",
-        "5",
-        "10"
+        "1 次",
+        "2 次",
+        "5 次",
+        "10 次"
       ],
       "correct": 1,
       "explanation": ""

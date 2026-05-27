@@ -2,63 +2,63 @@
   "questions": [
     {
       "stage": "pre",
-      "question": "What is Promptable Concept Segmentation (PCS), introduced by SAM 3?",
+      "question": "由 SAM 3 引入的可提示概念分割（PCS）是什么？",
       "options": [
-        "Segmenting all instances of a concept described by a short noun phrase or image exemplar in a single forward pass, returning masks plus unique instance IDs",
-        "A visual prompt (point/box) segmentation like classic SAM",
-        "A multi-step chain of a detector followed by SAM",
-        "A tracking-only mode"
+        "在一次前向传播中分割出由一个短名词短语或图像范例所描述的某个概念的所有实例，返回掩码以及唯一的实例 ID",
+        "像经典 SAM 那样的视觉提示（点/框）分割",
+        "一个检测器后接 SAM 的多步链",
+        "一个仅用于跟踪的模式"
       ],
       "correct": 0,
-      "explanation": "PCS is SAM 3's signature capability. You pass 'yellow school bus' or an image exemplar of a bus; SAM 3 returns every matching instance with its own mask and unique ID, plus a presence score. Classic SAM needed one prompt per instance; PCS produces all matches end-to-end."
+      "explanation": "PCS 是 SAM 3 的标志性能力。你传入 'yellow school bus' 或一个公交车的图像范例；SAM 3 返回每个匹配的实例及其各自的掩码和唯一 ID，外加一个存在性分数。经典 SAM 需要每个实例一个提示；PCS 则端到端地产生所有匹配。"
     },
     {
       "stage": "pre",
-      "question": "Why keep a decoupled detector + SAM 2 pipeline (Grounded SAM 2) in 2026 if SAM 3 already does text-prompted segmentation?",
+      "question": "如果 SAM 3 已经能做文本提示分割，为什么在 2026 年还要保留解耦的检测器 + SAM 2 流水线（Grounded SAM 2）？",
       "options": [
-        "Grounded SAM 2 is always more accurate",
-        "Modularity \u2014 you can swap in different open-vocabulary detectors (DINO-X, Florence-2, Grounding DINO 1.5) for different domains, license constraints, or threshold behaviour; SAM 3's architecture is monolithic",
-        "SAM 3 does not support video",
-        "SAM 3 is only available in the cloud"
+        "Grounded SAM 2 总是更准确",
+        "模块化——你可以为不同领域、许可约束或阈值行为换入不同的开放词表检测器（DINO-X、Florence-2、Grounding DINO 1.5）；而 SAM 3 的架构是一体化的",
+        "SAM 3 不支持视频",
+        "SAM 3 只在云端提供"
       ],
       "correct": 1,
-      "explanation": "Grounded SAM 2 is a composition of a detector and SAM 2 with frozen weights. That modularity is sometimes exactly what you need \u2014 a medical-imaging detector, a license-friendly detector, or tight threshold control. SAM 3 is more accurate end-to-end for common use but harder to customise. Both have production roles in 2026."
+      "explanation": "Grounded SAM 2 是一个检测器与权重冻结的 SAM 2 的组合。这种模块化有时正是你需要的——一个医学影像检测器、一个许可友好的检测器，或对阈值的精确控制。SAM 3 在常见用途上端到端更准确，但更难定制。两者在 2026 年都有生产中的角色。"
     },
     {
       "stage": "post",
-      "question": "SAM 3's presence head produces what?",
+      "question": "SAM 3 的存在性头（presence head）产生什么？",
       "options": [
-        "The list of candidate bounding boxes",
-        "A tracking memory bank",
-        "A scalar probability that the queried concept exists in the image, decoupled from localisation; lets the model say 'not present' cleanly and reduces false positives on absent concepts",
-        "The final mask"
+        "候选边界框的列表",
+        "一个跟踪记忆库",
+        "被查询概念存在于图像中的一个标量概率，与定位解耦；让模型能够干净地说出“不存在”，并减少对不存在概念的假阳性",
+        "最终掩码"
       ],
       "correct": 2,
-      "explanation": "The presence head separates the 'is this here?' decision from the 'where is it?' decision. A model that must produce boxes whenever asked tends to hallucinate matches for absent concepts. With a presence head, SAM 3 can return zero detections cleanly. This also improves discrimination between closely related prompts (e.g., 'a player in white' vs 'a player in red')."
+      "explanation": "存在性头把“它在这里吗？”的判断与“它在哪里？”的判断分开。一个被问到就必须产生框的模型，往往会为不存在的概念幻觉出匹配。有了存在性头，SAM 3 可以干净地返回零个检测。这也改善了对密切相关提示之间的区分（例如 'a player in white' 与 'a player in red'）。"
     },
     {
       "stage": "post",
-      "question": "SAM 3.1 Object Multiplex (March 2026) introduced a shared-memory mechanism for tracking. What does it replace?",
+      "question": "SAM 3.1 Object Multiplex（2026 年 3 月）为跟踪引入了一种共享内存机制。它取代了什么？",
       "options": [
-        "SAM 2 altogether",
-        "Per-instance separate memory banks; Multiplex collapses them into one shared memory with per-instance queries so tracking N objects runs substantially faster while keeping accuracy",
-        "The whole presence head",
-        "The ViT backbone"
+        "完全取代 SAM 2",
+        "每个实例各自独立的记忆库；Multiplex 把它们合并成一个带逐实例查询的共享内存，使跟踪 N 个目标在保持准确率的同时大幅加快",
+        "整个存在性头",
+        "ViT 主干"
       ],
       "correct": 1,
-      "explanation": "Prior SAM 2 / SAM 3 tracking maintained one memory bank per tracked instance, so cost grew linearly with object count. Object Multiplex introduces a single shared memory plus per-instance queries that fetch instance-specific features. Many-instance tracking is now efficient \u2014 essential for crowds and dense multi-object scenes."
+      "explanation": "之前的 SAM 2 / SAM 3 跟踪为每个被跟踪实例维护一个记忆库，因此成本随目标数量线性增长。Object Multiplex 引入了一个单一共享内存外加逐实例查询，以获取实例专有的特征。多实例跟踪如今变得高效——这对人群和密集多目标场景至关重要。"
     },
     {
       "stage": "post",
-      "question": "You need real-time open-vocabulary DETECTION (boxes only, no masks) on an edge device. Which 2026 model family is the right choice?",
+      "question": "你需要在边缘设备上做实时开放词表检测（只要框、不要掩码）。2026 年哪个模型家族是正确的选择？",
       "options": [
         "SAM 3",
-        "A custom CLIP + detector chain",
+        "一个自定义的 CLIP + 检测器链",
         "Grounded SAM 2",
-        "YOLO-World (and related real-time open-vocab detectors); SAM 3 produces masks and is heavier, while YOLO-World is designed specifically for boxes at high fps on edge hardware"
+        "YOLO-World（及相关的实时开放词表检测器）；SAM 3 产生掩码且更重，而 YOLO-World 是专门为在边缘硬件上以高 fps 输出框而设计的"
       ],
       "correct": 3,
-      "explanation": "YOLO-World and similar models (OV-DINO, LLMDet) are real-time open-vocabulary detectors. They do not produce masks but they hit 30-60 fps at 640x640 on modest GPUs. SAM 3 is the right choice when masks and tracking matter. Always match tool weight to the task: detection-only is fine without mask overhead."
+      "explanation": "YOLO-World 及类似模型（OV-DINO、LLMDet）是实时开放词表检测器。它们不产生掩码，但在中等 GPU 上以 640x640 能达到 30-60 fps。当掩码和跟踪重要时，SAM 3 才是正确选择。务必让工具的重量与任务相匹配：只做检测时不必背负掩码的开销。"
     }
   ]
 }

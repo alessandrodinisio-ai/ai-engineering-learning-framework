@@ -1,90 +1,90 @@
 {
   "lesson": "36-scope-contracts",
-  "title": "Scope Contracts and Task Boundaries",
+  "title": "范围契约与任务边界",
   "questions": [
     {
       "stage": "pre",
-      "question": "Why is scope creep called the most under-monitored failure mode?",
+      "question": "为什么范围蔓延（scope creep）被称为最缺乏监控的失败模式？",
       "options": [
-        "It crashes the agent loudly",
-        "Each touch had a plausible reason in the moment; together they form a different change than was reviewed",
-        "It is too rare to monitor",
-        "Tests catch it automatically"
+        "它会让 agent 大声崩溃",
+        "每一次改动当下都有看似合理的理由；合在一起却构成了一个与审查过的不同的改动",
+        "它太罕见，不值得监控",
+        "测试会自动抓住它"
       ],
       "correct": 1,
-      "explanation": "Agents narrate each step in good faith; the silent total is the creep."
+      "explanation": "agent 善意地为每一步做叙述；那个无声的总和就是蔓延。"
     },
     {
       "stage": "pre",
-      "question": "Which contract field does the lesson call half the contract?",
+      "question": "本课把哪个契约字段称为「契约的一半」？",
       "options": [
         "goal",
-        "forbidden_files (the negative space)",
+        "forbidden_files（负空间）",
         "task_id",
         "approvals_required"
       ],
       "correct": 1,
-      "explanation": "A contract without forbidden_files is incomplete; the negative space is half the contract."
+      "explanation": "没有 forbidden_files 的契约是不完整的；负空间是契约的一半。"
     },
     {
       "stage": "check",
-      "question": "Why pin allowed/forbidden to globs rather than raw paths?",
+      "question": "为什么把 allowed/forbidden 固定为 glob 而非原始路径？",
       "options": [
-        "Globs are faster",
-        "Real repos move files; globs survive refactors between sessions",
-        "Globs encrypt better",
-        "Raw paths are not JSON-serializable"
+        "glob 更快",
+        "真实 repo 会移动文件；glob 能在跨会话的重构中存活",
+        "glob 加密更好",
+        "原始路径不可 JSON 序列化"
       ],
       "correct": 1,
-      "explanation": "Globs (app/**/*.py) keep the contract valid through refactors."
+      "explanation": "glob（app/**/*.py）让契约在重构中保持有效。"
     },
     {
       "stage": "check",
-      "question": "What does the 'violation budget' pattern do?",
+      "question": "「违规预算」（violation budget）模式做什么？",
       "options": [
-        "Sets a monthly budget for the agent",
-        "Allows minor scope slips as warnings within a budget; only excess triggers a merge refusal — the difference between a gate that ships and one that gets disabled",
-        "Throttles model calls",
-        "Charges per violation"
+        "为 agent 设置一个月度预算",
+        "在一个预算内允许轻微的范围滑动作为警告；只有超出才触发合并拒绝——这是一个能上线的门和一个会被禁用的门之间的差别",
+        "对模型调用限流",
+        "按违规收费"
       ],
       "correct": 1,
-      "explanation": "agent-guardrails uses violationBudget so the gate is usable in day-to-day flow."
+      "explanation": "agent-guardrails 使用 violationBudget，使这个门在日常流程中可用。"
     },
     {
       "stage": "check",
-      "question": "What did the specsmaxxing practitioner report?",
+      "question": "那位 specsmaxxing 实践者报告了什么？",
       "options": [
-        "Latency dropped 90%",
-        "Rabbit-hole rate dropped from 52% to 21% in three weeks without changing the agent; the contract did the work, not the model",
-        "Cost rose 5x",
-        "Tests slowed down"
+        "延迟下降 90%",
+        "在不改动 agent 的情况下，三周内「钻牛角尖率」从 52% 降到 21%；起作用的是契约，不是模型",
+        "成本上升 5 倍",
+        "测试变慢"
       ],
       "correct": 1,
-      "explanation": "Scope contracts in YAML before invoking the agent halved the rabbit-hole rate without model changes."
+      "explanation": "在调用 agent 前用 YAML 写好范围契约，在不改模型的情况下把钻牛角尖率减半。"
     },
     {
       "stage": "post",
-      "question": "What are the multi-contract merge semantics (least privilege)?",
+      "question": "多契约合并的语义（最小权限）是什么？",
       "options": [
-        "Last contract wins",
-        "Intersect allowed_files; union forbidden_files; min time_budget; accumulate approvals; deny-all sticks; merge of None defers to the other side",
-        "First contract wins",
-        "Random tie-break"
+        "最后一个契约胜出",
+        "对 allowed_files 取交集；对 forbidden_files 取并集；time_budget 取最小；累积审批；deny-all 黏住；与 None 合并时让位给另一方",
+        "第一个契约胜出",
+        "随机决胜"
       ],
       "correct": 1,
-      "explanation": "Least-privilege merge: intersection on allows, union on forbids, most-restrictive time, accumulate approvals."
+      "explanation": "最小权限合并：允许取交集，禁止取并集，时间取最严格，审批累积。"
     },
     {
       "stage": "post",
-      "question": "Why do time and network budgets belong in the contract too?",
+      "question": "为什么时间和网络预算也属于契约？",
       "options": [
-        "Wall clock and external-host access are scope dimensions; file globs alone are necessary but not sufficient",
-        "Providers require them",
-        "They make the JSON smaller",
-        "They are required by Apache 2.0"
+        "墙上时钟和外部主机访问是范围维度；仅文件 glob 是必要但不充分的",
+        "提供商要求它们",
+        "它们让 JSON 更小",
+        "Apache 2.0 要求它们"
       ],
       "correct": 0,
-      "explanation": "time_budget_minutes and network_egress allowlists are scope dimensions on top of file globs."
+      "explanation": "time_budget_minutes 和 network_egress 允许列表是文件 glob 之上的范围维度。"
     }
   ]
 }

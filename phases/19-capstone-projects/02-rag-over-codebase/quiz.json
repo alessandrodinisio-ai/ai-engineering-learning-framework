@@ -1,87 +1,87 @@
 {
   "lesson": "02-rag-over-codebase",
-  "title": "Capstone 02 — RAG over Codebase (Cross-Repo Semantic Search)",
+  "title": "毕业项目 02 —— 面向代码库的 RAG（跨仓库语义搜索）",
   "questions": [
     {
       "stage": "pre",
-      "question": "Why is naive cosine search over raw chunks insufficient for cross-repo code retrieval?",
+      "question": "为什么对原始 chunk 做朴素的余弦搜索不足以胜任跨仓库代码检索？",
       "options": [
-        "It poisons results on generated code, monorepo duplication, and rarely imported symbols",
-        "Cosine similarity is undefined on code embeddings",
-        "Vector indexes cannot store payloads larger than 1KB",
-        "Embedding models do not see code as tokens"
+        "它会因生成代码、monorepo 重复和很少被导入的符号而污染结果",
+        "余弦相似度在代码嵌入上没有定义",
+        "向量索引无法存储超过 1KB 的载荷",
+        "嵌入模型看不到代码作为 token"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "pre",
-      "question": "What does AST-aware chunking mean in the ingestion pipeline?",
+      "question": "在摄入流水线中，AST 感知的分块（AST-aware chunking）是什么意思？",
       "options": [
-        "Compressing chunks with gzip before storage",
-        "Dropping comments and whitespace before embedding",
-        "Cutting at tree-sitter node boundaries such as function and class spans",
-        "Splitting code into fixed 256-token windows"
+        "在存储前用 gzip 压缩 chunk",
+        "在嵌入前丢弃注释和空白",
+        "在 tree-sitter 节点边界处切分，例如函数和类的范围",
+        "把代码切成固定的 256-token 窗口"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Which three retrievable modalities does each chunk get in this pipeline?",
+      "question": "在这条流水线中，每个 chunk 获得哪三种可检索模态？",
       "options": [
-        "Token IDs, syntax tree, and call graph",
-        "AST, IR, and bytecode",
-        "Raw text, gzip, and hash",
-        "Dense embedding, BM25 terms, and a natural-language summary"
+        "Token ID、语法树和调用图",
+        "AST、IR 和字节码",
+        "原始文本、gzip 和哈希",
+        "稠密嵌入、BM25 词项和一段自然语言摘要"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What is the role of the cross-encoder reranker after the hybrid retrieval step?",
+      "question": "在混合检索步骤之后，cross-encoder 重排器的作用是什么？",
       "options": [
-        "It rewrites the chunks to remove generated code",
-        "It re-embeds the query in a different model",
-        "It compresses the chunks before sending to the synthesizer",
-        "It scores each query-candidate pair together for higher accuracy than cosine alone"
+        "它重写 chunk 以移除生成代码",
+        "它用不同的模型重新嵌入查询",
+        "它在发送给综合器之前压缩 chunk",
+        "它把每个「查询-候选」对放在一起打分，从而获得比仅用余弦更高的准确率"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Why does the synthesizer reject answers without (repo/path:start-end) anchors?",
+      "question": "为什么综合器会拒绝没有 (repo/path:start-end) 锚点的答案？",
       "options": [
-        "Citation faithfulness gates the answer so users can verify each claim",
-        "Anchors reduce token cost on the synthesis call",
-        "Anchors are needed for downstream BM25 reranking",
-        "Anchors are required by the vector database schema"
+        "引用忠实性（citation faithfulness）对答案设了门禁，使用户可以核验每一条论断",
+        "锚点能降低综合调用的 token 成本",
+        "锚点是下游 BM25 重排所需要的",
+        "锚点是向量数据库 schema 所要求的"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "What does incremental re-index require to stay under 60 seconds on a 50-file push?",
+      "question": "为了在 50 个文件的推送上把增量重建索引控制在 60 秒以内，需要什么？",
       "options": [
-        "Re-embedding only chunks whose text changed and recomputing affected symbol edges",
-        "Re-embedding the full 2M-LOC corpus on each commit",
-        "Dropping the symbol graph entirely",
-        "Throwing away the BM25 index and rebuilding it from scratch"
+        "只重新嵌入文本发生变化的 chunk，并重算受影响的符号边",
+        "在每次提交时重新嵌入完整的 200 万行代码语料",
+        "完全丢弃符号图",
+        "丢掉 BM25 索引并从头重建"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Which metric measures whether retrieved claims are verifiable in the source?",
+      "question": "哪个指标衡量检索到的论断是否可在源代码中得到验证？",
       "options": [
         "MRR@10",
-        "Citation faithfulness",
+        "引用忠实性（citation faithfulness）",
         "nDCG@10",
-        "p95 query latency"
+        "p95 查询延迟"
       ],
       "correct": 1,
       "explanation": ""

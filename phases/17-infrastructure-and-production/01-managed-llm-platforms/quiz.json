@@ -1,22 +1,22 @@
 {
   "lesson": "01-managed-llm-platforms",
-  "title": "Managed LLM Platforms — Bedrock, Vertex AI, Azure OpenAI",
+  "title": "托管 LLM 平台 —— Bedrock、Vertex AI、Azure OpenAI",
   "questions": [
     {
       "stage": "pre",
-      "question": "Before this lesson, which platform would you reach for first if a customer needed Claude, Llama, and Cohere behind one API?",
+      "question": "在学习本课之前，如果一个客户需要把 Claude、Llama 和 Cohere 放在同一个 API 之后使用，你会首先考虑哪个平台？",
       "options": [
         "Vertex AI",
         "AWS Bedrock",
         "Azure OpenAI Service",
-        "Direct Anthropic API"
+        "直接使用 Anthropic API"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "pre",
-      "question": "Which hyperscaler's bet is described as exclusive partnership rather than marketplace?",
+      "question": "哪家超大规模云厂商的押注被描述为独家合作关系，而非市场（marketplace）模式？",
       "options": [
         "Azure OpenAI",
         "Vertex AI",
@@ -28,19 +28,19 @@
     },
     {
       "stage": "check",
-      "question": "Roughly what is the measured median TTFT gap between Azure OpenAI (with PTUs) and Bedrock on-demand on Llama 3.1 405B equivalents?",
+      "question": "在 Llama 3.1 405B 同等模型上，Azure OpenAI（使用 PTU）与 Bedrock 按需（on-demand）之间实测的 TTFT 中位数差距大约是多少？",
       "options": [
-        "~100 ms",
-        "~5 ms",
-        "~250 ms",
-        "~25 ms"
+        "约 100 ms",
+        "约 5 ms",
+        "约 250 ms",
+        "约 25 ms"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Which Bedrock 2025 feature gives the cleanest per-product cost attribution natively in CloudWatch?",
+      "question": "Bedrock 在 2025 年的哪个特性能原生地在 CloudWatch 中提供最清晰的按产品成本归因？",
       "options": [
         "Bedrock Knowledge Bases",
         "Application Inference Profiles",
@@ -52,7 +52,7 @@
     },
     {
       "stage": "check",
-      "question": "Azure PTUs typically break even versus on-demand at what sustained utilization band?",
+      "question": "Azure PTU 通常在多高的持续利用率区间上与按需模式打平（break even）？",
       "options": [
         "5-10%",
         "80-95%",
@@ -64,24 +64,24 @@
     },
     {
       "stage": "post",
-      "question": "Why is the lesson's recommended 2026 policy a two-provider minimum for product-critical LLM calls?",
+      "question": "为什么本课推荐的 2026 年策略是：对产品关键路径的 LLM 调用至少采用两家供应商？",
       "options": [
-        "It is required by SOC 2 Type II",
-        "Frontier model leadership rotates monthly, so single-vendor lock-in shuts you out of two-thirds of the frontier",
-        "Hyperscalers refuse to sign BAAs unless you also use a competitor",
-        "Single-vendor pricing is always more expensive"
+        "这是 SOC 2 Type II 的强制要求",
+        "前沿模型的领先地位每月轮换，因此单一供应商锁定会让你与三分之二的前沿模型无缘",
+        "超大规模云厂商除非你同时使用其竞争对手，否则拒绝签署 BAA",
+        "单一供应商的定价总是更贵"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Which statement best describes the FinOps surface across the three platforms?",
+      "question": "哪一项表述最准确地描述了这三个平台的 FinOps（财务运营）状况？",
       "options": [
-        "Azure is cleanest native, Bedrock is opaque",
-        "Vertex has no attribution surface at all",
-        "All three expose identical per-request attribution",
-        "Bedrock is cleanest native, Vertex is most flexible via BigQuery, Azure is most opaque without instrumentation"
+        "Azure 原生能力最清晰，Bedrock 最不透明",
+        "Vertex 完全没有任何成本归因能力",
+        "三者都暴露了完全相同的按请求归因能力",
+        "Bedrock 原生能力最清晰，Vertex 借助 BigQuery 最灵活，Azure 在缺乏埋点时最不透明"
       ],
       "correct": 3,
       "explanation": ""

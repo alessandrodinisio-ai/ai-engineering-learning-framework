@@ -1,37 +1,62 @@
 [
   {
-    "question": "What is autograd in PyTorch?",
-    "options": ["A data loading library", "An automatic differentiation engine that records operations and computes gradients without manual backward implementations", "A model compression tool", "A hyperparameter tuning framework"],
+    "question": "PyTorch 中的 autograd 是什么？",
+    "options": [
+      "一个数据加载库",
+      "一个自动微分引擎，它记录运算并计算梯度，无需手动实现反向传播",
+      "一个模型压缩工具",
+      "一个超参数调优框架"
+    ],
     "correct": 1,
-    "explanation": "PyTorch's autograd builds a computational graph during forward computation and automatically computes gradients when you call .backward(). This eliminates the need to manually implement backward() in each module.",
+    "explanation": "PyTorch 的 autograd 在前向计算过程中构建计算图，并在你调用 .backward() 时自动计算梯度。这免去了在每个模块中手动实现 backward() 的需要。",
     "stage": "pre"
   },
   {
-    "question": "What does torch.no_grad() do and when should you use it?",
-    "options": ["It prevents overfitting", "It disables gradient tracking for inference, saving memory and computation when you don't need to train", "It freezes all model weights", "It enables GPU acceleration"],
+    "question": "torch.no_grad() 做什么，你应该在什么时候使用它？",
+    "options": [
+      "它防止过拟合",
+      "它在推理时禁用梯度追踪，在你不需要训练时节省内存和计算",
+      "它冻结所有模型权重",
+      "它启用 GPU 加速"
+    ],
     "correct": 1,
-    "explanation": "During inference, you don't need gradients. torch.no_grad() disables gradient tracking, which saves the memory that would be used to store the computational graph and speeds up computation.",
+    "explanation": "在推理时你不需要梯度。torch.no_grad() 禁用梯度追踪，从而节省本会用于存储计算图的内存并加快计算。",
     "stage": "pre"
   },
   {
-    "question": "What does nn.Linear(784, 256) create in PyTorch?",
-    "options": ["A ReLU activation layer", "A fully connected layer with a (256, 784) weight matrix and a (256,) bias vector", "A dropout layer with p=784/256", "A batch normalization layer"],
+    "question": "在 PyTorch 中 nn.Linear(784, 256) 创建了什么？",
+    "options": [
+      "一个 ReLU 激活层",
+      "一个全连接层，带有一个 (256, 784) 的权重矩阵和一个 (256,) 的偏置向量",
+      "一个 p=784/256 的 dropout 层",
+      "一个批归一化层"
+    ],
     "correct": 1,
-    "explanation": "nn.Linear(in_features, out_features) creates a layer that computes y = x @ W^T + b, with W of shape (256, 784) and b of shape (256,). This is the PyTorch equivalent of the Layer class you built from scratch.",
+    "explanation": "nn.Linear(in_features, out_features) 创建一个计算 y = x @ W^T + b 的层，其中 W 的形状为 (256, 784)，b 的形状为 (256,)。这是你从零构建的 Layer 类在 PyTorch 中的等价物。",
     "stage": "post"
   },
   {
-    "question": "Which PyTorch method computes gradients for all parameters in the computational graph?",
-    "options": ["optimizer.step()", "model.forward()", "loss.backward()", "optimizer.zero_grad()"],
+    "question": "哪个 PyTorch 方法为计算图中的所有参数计算梯度？",
+    "options": [
+      "optimizer.step()",
+      "model.forward()",
+      "loss.backward()",
+      "optimizer.zero_grad()"
+    ],
     "correct": 2,
-    "explanation": "loss.backward() traverses the computational graph in reverse, computing dL/dp for every parameter p that requires gradients. optimizer.step() then uses these gradients to update the parameters.",
+    "explanation": "loss.backward() 反向遍历计算图，为每个需要梯度的参数 p 计算 dL/dp。随后 optimizer.step() 使用这些梯度来更新参数。",
     "stage": "post"
   },
   {
-    "question": "Why is PyTorch's training loop significantly faster than the pure-Python mini framework?",
-    "options": ["PyTorch uses a different algorithm", "PyTorch runs operations as optimized C++/CUDA kernels on GPU, while pure Python loops are interpreted one operation at a time", "PyTorch uses smaller data types", "PyTorch skips the backward pass"],
+    "question": "为什么 PyTorch 的训练循环比纯 Python 的迷你框架快得多？",
+    "options": [
+      "PyTorch 使用了不同的算法",
+      "PyTorch 把运算作为优化过的 C++/CUDA 内核在 GPU 上运行，而纯 Python 循环是逐个运算被解释执行的",
+      "PyTorch 使用更小的数据类型",
+      "PyTorch 跳过了反向传播"
+    ],
     "correct": 1,
-    "explanation": "PyTorch delegates matrix operations to highly optimized C++ and CUDA kernels that run on GPU with massive parallelism. Pure Python executes loops sequentially with interpreter overhead on each operation.",
+    "explanation": "PyTorch 把矩阵运算交给高度优化的 C++ 和 CUDA 内核，它们在 GPU 上以大规模并行运行。纯 Python 则顺序执行循环，每个运算都带有解释器开销。",
     "stage": "post"
   }
 ]

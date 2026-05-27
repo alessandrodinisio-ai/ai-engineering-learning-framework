@@ -1,90 +1,90 @@
 {
   "lesson": "28-orchestration-patterns",
-  "title": "Orchestration Patterns: Supervisor, Swarm, Hierarchical",
+  "title": "编排模式：Supervisor、Swarm、Hierarchical",
   "questions": [
     {
       "stage": "pre",
-      "question": "Which four orchestration patterns does the lesson list?",
+      "question": "本课列出哪四种编排模式？",
       "options": [
-        "Supervisor-worker, swarm/peer-to-peer, hierarchical, debate",
-        "Sequential, parallel, distributed, federated",
-        "Plan, act, reflect, refine",
-        "Push, pull, batch, stream"
+        "Supervisor-worker、swarm/点对点、hierarchical、debate",
+        "Sequential、parallel、distributed、federated",
+        "Plan、act、reflect、refine",
+        "Push、pull、batch、stream"
       ],
       "correct": 0,
-      "explanation": "Supervisor-worker, swarm, hierarchical, and debate recur across 2026 frameworks."
+      "explanation": "Supervisor-worker、swarm、hierarchical 和 debate 在 2026 年的各框架中反复出现。"
     },
     {
       "stage": "pre",
-      "question": "What is the 2026 LangChain recommendation regarding supervision?",
+      "question": "关于监督，2026 年 LangChain 的建议是什么？",
       "options": [
-        "Always use create_supervisor",
-        "Prefer direct tool calls over create_supervisor for finer context-engineering control",
-        "Avoid supervision entirely",
-        "Run supervisors on GPUs"
+        "总是用 create_supervisor",
+        "为了更精细的上下文工程控制，优先使用直接工具调用而非 create_supervisor",
+        "完全避免监督",
+        "在 GPU 上运行监督者"
       ],
       "correct": 1,
-      "explanation": "Tool-call-based supervision gives you precise control over what each specialist sees."
+      "explanation": "基于工具调用的监督让你精确控制每个专家看到什么。"
     },
     {
       "stage": "check",
-      "question": "What distinguishes a swarm from a supervisor-worker topology?",
+      "question": "swarm 与 supervisor-worker 拓扑的区别在哪里？",
       "options": [
-        "Swarm uses GPUs",
-        "Swarm has no central router; agents hand off directly via a shared tool surface",
-        "Swarm is single-agent",
-        "Swarm runs on cron only"
+        "swarm 使用 GPU",
+        "swarm 没有中央路由器；agent 通过一个共享工具面直接转交",
+        "swarm 是单 agent",
+        "swarm 只在 cron 上运行"
       ],
       "correct": 1,
-      "explanation": "Swarm is peer-to-peer; supervisor centralizes routing through one LLM."
+      "explanation": "swarm 是点对点的；supervisor 通过一个 LLM 集中路由。"
     },
     {
       "stage": "check",
-      "question": "When is hierarchical orchestration justified?",
+      "question": "层级式编排什么时候有正当理由？",
       "options": [
-        "Always; it scales for free",
-        "When a single supervisor's context budget cannot hold descriptions of all specialists",
-        "Only with GPUs",
-        "Never; it is an antipattern"
+        "总是；它免费扩展",
+        "当单个 supervisor 的上下文预算装不下所有专家的描述时",
+        "只在有 GPU 时",
+        "永不；它是反模式"
       ],
       "correct": 1,
-      "explanation": "Nested supervisors are for large specialist populations that exceed one supervisor's budget."
+      "explanation": "嵌套 supervisor 适用于超过单个 supervisor 预算的大型专家群体。"
     },
     {
       "stage": "check",
-      "question": "What is the recommended decision order Anthropic supports?",
+      "question": "Anthropic 支持的推荐决策顺序是什么？",
       "options": [
-        "Always start with hierarchical multi-agent",
-        "Start with a single agent plus workflow patterns; add topology only when needed; supervisor before swarm before hierarchical; debate when accuracy beats cost",
-        "Start with debate",
-        "Start with swarm and contract toward single"
+        "总是从层级式多 agent 开始",
+        "从单 agent 加工作流模式开始；只在需要时增加拓扑；supervisor 先于 swarm 先于 hierarchical；当准确率胜过成本时再用 debate",
+        "从 debate 开始",
+        "从 swarm 开始向单 agent 收缩"
       ],
       "correct": 1,
-      "explanation": "Anthropic's guidance is to build the right system for your needs, not the most sophisticated."
+      "explanation": "Anthropic 的指引是构建满足你需求的系统，而非最复杂的系统。"
     },
     {
       "stage": "post",
-      "question": "What is fake hierarchy in this lesson?",
+      "question": "本课中的假层级（fake hierarchy）是什么？",
       "options": [
-        "Mislabelled YAML",
-        "Three layers of supervisors because 'enterprise' when there are only two actual teams; collapse it",
-        "An orchestrator written in TypeScript",
-        "A test fixture"
+        "标错的 YAML",
+        "因为「企业级」而设三层 supervisor，实际只有两个真实团队；把它压扁",
+        "用 TypeScript 写的编排器",
+        "一个测试夹具"
       ],
       "correct": 1,
-      "explanation": "Layers that do not correspond to real teams add operational complexity without payoff."
+      "explanation": "不对应真实团队的层级只会增加运维复杂度而无回报。"
     },
     {
       "stage": "post",
-      "question": "How do you mitigate bouncing handoffs in a swarm (A -> B -> A -> B)?",
+      "question": "如何缓解 swarm 中的反复转交（A -> B -> A -> B）？",
       "options": [
-        "Pin the temperature to 0",
-        "Add a hop counter and refuse after N transfers",
-        "Disable tracing",
-        "Lower the rate limit"
+        "把温度固定到 0",
+        "加一个跳数计数器，在 N 次转交后拒绝",
+        "禁用 tracing",
+        "降低限流"
       ],
       "correct": 1,
-      "explanation": "A hop counter caps swarm cycles before they loop indefinitely."
+      "explanation": "跳数计数器在 swarm 循环无限往复之前对其设上限。"
     }
   ]
 }

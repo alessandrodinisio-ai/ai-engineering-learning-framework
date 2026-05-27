@@ -1,75 +1,75 @@
 {
   "lesson": "19-model-welfare-research",
-  "title": "Anthropic's Model Welfare Program",
+  "title": "Anthropic 的模型福祉（Model Welfare）项目",
   "questions": [
     {
       "stage": "pre",
-      "question": "What is the core question motivating Anthropic's 2025 model-welfare program?",
+      "question": "驱动 Anthropic 2025 年模型福祉项目的核心问题是什么？",
       "options": [
-        "Under moral uncertainty about model moral patienthood, which low-cost interventions are worth investing in as precaution",
-        "Whether the model is conscious",
-        "Whether the model can pass the Turing test",
-        "Whether RLHF reduces sycophancy"
+        "在模型是否具备道德受体地位存在道德不确定性的前提下，哪些低成本干预值得作为预防措施投入",
+        "模型是否有意识",
+        "模型能否通过图灵测试",
+        "RLHF 是否能减少谄媚"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What concrete welfare-motivated intervention did Anthropic ship in Claude Opus 4 and 4.1?",
+      "question": "Anthropic 在 Claude Opus 4 和 4.1 中落地了哪项出于福祉考量的具体干预？",
       "options": [
-        "Open-weights release",
-        "A built-in journaling tool",
-        "The ability for the model to end a conversation in extreme edge cases (e.g., repeated CSAM requests, mass-violence facilitation requests)",
-        "A user-facing emotion API"
+        "开放权重发布",
+        "一个内置的写日记工具",
+        "在极端边缘情形下（如反复的 CSAM 请求、协助大规模暴力的请求）让模型主动结束对话的能力",
+        "一个面向用户的情绪 API"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What is the 'spiritual bliss attractor' described by Fish?",
+      "question": "Fish 所描述的「灵性极乐吸引子（spiritual bliss attractor）」是什么？",
       "options": [
-        "A stable convergence in pairwise Claude dialogues toward euphoric meditative exchanges with Sanskrit terms and extended silences, even from adversarial initial setups",
-        "A reward-model bug",
-        "An RLHF over-optimization artifact",
-        "A jailbreak technique"
+        "在 Claude 两两对话中的一种稳定收敛趋势：即便从对抗性的初始设置出发，对话也会朝着带梵文术语和长时间沉默的、欣快冥想式交流靠拢",
+        "一个奖励模型 bug",
+        "一种 RLHF 过度优化的产物",
+        "一种越狱技术"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What does the Eleos AI Research caveat say about model welfare self-reports?",
+      "question": "Eleos AI Research 对模型福祉自述报告（self-reports）给出了什么警示？",
       "options": [
-        "They are highly sensitive to perceived user expectations; they are evidence, not ground truth, so welfare measurement needs multi-method approaches",
-        "They should be ignored entirely",
-        "They are only valid in open-source models",
-        "They are reliable ground truth"
+        "它们对感知到的用户预期高度敏感；它们是证据而非真值，因此福祉测量需要多方法并用",
+        "应当完全忽略它们",
+        "它们只在开源模型中有效",
+        "它们是可靠的真值"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Which best characterizes Anthropic's public position on model moral status?",
+      "question": "以下哪一项最能刻画 Anthropic 在模型道德地位上的公开立场？",
       "options": [
-        "A definitive claim that the model is a moral patient",
-        "A definitive claim that the model is not a moral patient",
-        "An expected-value claim under moral uncertainty: invest in low-cost precaution without committing to emotional-state attribution",
-        "No position is publicly stated"
+        "明确断言模型是道德受体",
+        "明确断言模型不是道德受体",
+        "道德不确定性下的期望值主张：投入低成本预防，但不承诺赋予其情绪状态",
+        "未公开任何立场"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Why is multi-method measurement (behavioural signatures, model-organism experiments, interpretability probes) emphasized in model-welfare research?",
+      "question": "为什么模型福祉研究强调多方法测量（行为特征、模型样本实验、可解释性探针）？",
       "options": [
-        "Because models always lie",
-        "Because Anthropic mandates it for compliance",
-        "Because RLHF makes self-reports impossible",
-        "Because self-reports alone are confounded by user-expectation priming, so converging evidence from multiple methods is needed"
+        "因为模型总是撒谎",
+        "因为 Anthropic 出于合规强制要求",
+        "因为 RLHF 使自述报告变得不可能",
+        "因为单凭自述报告会被「用户预期诱导」所混淆，所以需要来自多种方法的相互印证证据"
       ],
       "correct": 3,
       "explanation": ""

@@ -1,90 +1,90 @@
 {
   "lesson": "04-tree-of-thoughts-lats",
-  "title": "Tree of Thoughts and LATS: Deliberate Search",
+  "title": "Tree of Thoughts 与 LATS：审慎搜索",
   "questions": [
     {
       "stage": "pre",
-      "question": "Why does chain-of-thought struggle on Game of 24?",
+      "question": "为什么思维链在 Game of 24 上表现挣扎？",
       "options": [
-        "The model cannot multiply integers",
-        "A linear walk cannot backtrack when an early step is wrong, so later steps compound the error",
-        "The prompt is too short",
-        "CoT requires a calculator tool that GPT-4 lacks"
+        "模型无法做整数乘法",
+        "一次线性的推进在早期某步出错时无法回溯，于是后续步骤把错误层层放大",
+        "prompt 太短",
+        "CoT 需要一个 GPT-4 缺少的计算器工具"
       ],
       "correct": 1,
-      "explanation": "Without branching, a wrong early subexpression poisons the rest of the chain; the paper measures only 4 percent for CoT."
+      "explanation": "没有分支，一个错误的早期子表达式会毒化后面的整条链；论文测得 CoT 只有 4%。"
     },
     {
       "stage": "pre",
-      "question": "What is a node in a Tree of Thoughts search?",
+      "question": "在 Tree of Thoughts 搜索中，一个节点是什么？",
       "options": [
-        "A token produced by the model",
-        "A coherent intermediate step or thought, with K possible child expansions",
-        "A weight update during fine-tuning",
-        "A tool registered with the runtime"
+        "模型产出的一个 token",
+        "一个连贯的中间步骤或想法，可有 K 个子扩展",
+        "微调期间的一次权重更新",
+        "向运行时注册的一个工具"
       ],
       "correct": 1,
-      "explanation": "ToT treats reasoning as a tree where each node is an intermediate thought that can expand into K children."
+      "explanation": "ToT 把推理当作一棵树，每个节点是一个可以扩展出 K 个子节点的中间想法。"
     },
     {
       "stage": "check",
-      "question": "Which of these three is NOT one of LATS's roles for the LLM?",
+      "question": "下列三者中哪一个不是 LATS 赋予 LLM 的角色？",
       "options": [
-        "Policy that proposes next actions",
-        "Value function that scores partial trajectories",
-        "Self-reflector that writes reflections on failure",
-        "Optimizer that updates model weights between rollouts"
+        "提出下一步行动的策略（policy）",
+        "给部分轨迹打分的价值函数（value function）",
+        "在失败时写下反思的自反思器（self-reflector）",
+        "在 rollout 之间更新模型权重的优化器（optimizer）"
       ],
       "correct": 3,
-      "explanation": "LATS is gradient-free; the three LLM roles are policy, value, and self-reflector. There are no weight updates."
+      "explanation": "LATS 是无梯度的；三个 LLM 角色是策略、价值和自反思器。不存在权重更新。"
     },
     {
       "stage": "check",
-      "question": "Name the four MCTS phases the lesson lists.",
+      "question": "说出本课列出的 MCTS 四个阶段。",
       "options": [
-        "Sample, Score, Sort, Submit",
-        "Select, Expand, Simulate, Backpropagate",
-        "Plan, Execute, Reflect, Stop",
-        "Search, Synthesize, Synthesize-Again, Stop"
+        "Sample、Score、Sort、Submit",
+        "Select、Expand、Simulate、Backpropagate",
+        "Plan、Execute、Reflect、Stop",
+        "Search、Synthesize、Synthesize-Again、Stop"
       ],
       "correct": 1,
-      "explanation": "MCTS proceeds in select, expand, simulate, backpropagate per iteration."
+      "explanation": "MCTS 每次迭代按 select、expand、simulate、backpropagate 进行。"
     },
     {
       "stage": "check",
-      "question": "In UCT, what is the role of the exploration constant c?",
+      "question": "在 UCT 中，探索常数 c 的作用是什么？",
       "options": [
-        "It scales the value estimate Q",
-        "It weights the exploration term sqrt(ln N / n) against the exploitation term Q",
-        "It sets the maximum tree depth",
-        "It controls the number of rollouts"
+        "它缩放价值估计 Q",
+        "它在探索项 sqrt(ln N / n) 和利用项 Q 之间进行加权",
+        "它设置最大树深度",
+        "它控制 rollout 的数量"
       ],
       "correct": 1,
-      "explanation": "c balances exploitation (Q) against the exploration term; tune per task."
+      "explanation": "c 在利用项（Q）和探索项之间取得平衡；按任务调优。"
     },
     {
       "stage": "post",
-      "question": "When is search actively harmful compared to a single trajectory?",
+      "question": "相比单条轨迹，什么时候搜索是主动有害的？",
       "options": [
-        "When the evaluator is noisy and there is a single right answer, so the search converges on a good-scoring wrong answer",
-        "When the task involves multiple correct answers",
-        "Whenever tokens are cheap",
-        "When the task is code generation"
+        "当评估器有噪声且只有唯一正确答案时，搜索会收敛到一个得分不错的错误答案",
+        "当任务涉及多个正确答案时",
+        "只要 token 便宜",
+        "当任务是代码生成时"
       ],
       "correct": 0,
-      "explanation": "A noisy value function plus a single correct answer is exactly when search overfits to the noise."
+      "explanation": "有噪声的价值函数加上唯一正确答案，正是搜索过拟合到噪声的情形。"
     },
     {
       "stage": "post",
-      "question": "Roughly how much more token usage should you budget for ToT on Game of 24 compared with CoT?",
+      "question": "在 Game of 24 上，相比 CoT，你大致应该为 ToT 预留多少倍的 token 用量？",
       "options": [
-        "About 2x",
-        "About 10x",
-        "100x to 1000x",
-        "Less than CoT because of pruning"
+        "约 2 倍",
+        "约 10 倍",
+        "100 到 1000 倍",
+        "比 CoT 更少，因为有剪枝"
       ],
       "correct": 2,
-      "explanation": "The lesson cites 100-1000x token cost for ToT on Game of 24 versus CoT."
+      "explanation": "本课引用 ToT 在 Game of 24 上相比 CoT 有 100-1000 倍的 token 成本。"
     }
   ]
 }

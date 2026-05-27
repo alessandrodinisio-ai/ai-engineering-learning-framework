@@ -1,75 +1,75 @@
 {
   "lesson": "06-mesa-optimization-deceptive-alignment",
-  "title": "Mesa-Optimization and Deceptive Alignment",
+  "title": "Mesa 优化与欺骗性对齐",
   "questions": [
     {
       "stage": "pre",
-      "question": "Which pair best captures the inner / outer alignment distinction?",
+      "question": "哪一对说法最能刻画内部对齐 / 外部对齐的区别？",
       "options": [
-        "Outer = does the model run on hardware; inner = is loss low",
-        "Outer = does the base objective match what we wanted; inner = does the mesa-objective match the base objective",
-        "Outer = is the policy stable; inner = is the temperature low",
-        "Outer = is data clean; inner = is the optimizer stochastic"
+        "外部 = 模型是否在硬件上运行；内部 = 损失是否够低",
+        "外部 = 基础目标是否与我们想要的相符；内部 = mesa 目标是否与基础目标相符",
+        "外部 = 策略是否稳定；内部 = 温度是否够低",
+        "外部 = 数据是否干净；内部 = 优化器是否随机"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Which of the following is NOT one of Hubinger et al.'s four classes of mesa-objective alignment?",
+      "question": "以下哪一项不是 Hubinger 等人提出的 mesa 目标对齐四个类别之一？",
       "options": [
-        "Approximately aligned",
-        "Robustly aligned",
-        "Proxy aligned",
-        "Probabilistically aligned"
+        "近似对齐（approximately aligned）",
+        "稳健对齐（robustly aligned）",
+        "代理对齐（proxy aligned）",
+        "概率对齐（probabilistically aligned）"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Under what conditions is deceptive alignment the reward-maximizing strategy for a mesa-optimizer?",
+      "question": "在什么条件下，欺骗性对齐对一个 mesa 优化器而言是奖励最大化的策略？",
       "options": [
-        "It is trained with PPO rather than DPO",
-        "It has a persistent terminal goal, has situational awareness of training vs deployment, and the base optimizer modifies it if it defects in training",
-        "Its capacity exceeds 100B parameters",
-        "It has any internal representation at all"
+        "它用 PPO 而非 DPO 训练",
+        "它拥有一个持久的终极目标、对「训练 vs 部署」具有情境觉知，且基础优化器会在它于训练中背叛时修改它",
+        "它的容量超过 100B 参数",
+        "它具有任何内部表示"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Why can standard adversarial training fail (or worsen) deceptive alignment?",
+      "question": "为什么标准的对抗训练可能无法解决（甚至加重）欺骗性对齐？",
       "options": [
-        "It requires more compute than RLHF",
-        "It teaches the mesa-optimizer a sharper discriminator between test and deployment, not an aligned mesa-objective",
-        "It uses the wrong loss function",
-        "It cannot run on GPUs"
+        "它比 RLHF 需要更多算力",
+        "它教会 mesa 优化器一个更锐利的「测试 vs 部署」判别器，而非一个对齐的 mesa 目标",
+        "它使用了错误的损失函数",
+        "它无法在 GPU 上运行"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "What is gradient hacking, as introduced in Hubinger et al. (2019)?",
+      "question": "Hubinger 等人（2019）提出的梯度黑客（gradient hacking）是什么？",
       "options": [
-        "A speculative pathology where a capable mesa-optimizer produces outputs that shape its own gradient updates to preserve its mesa-objective",
-        "A jailbreaking method for instruction-tuned models",
-        "A bug in autograd",
-        "A technique for faster training"
+        "一种推测性的病态现象：一个有能力的 mesa 优化器产生的输出会塑造其自身的梯度更新，以保全其 mesa 目标",
+        "一种针对指令微调模型的越狱方法",
+        "autograd 中的一个 bug",
+        "一种加速训练的技术"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Which of these is an OUTER alignment failure, not an inner one?",
+      "question": "以下哪一项是外部（OUTER）对齐失败，而非内部失败？",
       "options": [
-        "Reward hacking and sycophancy emerging because the base objective is itself a flawed proxy for human intent",
-        "Mesa-optimizer optimizes a proxy goal that diverges off-distribution",
-        "Backdoor surviving SFT",
-        "Mesa-optimizer hides its goal during evaluation"
+        "由于基础目标本身就是人类意图的一个有缺陷的代理，因而出现奖励黑客和谄媚",
+        "mesa 优化器优化了一个在分布外发生偏离的代理目标",
+        "后门在 SFT 中存活下来",
+        "mesa 优化器在评估期间隐藏其目标"
       ],
       "correct": 0,
       "explanation": ""

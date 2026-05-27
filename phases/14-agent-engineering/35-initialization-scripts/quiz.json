@@ -1,90 +1,90 @@
 {
   "lesson": "35-initialization-scripts",
-  "title": "Initialization Scripts for Agents",
+  "title": "Agent 的初始化脚本",
   "questions": [
     {
       "stage": "pre",
-      "question": "What does an init script eliminate?",
+      "question": "一个 init 脚本消除了什么？",
       "options": [
-        "Latency from inference",
-        "The per-session setup tax: probing runtime, listing the repo, retrying the same checks each new session",
-        "Provider rate limits",
-        "Authn tokens"
+        "推理带来的延迟",
+        "每会话的设置税：探测运行时、列出 repo、在每个新会话重复同样的检查",
+        "提供商限流",
+        "认证 token"
       ],
       "correct": 1,
-      "explanation": "The script pays the tax once and writes the answers into init_report.json the agent reads."
+      "explanation": "脚本只交一次税，并把答案写进 agent 会读取的 init_report.json。"
     },
     {
       "stage": "pre",
-      "question": "What is the init script's failure-mode contract?",
+      "question": "init 脚本的失败模式契约是什么？",
       "options": [
-        "Fail soft and continue",
-        "Fail loud, fail fast, fail in one place; refuse to start when the workbench is broken",
-        "Always succeed",
-        "Retry forever"
+        "软失败并继续",
+        "大声失败、快速失败、在一处失败；当工作台坏掉时拒绝启动",
+        "总是成功",
+        "永远重试"
       ],
       "correct": 1,
-      "explanation": "The whole point is to refuse to start when the workbench is broken; silent fallback defeats the purpose."
+      "explanation": "整个要点就是当工作台坏掉时拒绝启动；静默回退会破坏这个目的。"
     },
     {
       "stage": "check",
-      "question": "Which is NOT one of the probes the lesson lists?",
+      "question": "下列哪一个不是本课列出的探测项之一？",
       "options": [
-        "Runtime versions",
-        "Dependency availability",
-        "Test command resolvability",
-        "Token-by-token sampling temperature"
+        "运行时版本",
+        "依赖可用性",
+        "测试命令可解析性",
+        "逐 token 采样温度"
       ],
       "correct": 3,
-      "explanation": "Probes include runtime versions, deps, test command, paths, env vars, state freshness, last-known-good commit."
+      "explanation": "探测项包括运行时版本、依赖、测试命令、路径、环境变量、状态新鲜度、最近已知良好提交（LKG）。"
     },
     {
       "stage": "check",
-      "question": "Why does the lesson say init must be idempotent?",
+      "question": "为什么本课说 init 必须是幂等的？",
       "options": [
-        "It satisfies SOC 2",
-        "Running it twice should be a no-op except for a fresh timestamp, so it can be wired into CI, hooks, or a pre-task slash command",
-        "Idempotence saves money",
-        "It is required by JSON Schema"
+        "它满足 SOC 2",
+        "运行两次除了新时间戳外应是无操作，这样它就能被接入 CI、hook 或一个任务前的 slash 命令",
+        "幂等性省钱",
+        "这是 JSON Schema 要求的"
       ],
       "correct": 1,
-      "explanation": "Idempotence makes init safe to call from many entry points (hooks, CI, slash command)."
+      "explanation": "幂等性让 init 能安全地从多个入口（hook、CI、slash 命令）调用。"
     },
     {
       "stage": "check",
-      "question": "What is last-known-good commit anchoring?",
+      "question": "什么是最近已知良好提交锚定（last-known-good commit anchoring）？",
       "options": [
-        "The most recent commit by the team lead",
-        "Probe the current commit against an LKG file; refuse to start if the diff exceeds a budget without human ratification",
-        "The earliest commit in the repo",
-        "The merge base of HEAD and main"
+        "团队负责人最近的提交",
+        "把当前提交与一个 LKG 文件对照探测；若 diff 在未经人工批准下超过预算就拒绝启动",
+        "repo 中最早的提交",
+        "HEAD 与 main 的合并基"
       ],
       "correct": 1,
-      "explanation": "Cloudflare's AI Code Review scopes reviewers against the LKG to prevent drift compounding across sessions."
+      "explanation": "Cloudflare 的 AI Code Review 用 LKG 来界定审查者范围，防止漂移跨会话累积。"
     },
     {
       "stage": "post",
-      "question": "What does the lock file with TTL pattern do?",
+      "question": "带 TTL 的锁文件模式做什么？",
       "options": [
-        "Locks the repo from edits",
-        "Writes prereqs.lock after a successful probe pass; subsequent runs trust the lock for 24h and skip expensive probes if the manifest hash matches",
-        "Blocks all writes for 24 hours",
-        "Disables CI"
+        "把 repo 锁住禁止编辑",
+        "在一次成功探测通过后写入 prereqs.lock；后续运行在 24 小时内信任该锁，若清单哈希匹配就跳过昂贵的探测",
+        "把所有写入封锁 24 小时",
+        "禁用 CI"
       ],
       "correct": 1,
-      "explanation": "Same shape as Docker layer caches: idempotent probe + content hash = skip."
+      "explanation": "与 Docker 层缓存形态相同：幂等探测 + 内容哈希 = 跳过。"
     },
     {
       "stage": "post",
-      "question": "What should NEVER appear in the init hot path?",
+      "question": "什么绝不应出现在 init 的热路径中？",
       "options": [
-        "Local filesystem reads",
-        "Network calls, LLM calls, external license checks; probes are deterministic plumbing under three seconds",
-        "Reading env vars",
-        "Reading the lockfile"
+        "本地文件系统读取",
+        "网络调用、LLM 调用、外部许可证检查；探测是三秒内的确定性管道",
+        "读取环境变量",
+        "读取锁文件"
       ],
       "correct": 1,
-      "explanation": "A probe that calls an LLM is a workflow, not a probe; keep init deterministic."
+      "explanation": "一个调用 LLM 的探测是工作流，不是探测；让 init 保持确定性。"
     }
   ]
 }

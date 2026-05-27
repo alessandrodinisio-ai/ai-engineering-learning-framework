@@ -1,75 +1,75 @@
 {
   "lesson": "14-prompt-semantic-caching",
-  "title": "Prompt Caching and Semantic Caching Economics",
+  "title": "prompt 缓存与语义缓存经济学",
   "questions": [
     {
       "stage": "pre",
-      "question": "What is the difference between L1 semantic caching and L2 prompt/prefix caching?",
+      "question": "L1 语义缓存与 L2 prompt/前缀缓存有什么区别？",
       "options": [
-        "L1 skips the LLM entirely on embedding similarity hits; L2 reuses attention KV at the provider for repeated prefixes",
-        "L1 is provider-side and L2 is client-side",
-        "L2 stores embeddings; L1 stores attention KV",
-        "L1 and L2 are the same"
+        "L1 在嵌入相似度命中时完全跳过 LLM；L2 在供应商侧为重复前缀复用 attention KV",
+        "L1 在供应商侧，L2 在客户端侧",
+        "L2 存储嵌入，L1 存储 attention KV",
+        "L1 和 L2 是一回事"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Which Anthropic mechanism marks blocks as cacheable for L2 prompt caching?",
+      "question": "Anthropic 用哪种机制把内容块标记为可缓存以供 L2 prompt 缓存使用？",
       "options": [
-        "Explicit cache_control attribute on the request blocks",
-        "A separate /caches endpoint",
-        "Filename suffixes in tool definitions",
-        "An implicit prompt-length threshold"
+        "在请求的内容块上显式设置 cache_control 属性",
+        "一个单独的 /caches 端点",
+        "工具定义中的文件名后缀",
+        "一个隐式的 prompt 长度阈值"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "How does the parallelization anti-pattern inflate the bill?",
+      "question": "并行化反模式是如何抬高账单的？",
       "options": [
-        "Parallel requests bypass batching",
-        "Parallelization triggers a per-request guardrail charge",
-        "All parallel requests share one cache entry automatically",
-        "N parallel requests with the same prefix arrive before the first cache write completes, so each pays a write premium and gets zero discount"
+        "并行请求绕过了批处理",
+        "并行化触发了一笔按请求计的护栏（guardrail）费用",
+        "所有并行请求会自动共享同一个缓存条目",
+        "N 个具有相同前缀的并行请求在第一次缓存写入完成之前就到达，于是每个都付了写入溢价却得不到任何折扣"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What is the dynamic-content anti-pattern in cacheable prefixes?",
+      "question": "可缓存前缀中的动态内容反模式是什么？",
       "options": [
-        "Putting tool schemas in the prefix",
-        "Always streaming responses",
-        "Including content that changes every request (current time to the minute, request ID, randomized example order) inside the cacheable prefix, killing hit rate",
-        "Using too short a system prompt"
+        "把工具 schema 放进前缀里",
+        "总是流式返回响应",
+        "在可缓存前缀里包含每个请求都会变化的内容（精确到分钟的当前时间、请求 ID、随机化的示例顺序），从而扼杀命中率",
+        "使用过短的系统提示"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "How can batch + cached input stack overnight to cut cost?",
+      "question": "batch + 缓存输入如何在夜间叠加以削减成本？",
       "options": [
-        "Batch only saves output cost",
-        "Batch APIs give 50% off; cached input adds another ~10x; combined, overnight pipelines drop to ~10% of synchronous-uncached cost",
-        "Batch is incompatible with caching",
-        "Caching disables batch eligibility"
+        "batch 只节省输出成本",
+        "batch API 给 50% 折扣；缓存输入再叠加约 10 倍优势；两者结合，夜间流水线可降至同步无缓存成本的约 10%",
+        "batch 与缓存不兼容",
+        "缓存会让请求失去 batch 资格"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "What does the lesson say about semantic cache \"95% accuracy\" claims?",
+      "question": "对于语义缓存「95% 准确率」的宣称，本课怎么说？",
       "options": [
-        "95% is the OpenAI default cache hit rate",
-        "95% refers to match correctness, not hit rate; reported production hit rates range from ~10% (open chat) up to ~70% (structured FAQ)",
-        "95% is a vendor-documented hit-rate baseline",
-        "95% means you should expect 95% cache hits"
+        "95% 是 OpenAI 的默认缓存命中率",
+        "95% 指的是匹配正确率，而非命中率；据报告，生产环境命中率从约 10%（开放对话）到约 70%（结构化 FAQ）不等",
+        "95% 是厂商文档记录的命中率基线",
+        "95% 意味着你应当预期 95% 的缓存命中"
       ],
       "correct": 1,
       "explanation": ""

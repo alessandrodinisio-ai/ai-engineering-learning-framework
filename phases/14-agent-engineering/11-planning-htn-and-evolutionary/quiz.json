@@ -1,90 +1,90 @@
 {
   "lesson": "11-planning-htn-and-evolutionary",
-  "title": "Planning with HTN and Evolutionary Search",
+  "title": "用 HTN 与进化搜索做规划",
   "questions": [
     {
       "stage": "pre",
-      "question": "What does an HTN add over a free-form LLM plan?",
+      "question": "相比自由形式的 LLM 计划，HTN 多提供了什么？",
       "options": [
-        "Provable correctness when operator preconditions and effects are enforced",
-        "Cheaper inference",
-        "Shorter prompts",
-        "Better embeddings"
+        "在强制执行算子的前置条件和效果时具备可证明的正确性",
+        "更便宜的推理",
+        "更短的 prompt",
+        "更好的 embedding"
       ],
       "correct": 0,
-      "explanation": "HTN's symbolic operators with preconditions and effects guarantee soundness by construction."
+      "explanation": "HTN 带前置条件和效果的符号算子，从构造上保证了可靠性（soundness）。"
     },
     {
       "stage": "pre",
-      "question": "Which problem class is AlphaEvolve built for?",
+      "question": "AlphaEvolve 是为哪类问题构建的？",
       "options": [
-        "Free-form prose generation",
-        "Optimizations with a machine-checkable, deterministic fitness function",
-        "Multi-turn chat memory",
-        "Vector search ranking"
+        "自由形式的散文生成",
+        "拥有机器可校验、确定性适应度函数的优化问题",
+        "多轮聊天记忆",
+        "向量搜索排序"
       ],
       "correct": 1,
-      "explanation": "Evolutionary search needs a deterministic evaluator; AlphaEvolve targets domains where one exists."
+      "explanation": "进化搜索需要一个确定性的评估器；AlphaEvolve 针对存在这种评估器的领域。"
     },
     {
       "stage": "check",
-      "question": "How does ChatHTN preserve plan soundness while using an LLM?",
+      "question": "ChatHTN 在使用 LLM 的同时如何保持计划可靠性？",
       "options": [
-        "It does not; soundness is best-effort",
-        "LLM suggestions only enter as candidate decompositions, validated against the operator schema; the symbolic layer owns correctness",
-        "It fine-tunes the LLM on HTN traces",
-        "It uses a vector database"
+        "它做不到；可靠性只是尽力而为",
+        "LLM 的建议只作为候选分解进入，并对照算子 schema 校验；符号层掌管正确性",
+        "它在 HTN 轨迹上微调 LLM",
+        "它使用一个向量数据库"
       ],
       "correct": 1,
-      "explanation": "The LLM expands the method library but cannot bypass operator preconditions and effects."
+      "explanation": "LLM 扩展了方法库，但无法绕过算子的前置条件和效果。"
     },
     {
       "stage": "check",
-      "question": "Which AlphaEvolve result does the lesson cite?",
+      "question": "本课引用了 AlphaEvolve 的哪个结果？",
       "options": [
-        "First improvement over Strassen for 4x4 complex matrix multiplication in 56 years",
-        "10x speedup of inference on Gemini",
-        "Beating GPT-4 on HumanEval",
-        "First proof of P=NP"
+        "56 年来首次对 4x4 复数矩阵乘法超越 Strassen",
+        "Gemini 推理加速 10 倍",
+        "在 HumanEval 上击败 GPT-4",
+        "首次证明 P=NP"
       ],
       "correct": 0,
-      "explanation": "AlphaEvolve found 48 scalar multiplications for 4x4 complex matmul, the first improvement on Strassen in 56 years."
+      "explanation": "AlphaEvolve 为 4x4 复数矩阵乘法找到了 48 次标量乘法，这是 56 年来对 Strassen 的首次改进。"
     },
     {
       "stage": "check",
-      "question": "Which element of an HTN is a primitive directly-executable action with preconditions and effects?",
+      "question": "HTN 中哪个元素是带前置条件和效果的、可直接执行的原始动作？",
       "options": [
-        "Task",
-        "Method",
-        "Operator",
-        "State"
+        "任务（Task）",
+        "方法（Method）",
+        "算子（Operator）",
+        "状态（State）"
       ],
       "correct": 2,
-      "explanation": "Operators are the primitives; methods decompose compound tasks; state is a set of facts."
+      "explanation": "算子是原语；方法分解复合任务；状态是一组事实。"
     },
     {
       "stage": "post",
-      "question": "What is the lesson's warning about AlphaEvolve without a real evaluator?",
+      "question": "本课对「没有真正评估器的 AlphaEvolve」给出了什么警告？",
       "options": [
-        "It is slow",
-        "Asking an LLM whether the code is better is not a fitness function; the evaluator must be deterministic and fast",
-        "It violates Apache 2.0",
-        "It cannot run on GPUs"
+        "它很慢",
+        "问 LLM 代码是否更好并不是一个适应度函数；评估器必须是确定性且快速的",
+        "它违反 Apache 2.0",
+        "它无法在 GPU 上运行"
       ],
       "correct": 1,
-      "explanation": "Without a deterministic evaluator the search has no signal to converge on."
+      "explanation": "没有确定性评估器，搜索就没有信号去收敛。"
     },
     {
       "stage": "post",
-      "question": "When should you reach for ReAct or ReWOO instead of HTN or AlphaEvolve?",
+      "question": "什么时候你应该选用 ReAct 或 ReWOO 而非 HTN 或 AlphaEvolve？",
       "options": [
-        "Never; HTN is strictly better",
-        "When you do not need formal soundness or a machine-checkable fitness; most agent tasks land here",
-        "When you have a GPU cluster available",
-        "When latency is below 100 ms"
+        "永不；HTN 严格更好",
+        "当你不需要形式可靠性或机器可校验的适应度时；大多数 agent 任务都落在这里",
+        "当你有可用的 GPU 集群时",
+        "当延迟低于 100 毫秒时"
       ],
       "correct": 1,
-      "explanation": "The lesson explicitly warns against over-engineering: most tasks do not need formal planning or evolutionary search."
+      "explanation": "本课明确警告不要过度工程化：大多数任务不需要形式规划或进化搜索。"
     }
   ]
 }

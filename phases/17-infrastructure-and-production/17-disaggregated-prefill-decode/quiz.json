@@ -1,75 +1,75 @@
 {
   "lesson": "17-disaggregated-prefill-decode",
-  "title": "Disaggregated Prefill/Decode — NVIDIA Dynamo and llm-d",
+  "title": "prefill/decode 分离 —— NVIDIA Dynamo 与 llm-d",
   "questions": [
     {
       "stage": "pre",
-      "question": "Why do prefill and decode want different optimal GPU configurations?",
+      "question": "为什么 prefill 和 decode 想要不同的最优 GPU 配置？",
       "options": [
-        "Prefill must run on AMD and decode on NVIDIA",
-        "Prefill is compute-bound on matmul throughput; decode is memory-bound on HBM bandwidth, so colocating them wastes one resource",
-        "They use different model weights",
-        "Decode requires more network bandwidth"
+        "prefill 必须跑在 AMD 上，decode 必须跑在 NVIDIA 上",
+        "prefill 在矩阵乘吞吐上是计算受限的；decode 在 HBM 带宽上是内存受限的，因此把它们放在一起会浪费其中一种资源",
+        "它们使用不同的模型权重",
+        "decode 需要更多网络带宽"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What transport does NVIDIA Dynamo use to move KV cache between the prefill and decode pools?",
+      "question": "NVIDIA Dynamo 使用什么传输方式在 prefill 池与 decode 池之间搬运 KV 缓存？",
       "options": [
-        "Plain HTTP",
-        "gRPC bidi only",
-        "Shared filesystem on NFS",
-        "NIXL (RDMA/InfiniBand when available, TCP fallback)"
+        "纯 HTTP",
+        "仅 gRPC 双向流",
+        "NFS 上的共享文件系统",
+        "NIXL（可用时走 RDMA/InfiniBand，回退到 TCP）"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "When does disaggregation NOT pay off according to the lesson?",
+      "question": "按本课所述，什么情况下分离（disaggregation）不划算？",
       "options": [
-        "MoE workloads on Blackwell",
-        "Multi-tenant serving with shared system prompts",
-        "RAG with 8K+ prefixes",
-        "Prompts under 512 tokens and outputs under 200 tokens, where the KV transfer tax dominates the gain"
+        "Blackwell 上的 MoE 工作负载",
+        "带共享系统提示的多租户服务",
+        "带 8K+ 前缀的 RAG",
+        "prompt 不到 512 token、输出不到 200 token 时，KV 传输税会盖过收益"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What is the core architectural difference between Dynamo and llm-d?",
+      "question": "Dynamo 与 llm-d 的核心架构差异是什么？",
       "options": [
-        "Dynamo is open source; llm-d is closed",
-        "Dynamo runs on CPU; llm-d on GPU",
-        "Dynamo is a stack-above orchestrator over vLLM/SGLang/TRT-LLM; llm-d is Kubernetes-native with prefill/decode/router as independent Services",
-        "Dynamo requires AMD; llm-d requires NVIDIA"
+        "Dynamo 是开源的，llm-d 是闭源的",
+        "Dynamo 跑在 CPU 上，llm-d 跑在 GPU 上",
+        "Dynamo 是凌驾于 vLLM/SGLang/TRT-LLM 之上的编排器；llm-d 是 Kubernetes 原生的，把 prefill/decode/router 作为相互独立的 Service",
+        "Dynamo 要求 AMD，llm-d 要求 NVIDIA"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Which Dynamo components automatically tune the prefill:decode ratio for an SLO?",
+      "question": "Dynamo 的哪些组件会为达成某个 SLO 而自动调优 prefill:decode 比例？",
       "options": [
-        "Sidecar proxy and Envoy filter",
-        "Planner Profiler and SLA Planner",
+        "Sidecar 代理与 Envoy 过滤器",
+        "Planner Profiler 与 SLA Planner",
         "Cluster Autoscaler",
-        "Marlin kernels"
+        "Marlin 内核"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "How does disaggregation interact with cache-aware routing from Phase 17 · 11?",
+      "question": "分离与 Phase 17 · 11 的缓存感知路由如何相互配合？",
       "options": [
-        "Disaggregation disables KV cache reuse entirely",
-        "The cache-aware router can land a request on the decode pool already holding its prefix; on miss it flows prefill -> decode, so the two compound",
-        "They are mutually exclusive",
-        "Cache-aware routing is only for colocated serving"
+        "分离会完全禁用 KV 缓存复用",
+        "缓存感知路由器可以把请求落到已经持有其前缀的 decode 池上；未命中时则流经 prefill -> decode，因此两者相辅相成",
+        "它们是互斥的",
+        "缓存感知路由仅适用于同机部署（colocated）的服务"
       ],
       "correct": 1,
       "explanation": ""

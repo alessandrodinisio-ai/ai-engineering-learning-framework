@@ -1,34 +1,34 @@
 {
   "lesson": "14-model-context-protocol",
-  "title": "Model Context Protocol",
+  "title": "模型上下文协议（Model Context Protocol）",
   "questions": [
     {
       "stage": "post",
-      "question": "What three primitives does an MCP server expose?",
+      "question": "一个 MCP server 暴露哪三种原语（primitive）？",
       "options": [
-        "Functions, types, classes",
-        "Tools, resources, prompts",
-        "Endpoints, webhooks, queues",
-        "Agents, skills, workflows"
+        "函数、类型、类",
+        "工具（tools）、资源（resources）、prompts",
+        "端点、webhook、队列",
+        "agent、技能、工作流"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "What wire format does MCP use?",
+      "question": "MCP 使用什么传输格式（wire format）？",
       "options": [
-        "GraphQL over HTTP",
-        "gRPC with protobuf",
+        "基于 HTTP 的 GraphQL",
+        "使用 protobuf 的 gRPC",
         "JSON-RPC 2.0",
-        "REST with OpenAPI"
+        "带 OpenAPI 的 REST"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Which metadata field signals a tool mutates state and should require human approval?",
+      "question": "哪个元数据字段表示一个工具会改变状态、应当要求人工审批？",
       "options": [
         "readonly: false",
         "mutating: true",
@@ -40,24 +40,24 @@
     },
     {
       "stage": "post",
-      "question": "What is the 2025-06-18 transport that replaced the earlier SSE-only remote transport?",
+      "question": "2025-06-18 版中取代早先仅 SSE 远程传输的传输方式是什么？",
       "options": [
         "WebTransport",
         "Streamable HTTP",
-        "WebSocket-only",
-        "gRPC bidi"
+        "仅 WebSocket",
+        "gRPC 双向流"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "When should a tool be split into its own MCP server instead of staying inline?",
+      "question": "什么时候应该把一个工具拆分成它自己的 MCP server，而不是保持内联？",
       "options": [
-        "When it is called fewer than 10 times per day",
-        "When it is called from two or more hosts and is read-only/cacheable",
-        "When it returns more than 1KB of data",
-        "Never; MCP is only for local dev"
+        "当它每天被调用少于 10 次时",
+        "当它被两个或更多 host 调用，且是只读/可缓存时",
+        "当它返回超过 1KB 的数据时",
+        "永远不该；MCP 只用于本地开发"
       ],
       "correct": 1,
       "explanation": ""

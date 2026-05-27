@@ -1,37 +1,62 @@
 [
   {
-    "question": "What problem does momentum solve in gradient descent?",
-    "options": ["It reduces memory usage", "It dampens oscillation by accumulating past gradients, accelerating movement in consistent directions", "It eliminates the need for a learning rate", "It prevents overfitting"],
+    "question": "动量（momentum）在梯度下降中解决了什么问题？",
+    "options": [
+      "它减少内存占用",
+      "它通过累积过去的梯度来抑制振荡，并在一致的方向上加速移动",
+      "它消除了对学习率的需要",
+      "它防止过拟合"
+    ],
     "correct": 1,
-    "explanation": "In narrow valleys, gradients oscillate across the valley while making slow progress along it. Momentum accumulates past gradients: consistent directions amplify while oscillating directions cancel, giving smoother, faster convergence.",
+    "explanation": "在狭窄的山谷中，梯度会横跨山谷振荡，而沿山谷前进却很慢。动量累积过去的梯度：一致的方向被放大，而振荡的方向相互抵消，从而带来更平滑、更快的收敛。",
     "stage": "pre"
   },
   {
-    "question": "What is the key difference between Adam and AdamW?",
-    "options": ["AdamW uses a higher learning rate", "AdamW applies weight decay directly to weights instead of through the gradient, giving proper regularization", "AdamW doesn't use momentum", "AdamW only works with transformers"],
+    "question": "Adam 和 AdamW 之间的关键区别是什么？",
+    "options": [
+      "AdamW 使用更高的学习率",
+      "AdamW 把权重衰减直接施加到权重上，而不是通过梯度，从而实现正确的正则化",
+      "AdamW 不使用动量",
+      "AdamW 只对 transformer 有效"
+    ],
     "correct": 1,
-    "explanation": "In Adam + L2, the adaptive learning rate scales the regularization term differently per parameter. AdamW decouples weight decay from the gradient update, applying uniform shrinkage regardless of gradient statistics.",
+    "explanation": "在 Adam + L2 中，自适应学习率会对每个参数以不同方式缩放正则化项。AdamW 把权重衰减与梯度更新解耦，无论梯度统计量如何都施加统一的收缩。",
     "stage": "pre"
   },
   {
-    "question": "Why does Adam use bias correction in early training steps?",
-    "options": ["To prevent overfitting", "The moment estimates are initialized to zero, so early values are biased toward zero; correction compensates for this cold start", "To clip large gradients", "To speed up convergence"],
+    "question": "为什么 Adam 在训练早期使用偏差校正？",
+    "options": [
+      "为了防止过拟合",
+      "矩估计被初始化为零，因此早期的值偏向零；校正补偿了这种冷启动",
+      "为了裁剪大梯度",
+      "为了加快收敛"
+    ],
     "correct": 1,
-    "explanation": "At step 1 with beta1=0.9, m_1 = 0.1 * gradient (10x too small). Dividing by (1 - 0.9^1) = 0.1 corrects this to the actual gradient. The correction becomes negligible after ~50 steps.",
+    "explanation": "在 beta1=0.9 的第 1 步，m_1 = 0.1 * 梯度（小了 10 倍）。除以 (1 - 0.9^1) = 0.1 可将其校正为实际梯度。约 50 步后这种校正就可忽略不计。",
     "stage": "post"
   },
   {
-    "question": "What are the standard default hyperparameters for Adam?",
-    "options": ["lr=0.1, beta1=0.5, beta2=0.5", "lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8", "lr=0.01, beta1=0.99, beta2=0.99", "lr=0.0001, beta1=0.8, beta2=0.9"],
+    "question": "Adam 的标准默认超参数是什么？",
+    "options": [
+      "lr=0.1, beta1=0.5, beta2=0.5",
+      "lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8",
+      "lr=0.01, beta1=0.99, beta2=0.99",
+      "lr=0.0001, beta1=0.8, beta2=0.9"
+    ],
     "correct": 1,
-    "explanation": "The original Adam paper (Kingma & Ba, 2014) recommended lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8. These defaults work well for most problems.",
+    "explanation": "最初的 Adam 论文（Kingma & Ba, 2014）推荐 lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8。这些默认值对大多数问题都效果良好。",
     "stage": "post"
   },
   {
-    "question": "Which optimizer is the modern default for training transformers and LLMs?",
-    "options": ["Vanilla SGD", "SGD with momentum", "RMSProp", "AdamW"],
+    "question": "训练 transformer 和大语言模型时，哪个优化器是现代默认选择？",
+    "options": [
+      "普通 SGD",
+      "带动量的 SGD",
+      "RMSProp",
+      "AdamW"
+    ],
     "correct": 3,
-    "explanation": "AdamW (Adam with decoupled weight decay) is used to train BERT, GPT, LLaMA, and virtually all modern transformers. It combines adaptive learning rates with proper weight decay regularization.",
+    "explanation": "AdamW（带解耦权重衰减的 Adam）被用于训练 BERT、GPT、LLaMA 以及几乎所有现代 transformer。它把自适应学习率与正确的权重衰减正则化结合在一起。",
     "stage": "post"
   }
 ]

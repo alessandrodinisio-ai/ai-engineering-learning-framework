@@ -1,87 +1,87 @@
 {
   "lesson": "17-personal-ai-tutor",
-  "title": "Capstone 17 — Personal AI Tutor (Adaptive, Multimodal, with Memory)",
+  "title": "毕业项目 17 —— 个人 AI 导师（自适应、多模态、带记忆）",
   "questions": [
     {
       "stage": "pre",
-      "question": "What does a Socratic tutor policy do when a learner asks for the answer outright?",
+      "question": "当学习者直接索要答案时，苏格拉底式导师策略会怎么做？",
       "options": [
-        "Asks a leading question that scaffolds the learner toward the answer",
-        "Logs the request and goes silent",
-        "Provides the answer immediately and moves on",
-        "Switches to a different concept node"
+        "抛出一个引导性问题，为学习者搭建通向答案的脚手架",
+        "记录该请求并保持沉默",
+        "立即给出答案并继续推进",
+        "切换到另一个概念节点"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "pre",
-      "question": "Which structure does the curriculum graph encode?",
+      "question": "课程图（curriculum graph）编码了哪种结构？",
       "options": [
-        "A directed graph of concepts with prerequisite edges, attached to OER content",
-        "A random shuffle of topics",
-        "A flat list of unrelated concepts",
-        "Only the most recently studied node"
+        "一张带前置依赖边、并挂接 OER 内容的概念有向图",
+        "主题的随机洗牌",
+        "一份互不相关的概念扁平列表",
+        "仅最近学习过的那个节点"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What does the learner model update after each interaction?",
+      "question": "学习者模型在每次交互后更新什么？",
       "options": [
-        "The base LLM's weights",
-        "The COPPA retention policy",
-        "The curriculum graph schema",
-        "Per-concept mastery probability via Bayesian knowledge tracing or a similar variant"
+        "基础 LLM 的权重",
+        "COPPA 留存策略",
+        "课程图 schema",
+        "通过贝叶斯知识追踪（Bayesian knowledge tracing）或类似变体得到的每概念掌握概率"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "How is memory split between episodic and semantic stores?",
+      "question": "记忆如何在情景记忆（episodic）与语义记忆（semantic）存储之间划分？",
       "options": [
-        "Episodic holds every interaction; semantic holds compacted mistakes and preferences promoted from episodic",
-        "They are duplicates of the same data",
-        "Episodic is for the parent; semantic is for the learner",
-        "Episodic holds embeddings; semantic holds raw audio"
+        "情景记忆保存每一次交互；语义记忆保存从情景记忆中提升上来的、被压缩的错误和偏好",
+        "它们是同一份数据的副本",
+        "情景记忆给家长用；语义记忆给学习者用",
+        "情景记忆存嵌入；语义记忆存原始音频"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Which constraint shapes memory retention for K-12 learners?",
+      "question": "哪种约束塑造了 K-12 学习者的记忆留存？",
       "options": [
-        "Retention based on model context length",
-        "Permanent retention with no deletion",
-        "GDPR only",
-        "COPPA-aware retention with auto-deletion after a defined window and parental access"
+        "基于模型上下文长度的留存",
+        "永久留存且不删除",
+        "仅 GDPR",
+        "COPPA 感知的留存：在限定窗口后自动删除，并提供家长访问"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "What is the structure of the efficacy study used to gate the deliverable?",
+      "question": "用于对交付物设门禁的效果研究是什么结构？",
       "options": [
-        "Anonymous internet survey",
-        "A 30-second AB test",
-        "Pre-test and post-test over two weeks with 10 learners, compared against a non-adaptive baseline cohort",
-        "A single one-hour session with one learner"
+        "匿名互联网问卷",
+        "一次 30 秒的 AB 测试",
+        "为期两周、有 10 名学习者的前测与后测，并与一个非自适应基线队列对比",
+        "与一名学习者的单次 1 小时会话"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Which multimodal input paths does the tutor expose to the learner?",
+      "question": "导师向学习者开放哪些多模态输入路径？",
       "options": [
-        "Text only",
-        "Photo only via a custom OCR model",
-        "Voice only with no text or photo",
-        "Text typed, voice via LiveKit + Whisper, and photo math via dots.ocr or PaliGemma 2"
+        "仅文本",
+        "仅通过自定义 OCR 模型的照片",
+        "仅语音，无文本或照片",
+        "键入的文本、经由 LiveKit + Whisper 的语音、以及经由 dots.ocr 或 PaliGemma 2 的拍照数学题"
       ],
       "correct": 3,
       "explanation": ""

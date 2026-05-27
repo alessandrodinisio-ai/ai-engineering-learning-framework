@@ -2,38 +2,63 @@
   "questions": [
     {
       "stage": "pre",
-      "question": "Why do pose models regress heatmaps instead of (x, y) coordinates directly?",
-      "options": ["Heatmaps are cheaper to compute", "The spatial structure of a conv feature map aligns with spatial output; a Gaussian heatmap target provides a smooth loss landscape that tolerates small localisation errors, whereas direct coordinate regression is brittle and loses spatial context", "Heatmaps are required by the COCO metric", "Coordinate regression produces NaN"],
+      "question": "为什么姿态模型回归热图（heatmap）而不是直接回归 (x, y) 坐标？",
+      "options": [
+        "热图计算更便宜",
+        "卷积特征图的空间结构与空间输出对齐；高斯热图目标提供了一个容忍小定位误差的平滑损失曲面，而直接坐标回归很脆弱且丢失空间上下文",
+        "COCO 指标要求使用热图",
+        "坐标回归会产生 NaN"
+      ],
       "correct": 1,
-      "explanation": "Regressing coordinates with MSE asks the network to reduce a 2D position to two scalars, losing the feature-map alignment that CNNs exploit. Heatmap regression gives the network a per-pixel loss that is smooth around the true location and preserves spatial priors. The empirical improvement over coordinate regression is large enough that every modern pose model uses heatmaps."
+      "explanation": "用 MSE 回归坐标要求网络把一个二维位置压缩成两个标量，丢失了 CNN 所利用的特征图对齐。热图回归给网络一个在真实位置周围平滑、并保留空间先验的逐像素损失。它相对坐标回归的经验改进足够大，以至于每个现代姿态模型都使用热图。"
     },
     {
       "stage": "pre",
-      "question": "Top-down pose estimation vs bottom-up: which scales better with crowd size, and why?",
-      "options": ["Top-down, because each person uses a separate fast model", "Bottom-up, because it does one forward pass over the whole image then groups keypoints, so runtime is constant in the number of people", "They scale equally", "Top-down never scales"],
+      "question": "自顶向下与自底向上的姿态估计：哪种随人群规模扩展得更好，为什么？",
+      "options": [
+        "自顶向下，因为每个人都用一个单独的快速模型",
+        "自底向上，因为它对整张图像做一次前向传播再对关键点分组，所以运行时间与人数无关",
+        "两者扩展性相同",
+        "自顶向下从不具备可扩展性"
+      ],
       "correct": 1,
-      "explanation": "Top-down runs a per-person keypoint model after a person detector, so cost grows linearly with the number of people. Bottom-up (OpenPose, HigherHRNet) produces all keypoints and association fields in one pass, then groups them — constant time regardless of crowd density. The trade: top-down is more accurate per-person; bottom-up is faster in crowds."
+      "explanation": "自顶向下在一个人体检测器之后对每个人运行一个关键点模型，因此成本随人数线性增长。自底向上（OpenPose、HigherHRNet）在一次前向中产生所有关键点和关联场，然后对它们分组——无论人群密度如何都是常数时间。权衡在于：自顶向下对单人更准确；自底向上在人群中更快。"
     },
     {
       "stage": "post",
-      "question": "What are Part Affinity Fields?",
-      "options": ["A scheduling algorithm", "2-channel unit-vector fields that encode the direction from one keypoint to another; integrating the PAF along a candidate line tells you whether two keypoints belong to the same instance, enabling bottom-up association without per-person detection", "A data augmentation technique", "A type of loss function"],
+      "question": "什么是部位亲和场（Part Affinity Fields）？",
+      "options": [
+        "一种调度算法",
+        "编码从一个关键点指向另一个关键点方向的 2 通道单位向量场；沿一条候选连线积分该 PAF 能告诉你两个关键点是否属于同一实例，从而在无需逐人检测的情况下实现自底向上的关联",
+        "一种数据增强技术",
+        "一种损失函数"
+      ],
       "correct": 1,
-      "explanation": "Per connected keypoint pair (limb), predict a 2-channel field (x, y components of the unit vector pointing from one keypoint to the other). To match a candidate shoulder with a candidate elbow, integrate the PAF along the line joining them; higher integral = stronger match. This turns pose into a bipartite matching problem solvable in polynomial time."
+      "explanation": "对每对相连的关键点（肢体），预测一个 2 通道的场（从一个关键点指向另一个关键点的单位向量的 x、y 分量）。要把一个候选肩膀与一个候选肘部匹配，就沿连接它们的线对 PAF 积分；积分越高 = 匹配越强。这把姿态估计变成了一个可在多项式时间内求解的二部匹配问题。"
     },
     {
       "stage": "post",
-      "question": "Why does sub-pixel refinement around the argmax meaningfully lift keypoint accuracy?",
-      "options": ["It smooths the heatmap", "Integer argmax rounds to the nearest grid cell; fitting a local parabola or using the offset dx = 0.25*(heatmap[y,x+1] - heatmap[y,x-1]) recovers the continuous peak position, often halving the L2 error for cleanly predicted keypoints", "It prevents overfitting", "It normalises the output"],
+      "question": "为什么围绕 argmax 的亚像素精修能显著提升关键点准确率？",
+      "options": [
+        "它平滑热图",
+        "整数 argmax 会取整到最近的网格单元；拟合一个局部抛物线或使用偏移 dx = 0.25*(heatmap[y,x+1] - heatmap[y,x-1]) 能恢复连续的峰值位置，对于干净预测的关键点常能把 L2 误差减半",
+        "它防止过拟合",
+        "它归一化输出"
+      ],
       "correct": 1,
-      "explanation": "A well-predicted heatmap has a smooth Gaussian peak whose centre is usually between grid cells. Integer argmax loses that sub-pixel information (up to 0.5 px error). Fitting a parabola or using the first-difference offset recovers the continuous peak. For sports analytics, medical landmarks, or anything requiring precise coordinates, this step is mandatory."
+      "explanation": "一张预测良好的热图有一个平滑的高斯峰，其中心通常位于网格单元之间。整数 argmax 丢失了这种亚像素信息（最多 0.5 像素误差）。拟合抛物线或使用一阶差分偏移能恢复连续的峰值。对于体育分析、医学标志点或任何需要精确坐标的任务，这一步是必需的。"
     },
     {
       "stage": "post",
-      "question": "OKS (Object Keypoint Similarity) is the pose-estimation analogue of what object-detection metric?",
-      "options": ["Inference latency", "IoU — both measure geometric match between prediction and ground truth, with OKS using keypoint distances weighted by each keypoint's annotation variance; COCO reports mAP@OKS 0.5:0.95 for pose", "Classification accuracy", "Cross-entropy loss"],
+      "question": "OKS（目标关键点相似度）是姿态估计中对应于哪个目标检测指标的类比？",
+      "options": [
+        "推理延迟",
+        "IoU——两者都衡量预测与真值之间的几何匹配，OKS 使用按每个关键点标注方差加权的关键点距离；COCO 对姿态报告 mAP@OKS 0.5:0.95",
+        "分类准确率",
+        "交叉熵损失"
+      ],
       "correct": 1,
-      "explanation": "OKS ranges 0 to 1 like IoU and plays the same role: it decides whether a prediction matches a ground-truth pose at a given strictness level. Each keypoint has a variance (COCO publishes them) that scales its contribution — invariant joints like nose and eyes weigh more than wrists, which are annotated less consistently. COCO Pose AP @ OKS 0.5:0.95 is the 2026 community benchmark."
+      "explanation": "OKS 像 IoU 一样取值 0 到 1，并扮演相同的角色：它在给定的严格程度下判断一个预测是否与真值姿态匹配。每个关键点都有一个方差（COCO 公布了这些），用来缩放其贡献——像鼻子和眼睛这样标注一致的关节比标注一致性较差的手腕权重更大。COCO Pose AP @ OKS 0.5:0.95 是 2026 年社区的基准。"
     }
   ]
 }

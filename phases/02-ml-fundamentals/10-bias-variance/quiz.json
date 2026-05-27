@@ -2,66 +2,66 @@
   {
     "id": "biasvar-pre-1",
     "stage": "pre",
-    "question": "A linear model is used to fit a clearly curved (quadratic) relationship. Which error component dominates?",
+    "question": "用线性模型去拟合一个明显弯曲（二次）的关系。哪个误差成分占主导？",
     "options": [
-      "Variance: the model changes too much with different training data",
-      "Bias: the model is too rigid to capture the true nonlinear pattern",
-      "Irreducible noise: the data is too noisy",
-      "None: the model should fit perfectly"
+      "方差：模型随不同训练数据变化太大",
+      "偏差：模型太僵硬，无法捕捉真实的非线性模式",
+      "不可约噪声：数据噪声太大",
+      "都不是：模型应该完美拟合"
     ],
     "correct": 1,
-    "explanation": "A linear model cannot capture a quadratic curve no matter how much data it sees. This systematic error from wrong model assumptions is bias. The model underfits."
+    "explanation": "无论看到多少数据，线性模型都无法捕捉二次曲线。这种由错误模型假设带来的系统性误差就是偏差。模型欠拟合。"
   },
   {
     "id": "biasvar-pre-2",
     "stage": "pre",
-    "question": "The bias-variance decomposition of expected error has three terms. Which one cannot be reduced by any model?",
+    "question": "期望误差的偏差-方差分解有三项。哪一项是任何模型都无法降低的？",
     "options": [
-      "Bias squared",
-      "Variance",
-      "Irreducible noise (sigma squared)",
-      "All three can be reduced to zero"
+      "偏差的平方",
+      "方差",
+      "不可约噪声（sigma 平方）",
+      "三项都可降到零"
     ],
     "correct": 2,
-    "explanation": "Irreducible noise comes from randomness in the data itself (measurement error, missing variables). No model can predict noise. Expected error = bias^2 + variance + irreducible noise."
+    "explanation": "不可约噪声来自数据本身的随机性（测量误差、缺失变量）。任何模型都无法预测噪声。期望误差 = 偏差^2 + 方差 + 不可约噪声。"
   },
   {
     "id": "biasvar-post-1",
     "stage": "post",
-    "question": "Adding L2 regularization to a model increases bias and decreases variance. Why is this useful?",
+    "question": "向模型添加 L2 正则化会增加偏差并降低方差。这为什么有用？",
     "options": [
-      "It always improves both training and test accuracy",
-      "The reduction in variance can outweigh the increase in bias, lowering total error",
-      "L2 regularization eliminates irreducible noise",
-      "It makes the model faster to train"
+      "它总能同时提升训练和测试准确率",
+      "方差的降低可能超过偏差的增加，从而降低总误差",
+      "L2 正则化消除了不可约噪声",
+      "它使模型训练更快"
     ],
     "correct": 1,
-    "explanation": "Regularization trades a small increase in bias for a larger decrease in variance. When a model is overfitting (high variance), this tradeoff reduces total error even though bias goes up slightly."
+    "explanation": "正则化用偏差的小幅增加换取方差的更大幅降低。当模型过拟合（高方差）时，尽管偏差略有上升，这种权衡仍能降低总误差。"
   },
   {
     "id": "biasvar-post-2",
     "stage": "post",
-    "question": "A model has training error = 2% and test error = 25%. What is the most likely diagnosis?",
+    "question": "某模型训练误差 = 2%、测试误差 = 25%。最可能的诊断是什么？",
     "options": [
-      "High bias (underfitting): the model is too simple",
-      "High variance (overfitting): the model memorized training data and fails to generalize",
-      "High irreducible noise: the data is too noisy",
-      "The model is perfectly calibrated"
+      "高偏差（欠拟合）：模型太简单",
+      "高方差（过拟合）：模型记住了训练数据，无法泛化",
+      "高不可约噪声：数据噪声太大",
+      "模型校准完美"
     ],
     "correct": 1,
-    "explanation": "Low training error + high test error + large gap = high variance (overfitting). The model fits training-specific noise. Remedies: regularize, reduce complexity, get more data."
+    "explanation": "低训练误差 + 高测试误差 + 巨大差距 = 高方差（过拟合）。模型拟合了训练专有的噪声。补救措施：正则化、降低复杂度、获取更多数据。"
   },
   {
     "id": "biasvar-post-3",
     "stage": "post",
-    "question": "You train the same model architecture on 50 different random training subsets and observe that predictions vary wildly between them. What does this indicate?",
+    "question": "你在 50 个不同的随机训练子集上训练相同的模型架构，发现它们之间的预测差异极大。这说明什么？",
     "options": [
-      "High bias: the model consistently misses the true pattern",
-      "High variance: the model is sensitive to which specific training data it sees",
-      "High irreducible noise: the target variable is random",
-      "The learning rate is too high"
+      "高偏差：模型一贯地错过真实模式",
+      "高方差：模型对它所看到的具体训练数据很敏感",
+      "高不可约噪声：目标变量是随机的",
+      "学习率太高"
     ],
     "correct": 1,
-    "explanation": "Variance measures how much predictions change when trained on different data subsets. Wildly different predictions across subsets is the definition of high variance."
+    "explanation": "方差衡量在不同数据子集上训练时预测变化的程度。各子集之间预测差异极大正是高方差的定义。"
   }
 ]

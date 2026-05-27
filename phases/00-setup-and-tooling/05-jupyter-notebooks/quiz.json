@@ -2,38 +2,63 @@
   "questions": [
     {
       "stage": "pre",
-      "question": "What is a Jupyter notebook?",
-      "options": ["A text editor for writing Python scripts", "An interactive document that mixes executable code cells with markdown text and inline outputs", "A version control system for data science projects", "A package manager for Python libraries"],
+      "question": "什么是 Jupyter notebook？",
+      "options": [
+        "一个用于编写 Python 脚本的文本编辑器",
+        "一种交互式文档，将可执行的代码单元格与 markdown 文本和内联输出混合在一起",
+        "一个用于数据科学项目的版本控制系统",
+        "一个用于 Python 库的包管理器"
+      ],
       "correct": 1,
-      "explanation": "A Jupyter notebook (.ipynb) is an interactive environment where you can write and execute code in cells, see outputs inline, and mix code with formatted text explanations."
+      "explanation": "Jupyter notebook（.ipynb）是一个交互式环境，你可以在单元格中编写并执行代码、内联查看输出，并将代码与带格式的文字说明混合在一起。"
     },
     {
       "stage": "pre",
-      "question": "What does the Jupyter kernel do?",
-      "options": ["Formats markdown cells into HTML", "Runs the code in cells and keeps variables in memory between executions", "Manages file storage for the notebook", "Connects the notebook to GitHub for version control"],
+      "question": "Jupyter 内核（kernel）的作用是什么？",
+      "options": [
+        "将 markdown 单元格格式化为 HTML",
+        "运行单元格中的代码，并在多次执行之间将变量保留在内存中",
+        "管理 notebook 的文件存储",
+        "将 notebook 连接到 GitHub 进行版本控制"
+      ],
       "correct": 1,
-      "explanation": "The kernel is a separate Python process that executes cell code and maintains state (variables, imports) in memory. All cells in a notebook share the same kernel."
+      "explanation": "内核是一个独立的 Python 进程，负责执行单元格代码并在内存中维护状态（变量、导入）。一个 notebook 中的所有单元格共享同一个内核。"
     },
     {
       "stage": "post",
-      "question": "What is the difference between %timeit and %%time magic commands?",
-      "options": ["%timeit measures wall time, %%time measures CPU time", "%timeit runs code many times and averages, %%time runs code once", "%timeit works on single lines, %%time works on the whole notebook", "There is no difference, they are aliases"],
+      "question": "%timeit 和 %%time 这两个魔法命令有什么区别？",
+      "options": [
+        "%timeit 测量墙钟时间，%%time 测量 CPU 时间",
+        "%timeit 多次运行代码并取平均，%%time 只运行一次",
+        "%timeit 作用于单行，%%time 作用于整个 notebook",
+        "没有区别，它们是别名"
+      ],
       "correct": 1,
-      "explanation": "%timeit runs the statement many times for a statistical average (good for microbenchmarks). %%time runs the cell once and reports wall time (good for training runs)."
+      "explanation": "%timeit 会多次运行语句以得到统计平均值（适合微基准测试）。%%time 只运行单元格一次并报告墙钟时间（适合训练运行）。"
     },
     {
       "stage": "post",
-      "question": "What is the most common cause of a notebook working on your machine but failing when someone runs it top to bottom?",
-      "options": ["Using a different Python version", "Out-of-order cell execution creating hidden dependencies on execution order", "Missing the %matplotlib inline magic command", "Using too many markdown cells"],
+      "question": "notebook 在你机器上能用、但别人从头到尾运行时却失败，最常见的原因是什么？",
+      "options": [
+        "使用了不同的 Python 版本",
+        "乱序执行单元格，造成对执行顺序的隐藏依赖",
+        "缺少 %matplotlib inline 魔法命令",
+        "使用了太多 markdown 单元格"
+      ],
       "correct": 1,
-      "explanation": "Running cells out of order creates hidden state dependencies. A variable might exist because you ran cell 5 before cell 2. Kernel > Restart & Run All verifies linear execution."
+      "explanation": "乱序运行单元格会造成隐藏的状态依赖。某个变量之所以存在，可能是因为你在运行第 2 个单元格之前先运行了第 5 个。用 Kernel > Restart & Run All 可以验证线性执行。"
     },
     {
       "stage": "post",
-      "question": "When should you move code from a notebook into a .py script?",
-      "options": ["As soon as you write more than 10 lines of code", "When the code is a reusable utility, training pipeline, or production code", "Never -- notebooks are always better for AI work", "Only when you need to run on a GPU"],
+      "question": "什么时候应该把代码从 notebook 迁移到 .py 脚本中？",
+      "options": [
+        "一旦你写了超过 10 行代码就该迁移",
+        "当代码是可复用的工具、训练流水线或生产代码时",
+        "永远不需要——对 AI 工作而言 notebook 总是更好",
+        "只有在需要在 GPU 上运行时"
+      ],
       "correct": 1,
-      "explanation": "The rule is 'explore in notebooks, ship in scripts.' Reusable utilities, training pipelines, and anything running in production should be .py files. Notebooks are for exploration and prototyping."
+      "explanation": "原则是“在 notebook 里探索，在脚本里交付”。可复用的工具、训练流水线以及任何在生产环境运行的东西都应该是 .py 文件。notebook 用于探索和原型设计。"
     }
   ]
 }

@@ -1,75 +1,75 @@
 {
   "lesson": "22-load-testing-llm-apis",
-  "title": "Load Testing LLM APIs — Why k6 and Locust Lie",
+  "title": "对 LLM API 做负载测试 —— 为什么 k6 和 Locust 会撒谎",
   "questions": [
     {
       "stage": "pre",
-      "question": "What is the GIL trap in Locust-based LLM load testing?",
+      "question": "基于 Locust 的 LLM 负载测试中的 GIL 陷阱是什么？",
       "options": [
-        "Locust only works on Windows",
-        "Locust does not support HTTP",
-        "Client-side tokenization runs under the Python GIL and queues behind request generation, inflating reported inter-token latency",
-        "Locust requires CUDA"
+        "Locust 只能在 Windows 上工作",
+        "Locust 不支持 HTTP",
+        "客户端侧的分词在 Python GIL 下运行，并排在请求生成之后排队，从而虚高了上报的 token 间延迟",
+        "Locust 需要 CUDA"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What is the prompt-uniformity trap?",
+      "question": "prompt 同质化陷阱是什么？",
       "options": [
-        "Uniform prompts always slow the server down",
-        "Sampling from a real distribution under-represents long prompts",
-        "Uniform prompts require streaming",
-        "Looping the same prompt makes prefix caching look like full concurrent decode, inflating reported throughput"
+        "同质化的 prompt 总会拖慢服务器",
+        "从真实分布采样会低估长 prompt 的占比",
+        "同质化的 prompt 需要流式传输",
+        "循环使用同一个 prompt 会让前缀缓存看起来像是满并发 decode，从而虚高了上报的吞吐量"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Which four load patterns does the lesson recommend?",
+      "question": "本课推荐哪四种负载模式？",
       "options": [
-        "Constant 1 RPS for 10 days",
-        "Manual click tests",
-        "Steady-state, ramp, spike, soak",
-        "Burst only"
+        "连续 10 天恒定 1 RPS",
+        "手动点击测试",
+        "稳态（steady-state）、爬坡（ramp）、尖峰（spike）、浸泡（soak）",
+        "仅突发（burst）"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "How does the lesson recommend building a realistic prompt distribution?",
+      "question": "本课建议如何构建一个真实的 prompt 分布？",
       "options": [
-        "Sample from a real distribution using mean and stddev (for example LLMPerf's --mean-input-tokens / --stddev-input-tokens) or replay real traffic",
-        "Random characters per request",
-        "Hand-write 5 prompts and shuffle",
-        "Always use the same prompt to maximize cache hits"
+        "用均值和标准差从真实分布中采样（例如 LLMPerf 的 --mean-input-tokens / --stddev-input-tokens），或回放真实流量",
+        "每个请求用随机字符",
+        "手写 5 个 prompt 然后打乱",
+        "始终使用同一个 prompt 以最大化缓存命中"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Which 2026 tool combination is positioned as best for CI/CD SLA gates and Kubernetes-native distributed runs?",
+      "question": "哪种 2026 年的工具组合被定位为最适合 CI/CD 的 SLA 门禁和 Kubernetes 原生的分布式运行？",
       "options": [
-        "k6 v2026.1.0 with the k6 Operator 1.0 GA (TestRun / PrivateLoadZone CRDs)",
-        "guidellm only",
-        "Vegeta only",
-        "Locust 2.43.3 stock"
+        "k6 v2026.1.0 搭配 k6 Operator 1.0 GA（TestRun / PrivateLoadZone CRD）",
+        "仅 guidellm",
+        "仅 Vegeta",
+        "原版 Locust 2.43.3"
       ],
       "correct": 0,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Which failure mode does the soak load pattern catch?",
+      "question": "浸泡（soak）负载模式能捕捉哪种失败模式？",
       "options": [
-        "Memory leaks, connection-pool drift, and observability overflow over hours",
-        "Cold-start tail",
-        "Tokenizer GIL contention",
-        "Cache eviction storms"
+        "数小时内的内存泄漏、连接池漂移以及可观测性溢出",
+        "冷启动长尾",
+        "Tokenizer 的 GIL 争用",
+        "缓存驱逐风暴"
       ],
       "correct": 0,
       "explanation": ""

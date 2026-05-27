@@ -1,87 +1,87 @@
 {
   "lesson": "08-production-rag-chatbot",
-  "title": "Capstone 08 — Production RAG Chatbot for a Regulated Vertical",
+  "title": "毕业项目 08 —— 面向受监管垂直行业的生产 RAG 聊天机器人",
   "questions": [
     {
       "stage": "pre",
-      "question": "Why does prompt caching matter so much in a regulated-domain RAG chatbot?",
+      "question": "为什么在受监管领域的 RAG 聊天机器人中，prompt 缓存如此重要？",
       "options": [
-        "It removes the need for a vector database",
-        "At 60-80% hit rate it cuts per-query cost 3-5x by discounting stable prefix tokens",
-        "It eliminates hallucinations",
-        "It improves recall on the rerank stage"
+        "它消除了对向量数据库的需求",
+        "在 60-80% 的命中率下，它通过为稳定的前缀 token 打折，把每次查询的成本削减 3-5 倍",
+        "它消除了幻觉",
+        "它提升了重排阶段的召回率"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "pre",
-      "question": "What goes into the cache header versus the uncached suffix of each request?",
+      "question": "每个请求的缓存头与未缓存后缀里各放什么？",
       "options": [
-        "Random text padding to hit cache size",
-        "Only the retrieved documents",
-        "User question first, system prompt last",
-        "System prompt and static policies in the cache header, reranked context as cache extension, user question as the uncached suffix"
+        "用随机文本填充以凑足缓存大小",
+        "仅放检索到的文档",
+        "用户问题在前，系统提示在后",
+        "系统提示和静态策略放在缓存头，重排后的上下文作为缓存扩展，用户问题作为未缓存后缀"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "How does the retrieval layer respect jurisdiction tags like GDPR or HIPAA?",
+      "question": "检索层如何尊重 GDPR 或 HIPAA 这类司法辖区标签？",
       "options": [
-        "It runs a separate index per country",
-        "It blocks the response after generation only",
-        "It rewrites the user question per region",
-        "Role and jurisdiction filters apply before the hybrid search merge so chunks outside the user's scope are never reranked"
+        "为每个国家运行一个单独的索引",
+        "它仅在生成之后才拦截响应",
+        "它按地区重写用户问题",
+        "角色和司法辖区过滤在混合搜索合并之前生效，因此用户范围之外的 chunk 从不会被重排"
       ],
       "correct": 3,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "Which layered guardrail combination does the synthesis stage pass output through?",
+      "question": "综合阶段让输出经过哪种分层护栏组合？",
       "options": [
-        "Only Llama Guard 4 on input",
-        "Llama Guard 4, NeMo Guardrails policy rails, and Presidio PII scrub, plus citation enforcement",
-        "Just an output PII regex",
-        "A single LLM-judge faithfulness check"
+        "仅在输入侧使用 Llama Guard 4",
+        "Llama Guard 4、NeMo Guardrails 策略护栏和 Presidio PII 脱敏，外加引用强制",
+        "仅一个输出 PII 正则",
+        "单一的 LLM 裁判忠实性检查"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "check",
-      "question": "What does the drift dashboard alert on?",
+      "question": "漂移仪表盘对什么发出告警？",
       "options": [
-        "A change in the underlying LLM provider",
-        "Latency above 200ms",
-        "A retrieval-quality drop, for example a 5% week-over-week dip in nDCG or citation score",
-        "Any new document added to the index"
+        "底层 LLM 供应商的变更",
+        "延迟高于 200ms",
+        "检索质量下降，例如 nDCG 或引用分数周环比下跌 5%",
+        "任何被加入索引的新文档"
       ],
       "correct": 2,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "How big is the golden set used to gate the deliverable's correctness rubric?",
+      "question": "用于对交付物正确性细则设门禁的黄金集（golden set）有多大？",
       "options": [
-        "5 demo queries",
-        "200 expert-labeled question/answer pairs with citations",
-        "20 questions",
-        "2000 synthetic questions"
+        "5 个演示查询",
+        "200 对带引用的、由专家标注的问答",
+        "20 个问题",
+        "2000 个合成问题"
       ],
       "correct": 1,
       "explanation": ""
     },
     {
       "stage": "post",
-      "question": "Which RAGAS scores are tracked online per turn?",
+      "question": "哪些 RAGAS 分数被按轮次在线追踪？",
       "options": [
-        "Throughput, GPU utilization, and queue depth",
-        "BLEU, ROUGE, and METEOR",
-        "Faithfulness, answer relevance, and context precision",
-        "Token count and dollar cost"
+        "吞吐量、GPU 利用率和队列深度",
+        "BLEU、ROUGE 和 METEOR",
+        "忠实性、答案相关性和上下文精确度",
+        "token 数和美元成本"
       ],
       "correct": 2,
       "explanation": ""

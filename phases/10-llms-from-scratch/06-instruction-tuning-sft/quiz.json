@@ -1,37 +1,37 @@
 [
   {
-    "question": "What is the fundamental difference between a base language model and an instruction-tuned model?",
-    "options": ["They have different architectures", "A base model continues text patterns; an instruction-tuned model follows instructions and answers questions", "Instruction-tuned models are larger", "Base models are faster"],
+    "question": "基础语言模型和指令微调模型之间的根本区别是什么？",
+    "options": ["它们有不同的架构", "基础模型续写文本模式；指令微调模型遵循指令并回答问题", "指令微调模型更大", "基础模型更快"],
     "correct": 1,
-    "explanation": "A base model trained with next-token prediction continues text patterns. Ask it a question and it may generate more questions. SFT teaches it to produce answers by training on (instruction, response) pairs.",
+    "explanation": "用下一个 token 预测训练出的基础模型只是续写文本模式。问它一个问题，它可能生成更多问题。SFT 通过在（指令，回复）对上训练，教会它产生答案。",
     "stage": "pre"
   },
   {
-    "question": "What is the purpose of masking loss on non-assistant tokens during SFT?",
-    "options": ["To speed up training", "To train the model only to generate responses, not to memorize the instruction format or system prompts", "To reduce memory usage", "To prevent overfitting"],
+    "question": "在 SFT 中对非 assistant token 进行损失掩码（masking）的目的是什么？",
+    "options": ["为了加快训练", "只训练模型生成回复，而不是记忆指令格式或 system prompt", "为了减少内存占用", "为了防止过拟合"],
     "correct": 1,
-    "explanation": "During SFT, you want the model to learn how to respond, not how to reproduce the instruction. Loss masking sets the loss to 0 for system/user tokens so gradients only come from the assistant's response tokens.",
+    "explanation": "在 SFT 中，你希望模型学会如何回复，而不是如何重现指令。损失掩码把 system/user token 的损失设为 0，这样梯度只来自 assistant 的回复 token。",
     "stage": "pre"
   },
   {
-    "question": "What format does SFT training data typically follow?",
-    "options": ["Raw text documents", "Chat template with system, user, and assistant roles marked by special tokens", "Key-value pairs", "SQL queries and results"],
+    "question": "SFT 训练数据通常遵循什么格式？",
+    "options": ["原始文本文档", "带有 system、user 和 assistant 角色的对话模板，角色由特殊 token 标记", "键值对", "SQL 查询和结果"],
     "correct": 1,
-    "explanation": "SFT data uses a structured chat format: a system prompt setting behavior, a user instruction, and an assistant response. Special tokens mark role boundaries so the model learns the conversational structure.",
+    "explanation": "SFT 数据使用结构化的对话格式：设定行为的 system prompt、一条 user 指令以及一条 assistant 回复。特殊 token 标记角色边界，使模型学到对话结构。",
     "stage": "post"
   },
   {
-    "question": "Why might an SFT model produce lower perplexity on benchmarks but worse conversational quality?",
-    "options": ["The benchmarks are wrong", "SFT optimizes for pattern matching on training examples, not for the nuanced quality judgments humans care about -- that requires RLHF/DPO", "The model is too small", "The learning rate was wrong"],
+    "question": "为什么一个 SFT 模型可能在基准上困惑度更低，但对话质量更差？",
+    "options": ["基准本身有错", "SFT 优化的是对训练样本的模式匹配，而不是人类所在意的细微质量判断——后者需要 RLHF/DPO", "模型太小", "学习率设置错了"],
     "correct": 1,
-    "explanation": "SFT teaches the model to follow formats and produce plausible responses. It doesn't teach which response is better when multiple valid options exist. Human preference alignment (RLHF/DPO) addresses this gap.",
+    "explanation": "SFT 教模型遵循格式并产生看似合理的回复。当存在多个有效选项时，它并不教模型哪个回复更好。人类偏好对齐（RLHF/DPO）弥补了这一缺口。",
     "stage": "post"
   },
   {
-    "question": "How many high-quality instruction-response pairs are typically needed for effective SFT?",
-    "options": ["Millions", "10,000 to 100,000 high-quality examples", "Fewer than 100", "Billions"],
+    "question": "有效的 SFT 通常需要多少高质量的指令-回复对？",
+    "options": ["数百万", "1 万到 10 万条高质量样本", "少于 100", "数十亿"],
     "correct": 1,
-    "explanation": "SFT is surprisingly data-efficient. Studies show that 10K-100K high-quality examples (like the Alpaca or LIMA datasets) can effectively teach instruction following. Quality matters far more than quantity.",
+    "explanation": "SFT 在数据效率上出人意料。研究表明，1 万到 10 万条高质量样本（如 Alpaca 或 LIMA 数据集）就能有效教会指令遵循。质量远比数量重要。",
     "stage": "post"
   }
 ]

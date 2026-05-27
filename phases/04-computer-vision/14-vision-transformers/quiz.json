@@ -2,38 +2,63 @@
   "questions": [
     {
       "stage": "pre",
-      "question": "How does a ViT turn an image into a sequence of tokens?",
-      "options": ["Flattens the entire image into one vector", "Applies a conv with kernel_size = stride = patch_size to split the image into non-overlapping patches and linearly project each to a token embedding in one operation", "Runs a CNN first and uses its feature map as tokens", "Sorts pixel intensities"],
+      "question": "ViT 如何把一张图像变成一个 token 序列？",
+      "options": [
+        "把整张图像展平成一个向量",
+        "应用一个 kernel_size = stride = patch_size 的卷积，把图像切成不重叠的图块，并在一次操作中将每个图块线性投影为一个 token 嵌入",
+        "先运行一个 CNN，把其特征图当作 token",
+        "对像素强度排序"
+      ],
       "correct": 1,
-      "explanation": "The first layer of a ViT is a conv with kernel_size = stride = 16, turning a 224x224 image into a 14x14 grid of 16x16 patches, each projected to dim=768. That single conv does both patchification and projection. The result is 196 tokens that a standard transformer encoder can process."
+      "explanation": "ViT 的第一层是一个 kernel_size = stride = 16 的卷积，把一张 224x224 的图像变成 14x14 网格、每块 16x16 的图块，每块投影到 dim=768。那一个卷积同时完成了图块化和投影。结果是 196 个 token，标准的 transformer 编码器即可处理。"
     },
     {
       "stage": "pre",
-      "question": "What is the [CLS] token in ViT and why is it needed?",
-      "options": ["A learned vector prepended to the token sequence; after N transformer layers its output aggregates the whole image and feeds the classifier head", "A special pixel value", "A placeholder for missing data", "A dropout mask"],
+      "question": "ViT 中的 [CLS] token 是什么，为什么需要它？",
+      "options": [
+        "一个被前置到 token 序列前面的可学习向量；经过 N 层 transformer 后，它的输出聚合了整张图像并喂给分类头",
+        "一个特殊的像素值",
+        "缺失数据的占位符",
+        "一个 dropout 掩码"
+      ],
       "correct": 0,
-      "explanation": "ViT follows BERT's convention: prepend a learned vector (the CLS token) to the patch sequence. Self-attention lets every token see every other token, so the CLS token aggregates global information from all patches. The classifier reads only the CLS output. Alternative designs use average-pooling over all patch tokens (used by ConvNeXt and many post-ViT models)."
+      "explanation": "ViT 沿用了 BERT 的约定：在图块序列前面前置一个可学习向量（CLS token）。自注意力让每个 token 都能看到其他所有 token，因此 CLS token 聚合了来自所有图块的全局信息。分类器只读取 CLS 的输出。替代设计则对所有图块 token 做平均池化（被 ConvNeXt 和许多后 ViT 模型使用）。"
     },
     {
       "stage": "post",
-      "question": "Why did the original ViT paper need JFT-300M pretraining to beat ResNet, and why does DeiT not?",
-      "options": ["ViT is broken without JFT-300M", "ViT has weaker inductive biases than CNNs; without enough data it overfits. DeiT showed that with strong augmentation (RandAugment, Mixup, CutMix), stochastic depth, and optionally CNN distillation, ViTs train fine on ImageNet-1k alone", "DeiT uses different attention", "The ViT paper was wrong"],
+      "question": "为什么最初的 ViT 论文需要 JFT-300M 预训练才能击败 ResNet，而 DeiT 不需要？",
+      "options": [
+        "没有 JFT-300M ViT 就是坏的",
+        "ViT 的归纳偏置比 CNN 弱；数据不足时它会过拟合。DeiT 表明，凭借强增强（RandAugment、Mixup、CutMix）、随机深度，以及可选的 CNN 蒸馏，ViT 仅用 ImageNet-1k 就能训练得很好",
+        "DeiT 使用了不同的注意力",
+        "ViT 论文错了"
+      ],
       "correct": 1,
-      "explanation": "ViT's lack of inductive bias (no locality, no translation equivariance baked in) means the network has to learn these from data. With 1M ImageNet images that is hard; with 300M JFT images it is easy. DeiT replaced the data with training-recipe improvements: heavy augmentation, stochastic depth, and distillation from a CNN teacher, all of which compensate for the lack of priors."
+      "explanation": "ViT 缺乏归纳偏置（没有内置局部性、没有平移等变性），意味着网络必须从数据中学到这些。用 100 万张 ImageNet 图像很难做到；用 3 亿张 JFT 图像则很容易。DeiT 用训练配方的改进取代了数据：强增强、随机深度，以及从 CNN 教师那里蒸馏，所有这些都弥补了先验的缺失。"
     },
     {
       "stage": "post",
-      "question": "Pre-LayerNorm (`x = x + sublayer(LN(x))`) vs post-LayerNorm (`x = LN(x + sublayer(x))`) — which is used in modern transformers and why?",
-      "options": ["Post-LN; it is simpler", "Pre-LN; it trains deeper networks stably without learning-rate warmup and avoids the gradient instabilities that post-LN suffers past about 6 layers", "They are identical", "Neither; modern transformers skip LayerNorm"],
+      "question": "前置 LayerNorm（`x = x + sublayer(LN(x))`）与后置 LayerNorm（`x = LN(x + sublayer(x))`）——现代 transformer 用哪种，为什么？",
+      "options": [
+        "后置 LN；它更简单",
+        "前置 LN；它无需学习率预热就能稳定地训练更深的网络，并避免了后置 LN 在约 6 层之后遭遇的梯度不稳定",
+        "它们完全相同",
+        "两者都不是；现代 transformer 跳过 LayerNorm"
+      ],
       "correct": 1,
-      "explanation": "Post-LN was the original transformer (2017) and required careful warmup + small learning rates past 6-8 layers. Pre-LN (Xiong et al., 2020; used by ViT, GPT-2+, every modern LLM) is numerically more stable: the residual stream accumulates without passing through LN, and each sublayer operates on a normalised input. Every transformer deeper than 12 layers uses pre-LN."
+      "explanation": "后置 LN 是最初的 transformer（2017），在超过 6-8 层后需要谨慎的预热和较小的学习率。前置 LN（Xiong 等人，2020；被 ViT、GPT-2 及之后、每个现代 LLM 使用）在数值上更稳定：残差流在不经过 LN 的情况下累积，每个子层作用于一个已归一化的输入。每个超过 12 层的 transformer 都使用前置 LN。"
     },
     {
       "stage": "post",
-      "question": "Swin Transformer introduces windowed attention. What problem does it solve?",
-      "options": ["Vanishing gradients", "Full attention has O((H*W)^2) cost; Swin restricts attention to local windows of 7x7 patches, reducing cost to O(H*W * window^2). Alternating blocks shift the window by half its size so information eventually mixes across the image", "BatchNorm not supported", "Overfitting to texture"],
+      "question": "Swin Transformer 引入了窗口注意力。它解决了什么问题？",
+      "options": [
+        "梯度消失",
+        "完整注意力的成本是 O((H*W)^2)；Swin 把注意力限制在 7x7 图块的局部窗口内，将成本降到 O(H*W * window^2)。交替的块把窗口移动其大小的一半，使信息最终在整张图像上混合",
+        "不支持 BatchNorm",
+        "对纹理过拟合"
+      ],
       "correct": 1,
-      "explanation": "A 224x224 image with 4x4 patches has 56*56 = 3136 tokens; full attention is 3136^2 = ~10M pairs per layer. Swin attends only within 7x7 windows, giving 49^2 = 2401 pairs per window (plus the window count). Shifted windows in alternating blocks mix information across windows over a few layers. This brings a CNN-like locality prior back to the transformer without giving up attention."
+      "explanation": "一张 224x224、4x4 图块的图像有 56*56 = 3136 个 token；完整注意力每层是 3136^2 ≈ 1000 万对。Swin 只在 7x7 窗口内做注意力，每个窗口 49^2 = 2401 对（再乘以窗口数）。交替块中的移位窗口在几层之内跨窗口混合信息。这在不放弃注意力的前提下，把类 CNN 的局部性先验带回了 transformer。"
     }
   ]
 }

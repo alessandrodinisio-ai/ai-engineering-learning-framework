@@ -1,90 +1,90 @@
 {
   "lesson": "15-crewai-role-based-crews",
-  "title": "CrewAI: Role-Based Crews and Flows",
+  "title": "CrewAI：基于角色的 Crew 与 Flow",
   "questions": [
     {
       "stage": "pre",
-      "question": "What are CrewAI's four primitives?",
+      "question": "CrewAI 的四个原语是什么？",
       "options": [
-        "Agent, Task, Crew, Process",
-        "Node, Edge, Reducer, Checkpointer",
-        "Actor, Message, Inbox, Runtime",
-        "Tool, Prompt, Model, Memory"
+        "Agent、Task、Crew、Process",
+        "Node、Edge、Reducer、Checkpointer",
+        "Actor、Message、Inbox、Runtime",
+        "Tool、Prompt、Model、Memory"
       ],
       "correct": 0,
-      "explanation": "Agent, Task, Crew, and Process are the four primitives."
+      "explanation": "Agent、Task、Crew 和 Process 是这四个原语。"
     },
     {
       "stage": "pre",
-      "question": "What is the recommended production starting point per the CrewAI docs?",
+      "question": "按 CrewAI 文档，推荐的生产起点是什么？",
       "options": [
         "Crew",
         "Flow",
-        "Sequential process",
-        "Hierarchical process"
+        "顺序式 process（sequential）",
+        "层级式 process（hierarchical）"
       ],
       "correct": 1,
-      "explanation": "The docs say start production apps with Flows; fold Crews in as sub-steps when autonomy earns its cost."
+      "explanation": "文档说生产应用从 Flow 开始；当自主性值回成本时，再把 Crew 作为子步骤折叠进来。"
     },
     {
       "stage": "check",
-      "question": "What is the difference between a Crew and a Flow?",
+      "question": "Crew 和 Flow 之间的区别是什么？",
       "options": [
-        "Crew is paid, Flow is free",
-        "Crew is autonomous and LLM-driven; Flow is event-driven, code-owned, deterministic and testable",
-        "Crew runs on GPUs only",
-        "Flow has no agents"
+        "Crew 收费，Flow 免费",
+        "Crew 是自主的、LLM 驱动的；Flow 是事件驱动、代码拥有、确定且可测试的",
+        "Crew 只跑在 GPU 上",
+        "Flow 没有 agent"
       ],
       "correct": 1,
-      "explanation": "Crew is autonomy-first; Flow is determinism-first."
+      "explanation": "Crew 以自主性为先；Flow 以确定性为先。"
     },
     {
       "stage": "check",
-      "question": "Which of these is NOT one of the four memory types CrewAI ships?",
+      "question": "下列哪一个不是 CrewAI 内置的四种记忆类型之一？",
       "options": [
-        "Short-term",
-        "Long-term",
-        "Entity",
-        "Quantized"
+        "短期（Short-term）",
+        "长期（Long-term）",
+        "实体（Entity）",
+        "量化（Quantized）"
       ],
       "correct": 3,
-      "explanation": "Short-term, long-term, entity, and contextual are the four. Quantized memory is not a CrewAI concept."
+      "explanation": "短期、长期、实体和情境（contextual）是这四种。量化记忆不是 CrewAI 的概念。"
     },
     {
       "stage": "check",
-      "question": "What is backstory bloat and how does the lesson recommend handling it?",
+      "question": "什么是背景故事膨胀（backstory bloat），本课建议如何处理？",
       "options": [
-        "Storing too many crews; archive old ones",
-        "2000-word agent backstories push out context budget; keep them tight",
-        "Too many tools; delete some",
-        "Slow Bedrock calls; switch regions"
+        "存了太多 crew；归档旧的",
+        "2000 字的 agent 背景故事挤占了上下文预算；保持精简",
+        "工具太多；删一些",
+        "Bedrock 调用慢；换区域"
       ],
       "correct": 1,
-      "explanation": "Backstories shape tone and judgment but eat context if oversized."
+      "explanation": "背景故事塑造语气和判断，但过长会吃掉上下文。"
     },
     {
       "stage": "post",
-      "question": "When is Hierarchical process worth picking over Sequential?",
+      "question": "什么时候层级式 process 比顺序式更值得选用？",
       "options": [
-        "Always",
-        "When you have 4+ specialists that need a manager Agent to route between them",
-        "When you have one task",
-        "When you do not have any tools"
+        "总是",
+        "当你有 4 个以上专家、需要一个 manager Agent 在它们之间路由时",
+        "当你只有一个任务时",
+        "当你没有任何工具时"
       ],
       "correct": 1,
-      "explanation": "Hierarchical adds a manager Agent; only worthwhile when several specialists need dynamic routing."
+      "explanation": "层级式增加了一个 manager Agent；只有当多个专家需要动态路由时才值得。"
     },
     {
       "stage": "post",
-      "question": "Why does the lesson caution against using a free-form Crew in production?",
+      "question": "为什么本课告诫不要在生产中使用自由形式的 Crew？",
       "options": [
-        "Crews are unsupported",
-        "Output variability is high and debugging is painful without a Flow wrapper",
-        "Crews cost more than Flows",
-        "Crews lack memory"
+        "Crew 不受支持",
+        "输出可变性高，没有 Flow 包装时调试很痛苦",
+        "Crew 比 Flow 贵",
+        "Crew 缺乏记忆"
       ],
       "correct": 1,
-      "explanation": "Crew autonomy makes prod replay and audit painful; wrap with a Flow when shipping."
+      "explanation": "Crew 的自主性让生产环境的重放和审计很痛苦；上线时用 Flow 包装它。"
     }
   ]
 }
