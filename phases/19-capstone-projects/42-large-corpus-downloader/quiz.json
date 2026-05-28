@@ -1,78 +1,78 @@
 {
   "lesson": "42-large-corpus-downloader",
-  "title": "Large Corpus Downloader",
+  "title": "顶点课 42 —— 大规模语料下载器",
   "questions": [
     {
       "stage": "pre",
-      "question": "Why does the downloader keep a separate .partial.json checkpoint per shard?",
+      "question": "为什么下载器要为每个分片维护一个单独的 .partial.json checkpoint？",
       "options": [
-        "To make the cache directory look organized",
-        "So a resumed download can verify the sha256 prefix over the verified bytes before appending, making silent corruption impossible",
-        "Because urllib requires it",
-        "To store the URL in case the shard file moves"
+        "为了让缓存目录看起来整齐。",
+        "这样恢复下载时可以对已验证字节做 sha256 前缀校验再追加，杜绝静默损坏。",
+        "因为 urllib 要求这样做。",
+        "为了存储 URL 以防分片文件迁移。"
       ],
       "correct": 1,
-      "explanation": "The checkpoint records verified_bytes and the sha256 of those bytes; resume only proceeds when the on-disk hash matches."
+      "explanation": "Checkpoint 记录了 verified_bytes 和这些字节的 sha256；恢复时只有磁盘上的哈希匹配才会继续。"
     },
     {
       "stage": "check",
-      "question": "What does the LSH band scheme buy that exact-hash dedup does not?",
+      "question": "LSH band 方案能做到而精确哈希去重做不到的是什么？",
       "options": [
-        "Constant memory usage",
-        "Sub-linear lookup that flags near-duplicates with high Jaccard similarity even when the documents differ by a few tokens",
-        "Lossless compression",
-        "Faster sha256 computation"
+        "常量内存占用。",
+        "亚线性查找，能在文档仅差几个 token 时仍以高 Jaccard 相似度标记近似重复。",
+        "无损压缩。",
+        "更快的 sha256 计算。"
       ],
       "correct": 1,
-      "explanation": "MinHash plus LSH catches paraphrases and boilerplate variants that exact-hash dedup walks past."
+      "explanation": "MinHash 加 LSH 能捕捉到精确哈希去重漏掉的释义和模板变体。"
     },
     {
       "stage": "check",
-      "question": "Why is the checkpoint written before the bytes are appended, not after?",
+      "question": "为什么 checkpoint 是在字节追加之前写入，而不是之后？",
       "options": [
-        "It is convenient",
-        "If the process dies between the write and the checkpoint update, the next resume reads a checkpoint that is behind the bytes and silently re-appends, corrupting the file",
-        "It is faster",
-        "It saves disk space"
+        "这样比较方便。",
+        "如果进程在写入字节和更新 checkpoint 之间挂掉，下次恢复时会读到一个落后于实际字节的 checkpoint，导致静默重复追加、损坏文件。",
+        "这样更快。",
+        "这样节省磁盘空间。"
       ],
       "correct": 1,
-      "explanation": "Checkpoint-first matches a write-ahead log: a crash leaves the verified offset trailing or equal to the file, never ahead."
+      "explanation": "先写 checkpoint 符合 write-ahead log 模式：崩溃后已验证偏移量要么等于要么落后于文件实际长度，绝不会超前。"
     },
     {
       "stage": "check",
-      "question": "What is the role of the manifest sha256 lock file?",
+      "question": "Manifest 的 sha256 锁文件起什么作用？",
       "options": [
-        "It speeds up reads",
-        "Downstream stages refuse to start unless the manifest content matches the pinned hash, closing the silent attack surface where an attacker edits one file",
-        "It records the date",
-        "It is a backup of the manifest"
+        "加快读取速度。",
+        "下游阶段在 manifest 内容与锁定哈希不匹配时拒绝启动，封堵攻击者篡改单个文件的静默攻击面。",
+        "记录日期。",
+        "作为 manifest 的备份。"
       ],
       "correct": 1,
-      "explanation": "Pinning the manifest hash makes the link between code and data a content-addressed contract."
+      "explanation": "锁定 manifest 哈希使代码和数据之间的关联成为内容寻址的契约。"
     },
     {
       "stage": "post",
-      "question": "Why is dedup placed upstream of tokenization rather than after?",
+      "question": "为什么去重放在 tokenization 上游而不是下游？",
       "options": [
-        "The tokenizer cannot read JSONL",
-        "Tokenization is expensive; running it twice on the same document doubles cost for no loss-curve benefit, so dropping duplicates first is strictly cheaper",
-        "Tokenizers reject duplicates",
-        "The tokenizer needs a vocabulary first"
+        "Tokenizer 不能读 JSONL。",
+        "Tokenization 开销很大；对同一篇文档跑两遍只会让成本翻倍，对 loss 曲线没有收益，所以先去重严格更省。",
+        "Tokenizer 会拒绝重复。",
+        "Tokenizer 需要先有词表。"
       ],
       "correct": 1,
-      "explanation": "Dedup is the first stage where each duplicate-dropped document saves the tokenizer one pass."
+      "explanation": "去重是流水线第一步，每去掉一篇重复文档就给 tokenizer 省下一次处理。"
     },
     {
       "stage": "post",
-      "question": "What does tombstoning a dropped duplicate preserve that a silent delete does not?",
+      "question": "对被去掉的重复文档做 tombstone 标记，比直接静默删除多保留了什么？",
       "options": [
-        "Disk space",
-        "The link between the duplicate and the keeper it collided with, plus an audit trail that survives a later threshold change",
-        "Compression ratio",
-        "Manifest sha256 stability"
+        "磁盘空间。",
+        "重复文档与它碰撞的 keeper 之间的关联，以及一条在未来调整阈值时仍可追溯的审计记录。",
+        "压缩比。",
+        "Manifest sha256 的稳定性。"
       ],
       "correct": 1,
-      "explanation": "Tombstones let a future pass revisit the dedup threshold; deletes lose the evidence."
+      "explanation": "Tombstone 让未来的处理可以回溯去重阈值；直接删除则丢失了证据。"
     }
   ]
 }

@@ -1,70 +1,70 @@
 {
   "lesson": "23-function-call-dispatcher",
-  "title": "Function Call Dispatcher",
+  "title": "顶点课 23 —— 函数调用分发器",
   "questions": [
     {
       "stage": "pre",
-      "question": "Why does timeout on a non-idempotent tool default to no retry?",
+      "question": "为什么对非幂等工具，超时后默认不重试？",
       "options": [
-        "Because the dispatcher cannot measure non-idempotent calls",
-        "Because the tool may have partially committed; retry can duplicate the effect",
-        "Because non-idempotent handlers run faster",
-        "Because idempotency keys are slow"
+        "因为分发器无法度量非幂等调用",
+        "因为工具可能已经部分提交了；重试会导致副作用重复",
+        "因为非幂等 handler 执行更快",
+        "因为幂等 key 的生成很慢"
       ],
       "correct": 1,
-      "explanation": "Retrying a db.write that timed out at 4.9s can produce a second write. The dispatcher refuses unless the handler tells it the call is safe to repeat."
+      "explanation": "一次在 4.9 秒超时的 db.write 被重试后可能产生第二次写入。除非 handler 告知该调用可以安全重复，否则分发器会拒绝重试。"
     },
     {
       "stage": "pre",
-      "question": "What is the idempotency-key dedupe protecting against?",
+      "question": "幂等 key 去重保护的是什么场景？",
       "options": [
-        "Slow networks",
-        "A retry that fires while the original call is still in flight",
-        "Schema validation errors",
-        "Process restarts"
+        "网络慢",
+        "重试触发时原始调用仍在进行中",
+        "Schema 校验错误",
+        "进程重启"
       ],
       "correct": 1,
-      "explanation": "Without dedupe, a retry at 5s races a slow original still pending. The cache collapses both into one handler invocation."
+      "explanation": "没有去重的话，5 秒处触发的重试会和仍在等待的原始调用形成竞争。缓存把两者合并为一次 handler 调用。"
     },
     {
       "stage": "check",
-      "question": "Which error kinds are eligible for retry in this dispatcher?",
+      "question": "在这个分发器中，哪些错误类型可以被重试？",
       "options": [
-        "schema and not_found",
-        "internal and budget_exceeded",
-        "timeout (if idempotent) and transient",
-        "All of them"
+        "schema 和 not_found",
+        "internal 和 budget_exceeded",
+        "timeout（仅幂等时）和 transient",
+        "全部都可以"
       ],
       "correct": 2,
-      "explanation": "Schema and not_found are deterministic. Internal masks an unknown handler bug. Budget exceeded is a yield. Only timeout-on-idempotent and explicit TransientError retry."
+      "explanation": "schema 和 not_found 是确定性错误。internal 掩盖了未知的 handler bug。budget_exceeded 是一次 yield。只有幂等调用的 timeout 和显式的 TransientError 才会重试。"
     },
     {
       "stage": "check",
-      "question": "What does the semaphore around _run_with_retries protect?",
+      "question": "_run_with_retries 外面的信号量保护的是什么？",
       "options": [
-        "The handler from itself",
-        "The backend from too many simultaneous calls fanned out by gather()",
-        "The validator",
-        "The retry counter"
+        "handler 不和自己冲突",
+        "后端不被 gather() 扇出的大量并发调用压垮",
+        "validator",
+        "重试计数器"
       ],
       "correct": 1,
-      "explanation": "A gather of forty calls would open forty concurrent dispatches without the limit. The semaphore caps the wave."
+      "explanation": "四十个调用的 gather 如果没有限制就会同时打开四十个并发分发。信号量限制了并发波峰。"
     },
     {
       "stage": "check",
-      "question": "Why is the idempotency key derived by the caller, not by the dispatcher?",
+      "question": "为什么幂等 key 由调用方派生，而不是由分发器生成？",
       "options": [
-        "Because Python hashes are unstable",
-        "Because deriving from args alone makes two semantically-different calls collide if they happen to share args",
-        "Because the registry would not have the key",
-        "Because the cache cannot store strings"
+        "因为 Python 的 hash 不稳定",
+        "因为仅凭参数派生会导致两个语义不同但参数相同的调用发生碰撞",
+        "因为注册中心拿不到 key",
+        "因为缓存不能存字符串"
       ],
       "correct": 1,
-      "explanation": "The caller knows the step id, the planner intent, the user. Args alone are not enough context to safely dedupe."
+      "explanation": "调用方知道 step id、planner 意图、用户身份。仅靠参数无法提供足够的上下文来安全去重。"
     },
     {
       "stage": "post",
-      "question": "Which JSON-RPC error code maps to a schema failure on dispatch?",
+      "question": "分发时 schema 校验失败会映射到哪个 JSON-RPC 错误码？",
       "options": [
         "-32601",
         "-32602",
@@ -72,19 +72,19 @@
         "-32700"
       ],
       "correct": 1,
-      "explanation": "-32602 Invalid params. The dispatcher returns it before any handler runs."
+      "explanation": "-32602 Invalid params。分发器在任何 handler 运行之前就返回这个错误。"
     },
     {
       "stage": "post",
-      "question": "After max_attempts is reached with timeouts on an idempotent tool, what is returned?",
+      "question": "对幂等工具连续超时直到 max_attempts 用尽后，返回什么？",
       "options": [
-        "An exception is raised",
-        "DispatchOk with no result",
-        "DispatchError with kind=timeout and attempts==max_attempts",
-        "DispatchError with kind=internal"
+        "抛出异常",
+        "DispatchOk 但没有结果",
+        "DispatchError，kind=timeout，attempts==max_attempts",
+        "DispatchError，kind=internal"
       ],
       "correct": 2,
-      "explanation": "The dispatcher returns a typed error envelope. The kind reflects the last failure mode, attempts reflects how many tries it made."
+      "explanation": "分发器返回类型化的错误信封。kind 反映最后一次失败模式，attempts 反映总共尝试了多少次。"
     }
   ]
 }

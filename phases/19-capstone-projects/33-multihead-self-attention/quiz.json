@@ -1,34 +1,34 @@
 {
   "lesson": "33-multihead-self-attention",
-  "title": "Multi-Head Self-Attention",
+  "title": "顶点课 33 —— Multi-Head Self-Attention",
   "questions": [
     {
       "stage": "pre",
-      "question": "Why does an efficient self-attention block use a single linear layer that outputs 3*D features?",
+      "question": "为什么高效的 self-attention block 用一个输出 3*D 特征的单线性层？",
       "options": [
-        "It enforces weight sharing between Q, K, and V",
-        "It is mathematically equivalent to three Linear(D, D) layers and runs as one matmul",
-        "It avoids the need for a causal mask",
-        "It reduces the model parameter count"
+        "它强制 Q、K、V 之间共享权重",
+        "它在数学上等价于三个 Linear(D, D) 层，但只跑一次 matmul",
+        "它避免了使用 causal mask",
+        "它减少了模型参数量"
       ],
       "correct": 1,
-      "explanation": "Stacking three (D, D) projection matrices into one (3D, D) matrix produces the same outputs, but the forward pass is a single accelerator-friendly matmul."
+      "explanation": "把三个 (D, D) 的投影矩阵叠成一个 (3D, D) 的矩阵，输出完全一致，但前向传播只需一次对加速器友好的 matmul。"
     },
     {
       "stage": "check",
-      "question": "What is the relationship between d_model, n_heads, and d_head?",
+      "question": "d_model、n_heads 和 d_head 之间是什么关系？",
       "options": [
         "d_head = d_model * n_heads",
         "d_head = d_model + n_heads",
-        "d_head = d_model // n_heads and d_model must be divisible by n_heads",
-        "d_head is independent of d_model"
+        "d_head = d_model // n_heads，且 d_model 必须能被 n_heads 整除",
+        "d_head 与 d_model 无关"
       ],
       "correct": 2,
-      "explanation": "The block splits d_model evenly across heads. The constraint d_model % n_heads == 0 is enforced at construction."
+      "explanation": "该 block 把 d_model 均匀分配给各个 head。d_model % n_heads == 0 这个约束在构造时强制检查。"
     },
     {
       "stage": "check",
-      "question": "What value goes into the scaling factor of scaled dot-product attention?",
+      "question": "scaled dot-product attention 的缩放因子用的是什么值？",
       "options": [
         "sqrt(d_model)",
         "sqrt(d_head)",
@@ -36,43 +36,43 @@
         "sqrt(seq_len)"
       ],
       "correct": 1,
-      "explanation": "Scores are divided by sqrt(d_head), the head dimension that the matmul contracts. This keeps the variance of the scores bounded as d_head grows."
+      "explanation": "分数要除以 sqrt(d_head)，即 matmul 收缩的那个 head 维度。这样可以让分数的方差在 d_head 增大时保持有界。"
     },
     {
       "stage": "check",
-      "question": "How does the causal mask enforce that position t cannot attend to position t+1?",
+      "question": "causal mask 如何保证位置 t 不能 attend 到位置 t+1？",
       "options": [
-        "By multiplying the keys at future positions by zero",
-        "By setting score entries above the diagonal to negative infinity before softmax",
-        "By removing future tokens from the input",
-        "By using a different attention head for the future"
+        "将未来位置的 key 乘以零",
+        "在 softmax 之前将上三角的 score 设为负无穷",
+        "从输入中移除未来的 token",
+        "为未来位置使用不同的 attention head"
       ],
       "correct": 1,
-      "explanation": "Setting future entries to -inf forces softmax to give them weight zero. Past and present positions retain a valid weight distribution."
+      "explanation": "将未来 entry 设为 -inf，softmax 就会给它们分配零权重。过去和当前位置保留有效的权重分布。"
     },
     {
       "stage": "post",
-      "question": "Why does the block end with a Linear(D, D) output projection after merging heads?",
+      "question": "为什么 block 在合并 head 之后还要接一个 Linear(D, D) 的输出投影？",
       "options": [
-        "To allow the model to mix information across heads",
-        "To match the model's vocabulary size",
-        "To normalize the activations to mean zero",
-        "It is required for autograd to track gradients"
+        "让模型能够跨 head 混合信息",
+        "匹配模型的词表大小",
+        "将激活值归一化到均值为零",
+        "autograd 需要它来追踪梯度"
       ],
       "correct": 0,
-      "explanation": "Without the output projection, head outputs would only ever combine in later layers. The projection gives the block one place to mix heads in the same step."
+      "explanation": "没有输出投影的话，各 head 的输出只能在更后面的层才能组合。这个投影让 block 在同一步内就有一个地方来混合 head 的信息。"
     },
     {
       "stage": "post",
-      "question": "What does an attention-weight matrix of shape (B, H, T, T) tell you?",
+      "question": "shape 为 (B, H, T, T) 的 attention weight 矩阵告诉你什么？",
       "options": [
-        "How many parameters each head has",
-        "Which key positions each query position attends to, per head, per batch element",
-        "The cosine similarity between query and value vectors",
-        "The output logits for the next token"
+        "每个 head 有多少参数",
+        "对于每个 batch 元素、每个 head，每个 query 位置 attend 到了哪些 key 位置",
+        "query 和 value 向量之间的余弦相似度",
+        "下一个 token 的输出 logits"
       ],
       "correct": 1,
-      "explanation": "Row t of the per-head matrix is the distribution over key positions used by query position t. Inspecting it shows where each head looks."
+      "explanation": "per-head 矩阵中第 t 行是 query 位置 t 在 key 位置上的分布。检查它就能看到每个 head 在关注哪里。"
     }
   ]
 }

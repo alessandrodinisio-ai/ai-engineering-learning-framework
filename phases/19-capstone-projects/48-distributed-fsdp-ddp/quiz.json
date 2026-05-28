@@ -1,78 +1,78 @@
 {
   "lesson": "48-distributed-fsdp-ddp",
-  "title": "Distributed Data Parallel and FSDP from Scratch",
+  "title": "顶点课 48 —— 从零实现分布式数据并行与 FSDP",
   "questions": [
     {
       "stage": "pre",
-      "question": "Which two collective ops are the core of a from-scratch DDP wrapper?",
+      "question": "从零实现 DDP wrapper 的核心是哪两个 collective op？",
       "options": [
-        "send and recv",
-        "broadcast at construction so every rank starts from the same parameters, and all_reduce after backward so every rank ends with the averaged gradient",
-        "reduce_scatter only",
-        "barrier and barrier"
+        "send 和 recv。",
+        "构造时 broadcast 让每个 rank 从相同参数起步，backward 后 all_reduce 让每个 rank 拿到平均梯度。",
+        "仅 reduce_scatter。",
+        "barrier 和 barrier。"
       ],
       "correct": 1,
-      "explanation": "Broadcast at init keeps ranks in sync at step zero. All-reduce after backward keeps them in sync at every step that follows."
+      "explanation": "初始化时 broadcast 保证 step 0 各 rank 同步。之后每步 backward 后 all_reduce 保持同步。"
     },
     {
       "stage": "pre",
-      "question": "Why does this lesson work on CPU without CUDA?",
+      "question": "为什么这节课不需要 CUDA 就能在 CPU 上跑？",
       "options": [
-        "It is a stub",
-        "torch.distributed ships a gloo backend that runs collectives over plain sockets, so torch.multiprocessing workers on CPU form a real process group; only the device tag changes on a GPU box",
-        "It uses simulated tensors",
-        "It does not use torch.distributed at all"
+        "它只是个 stub。",
+        "torch.distributed 自带 gloo 后端，通过普通 socket 跑 collective，所以 CPU 上的 torch.multiprocessing worker 就能组成真正的 process group；在 GPU 机器上只需换设备标签。",
+        "它用的是模拟 tensor。",
+        "它根本没用 torch.distributed。"
       ],
       "correct": 1,
-      "explanation": "Gloo is the CPU collective backend. The same call sites work on nccl on GPU; the API surface is identical."
+      "explanation": "Gloo 是 CPU collective 后端。同样的调用在 GPU 上用 nccl，API 表面完全一样。"
     },
     {
       "stage": "check",
-      "question": "What does the manual_all_reduce_matches_single_process test prove?",
+      "question": "manual_all_reduce_matches_single_process 测试证明了什么？",
       "options": [
-        "Nothing",
-        "That summing per-rank gradients and dividing by world_size recovers the gradient a single process would compute on the concatenated input, within floating point noise",
-        "That the optimizer converges",
-        "That CUDA is unnecessary"
+        "什么都没证明。",
+        "把各 rank 梯度求和再除以 world_size，能在浮点噪声内恢复出单进程在拼接输入上计算的梯度。",
+        "优化器收敛了。",
+        "CUDA 不是必需的。"
       ],
       "correct": 1,
-      "explanation": "The cross entropy mean reduction on the full batch equals the average of per-rank means. Sum-and-divide is the right operation; the test makes that visible."
+      "explanation": "全 batch 上的 cross entropy mean reduction 等于各 rank mean 的平均。Sum-and-divide 是正确操作；这个测试把它可视化了。"
     },
     {
       "stage": "check",
-      "question": "What does the FSDP sketch in this lesson do per parameter on every forward pass?",
+      "question": "这节课的 FSDP 草案在每次前向传播时对每个参数做了什么？",
       "options": [
-        "Nothing",
-        "Pads the flat parameter to a multiple of world_size, slices, all_gathers the slices on every rank, drops the pad, and verifies the reconstruction matches the original",
-        "Re-initializes the parameter",
-        "Computes a hash"
+        "什么都没做。",
+        "把扁平参数 pad 到 world_size 的整数倍、切片、在每个 rank 上 all_gather 切片、去掉 pad、并验证重建结果与原始一致。",
+        "重新初始化参数。",
+        "计算哈希。"
       ],
       "correct": 1,
-      "explanation": "Each rank owns 1/world_size of every parameter. The gather rebuilds the full tensor for compute; production FSDP overlaps the gather with the previous layer's work."
+      "explanation": "每个 rank 持有每个参数的 1/world_size。Gather 重建完整 tensor 用于计算；生产级 FSDP 会把 gather 和前一层的计算做 overlap。"
     },
     {
       "stage": "check",
-      "question": "Why is the gloo all_gather sized to world_size equal-size shards even when the parameter length is not divisible by world_size?",
+      "question": "为什么 gloo 的 all_gather 需要 world_size 个等大小的 shard，即使参数长度不能被 world_size 整除？",
       "options": [
-        "Gloo's all_gather requires equal output tensor sizes per rank, so the flat parameter is right-padded to a multiple of world_size before slicing and the padding is dropped after the gather",
-        "It is a bug",
-        "It speeds up the network",
-        "Random choice"
+        "Gloo 的 all_gather 要求每个 rank 的输出 tensor 大小相同，所以扁平参数会右 pad 到 world_size 的整数倍再切片，gather 后再裁掉 padding。",
+        "这是个 bug。",
+        "加快网络速度。",
+        "随意选择。"
       ],
       "correct": 0,
-      "explanation": "Gloo (and nccl) all_gather expects same-size outputs. Padding is the cheapest fix; the sketch trims the result back to the original length."
+      "explanation": "Gloo（和 nccl）的 all_gather 要求等大小输出。Padding 是最低成本的修复；草案在 gather 后把结果裁回原始长度。"
     },
     {
       "stage": "post",
-      "question": "Reading the demo output, param_sum_spread near zero across ranks tells you what?",
+      "question": "看 demo 输出，各 rank 间 param_sum_spread 接近零说明了什么？",
       "options": [
-        "That the loss is low",
-        "That every rank ended the run at the same parameter values, which means the broadcast at construction and the all-reduce after every backward both worked; if either was broken the spread would grow over steps",
-        "That the network is fast",
-        "Nothing meaningful"
+        "Loss 很低。",
+        "每个 rank 在 run 结束时参数值相同，说明构造时的 broadcast 和每步 backward 后的 all-reduce 都正常工作了；如果任一环节出错，spread 会随步数增长。",
+        "网络很快。",
+        "没有意义。"
       ],
       "correct": 1,
-      "explanation": "DDP's invariant is parameter parity across ranks. The spread is the audit; the demo asserts it stays under 1e-3."
+      "explanation": "DDP 的不变量是各 rank 参数一致。Spread 就是审计指标；demo 断言它保持在 1e-3 以下。"
     }
   ]
 }

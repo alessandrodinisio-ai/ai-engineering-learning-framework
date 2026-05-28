@@ -1,22 +1,22 @@
 {
   "lesson": "31-tokenized-dataset-sliding-window",
-  "title": "Tokenized Dataset with Sliding Window",
+  "title": "顶点课 31 —— 带 Sliding Window 的 Tokenized Dataset",
   "questions": [
     {
       "stage": "pre",
-      "question": "What is the shape contract for a causal LM training batch?",
+      "question": "因果语言模型训练 batch 的 shape 约定是什么？",
       "options": [
-        "(B, T) input ids and (B, T) target ids where target is the input shifted left by one",
-        "(B, V) one-hot vectors over the vocabulary",
-        "(B, T, T) attention masks with the input ids on the diagonal",
-        "(B, 2) input id and label pairs"
+        "(B, T) input ids 和 (B, T) target ids，其中 target 是 input 左移一位",
+        "(B, V) 词表上的 one-hot 向量",
+        "(B, T, T) attention mask，input ids 放在对角线上",
+        "(B, 2) input id 和 label 的配对"
       ],
       "correct": 0,
-      "explanation": "Causal LM training reads (B, T) input ids and predicts the same shape of target ids, where target[t] = input[t+1]."
+      "explanation": "因果 LM 训练读入 (B, T) 的 input ids，预测同样 shape 的 target ids，其中 target[t] = input[t+1]。"
     },
     {
       "stage": "check",
-      "question": "How many windows of length T+1 fit in an id stream of length N with stride S?",
+      "question": "在长度为 N 的 id 流中，步长为 S 时，能放下多少个长度为 T+1 的 window？",
       "options": [
         "N // (T + 1)",
         "max(0, 1 + (N - (T + 1)) // S)",
@@ -24,55 +24,55 @@
         "N - T - S"
       ],
       "correct": 1,
-      "explanation": "The first window starts at 0. Subsequent windows start at multiples of S. The last window must still cover T+1 ids."
+      "explanation": "第一个 window 从 0 开始，后续 window 从 S 的倍数开始。最后一个 window 仍需完整覆盖 T+1 个 id。"
     },
     {
       "stage": "check",
-      "question": "What effect does halving the stride have on the dataset?",
+      "question": "把 stride 减半会对 dataset 产生什么影响？",
       "options": [
-        "It halves the number of training examples per epoch",
-        "It roughly doubles the number of training examples per epoch",
-        "It has no effect because windows never overlap",
-        "It removes overlap between consecutive windows"
+        "每个 epoch 的训练样本数减半",
+        "每个 epoch 的训练样本数大约翻倍",
+        "没有影响，因为 window 从不重叠",
+        "消除了相邻 window 之间的重叠"
       ],
       "correct": 1,
-      "explanation": "A smaller stride produces more overlapping windows, increasing the example count and the boundary diversity at the cost of more compute per epoch."
+      "explanation": "更小的 stride 产生更多重叠的 window，增加了样本数量和边界多样性，代价是每个 epoch 计算量更大。"
     },
     {
       "stage": "check",
-      "question": "Why pass an explicit torch.Generator to the DataLoader?",
+      "question": "为什么要给 DataLoader 传一个显式的 torch.Generator？",
       "options": [
-        "It speeds up data loading",
-        "It removes the need for batch padding",
-        "It makes the shuffle deterministic across runs with the same seed",
-        "It enables multi-GPU training"
+        "加快数据加载速度",
+        "不需要 batch padding",
+        "让 shuffle 在相同 seed 下跨次运行可复现",
+        "启用多 GPU 训练"
       ],
       "correct": 2,
-      "explanation": "A seeded generator reproduces the same shuffle. Reruns with the same seed see batches in the same order, which is required for fair hyperparameter comparison."
+      "explanation": "设置了 seed 的 generator 能复现相同的 shuffle 顺序。相同 seed 多次运行看到的 batch 顺序一样，这对公平地做超参比较是必要的。"
     },
     {
       "stage": "post",
-      "question": "Why does the dataset return (input[:-1], input[1:]) from each window of size T+1?",
+      "question": "为什么 dataset 从大小为 T+1 的每个 window 中返回 (input[:-1], input[1:])？",
       "options": [
-        "It throws away one id to save memory",
-        "It implements the shift-by-one target so the loss measures next-token prediction",
-        "It removes a special token from the input",
-        "It is a quirk of PyTorch tensor indexing"
+        "丢掉一个 id 来节省内存",
+        "实现了 shift-by-one 的 target，使 loss 衡量的是 next-token prediction",
+        "从输入中移除一个 special token",
+        "这只是 PyTorch tensor 索引的一个怪癖"
       ],
       "correct": 1,
-      "explanation": "The target at position t is the input at position t+1. Slicing the window into [:-1] and [1:] expresses that contract."
+      "explanation": "位置 t 的 target 是位置 t+1 的 input。把 window 切成 [:-1] 和 [1:] 就是在表达这个约定。"
     },
     {
       "stage": "post",
-      "question": "Why does the lesson drop incomplete trailing windows rather than padding them?",
+      "question": "为什么本课丢弃不完整的尾部 window 而不是 padding？",
       "options": [
-        "Padding would change the vocabulary size",
-        "Dropping keeps every example the same length so no loss mask is needed",
-        "Padded tokens are not supported by the model",
-        "Dropped data is recovered by the next epoch"
+        "padding 会改变词表大小",
+        "丢弃后每个样本长度一致，不需要 loss mask",
+        "模型不支持 padded token",
+        "被丢弃的数据会在下一个 epoch 恢复"
       ],
       "correct": 1,
-      "explanation": "All examples are exactly T tokens long by construction, so the batch is a clean rectangular tensor and the loss applies uniformly without a mask."
+      "explanation": "所有样本的长度都恰好是 T 个 token，batch 就是一个干净的矩形 tensor，loss 可以均匀地施加，不需要 mask。"
     }
   ]
 }

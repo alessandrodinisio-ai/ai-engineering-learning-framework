@@ -1,34 +1,34 @@
 {
   "lesson": "22-jsonrpc-stdio-transport",
-  "title": "JSON-RPC 2.0 over Newline-Delimited Stdio",
+  "title": "顶点课 22 —— JSON-RPC 2.0 换行分隔 Stdio 传输层",
   "questions": [
     {
       "stage": "pre",
-      "question": "What distinguishes a JSON-RPC notification from a request on the wire?",
+      "question": "在线路上，JSON-RPC 的 notification 和 request 有什么区别？",
       "options": [
-        "Different jsonrpc version field",
-        "Notifications omit the id field; servers must not respond to them",
-        "Notifications use a different method namespace",
-        "Notifications are wrapped in an array"
+        "jsonrpc 版本号字段不同",
+        "Notification 省略了 id 字段；服务端不得对其响应",
+        "Notification 使用不同的 method 命名空间",
+        "Notification 被包裹在数组里"
       ],
       "correct": 1,
-      "explanation": "Absence of id is the only marker. Servers do not respond, because there is no id to correlate against."
+      "explanation": "没有 id 是唯一标记。服务端不响应，因为没有 id 可以用来关联。"
     },
     {
       "stage": "pre",
-      "question": "Why is newline-delimited JSON sufficient for stdio framing?",
+      "question": "为什么换行分隔 JSON 足以作为 stdio 的帧定界方案？",
       "options": [
-        "Because JSON does not allow literal newlines inside strings without escaping, so each object can be one line",
-        "Because pipes guarantee newline atomicity",
-        "Because UTF-8 has no newline byte",
-        "Because the spec mandates it"
+        "因为 JSON 不允许字符串内出现未转义的换行符，所以每个对象可以占一行",
+        "因为管道保证换行符的原子性",
+        "因为 UTF-8 中没有换行字节",
+        "因为规范强制要求这样"
       ],
       "correct": 0,
-      "explanation": "json.dumps emits a single line per object; literal newlines inside strings are escaped. That makes \\n a safe record separator."
+      "explanation": "json.dumps 每个对象输出一行；字符串内的换行符会被转义。这使得 \\n 成为安全的记录分隔符。"
     },
     {
       "stage": "check",
-      "question": "Which error code does the transport return when JSON parsing fails?",
+      "question": "当 JSON 解析失败时，传输层返回哪个错误码？",
       "options": [
         "-32600",
         "-32700",
@@ -36,55 +36,55 @@
         "-32601"
       ],
       "correct": 1,
-      "explanation": "-32700 is Parse error. The response id is null because no id could be extracted."
+      "explanation": "-32700 是 Parse error。因为无法提取到 id，响应中的 id 为 null。"
     },
     {
       "stage": "check",
-      "question": "If a handler raises a plain ValueError, what does the transport return?",
+      "question": "如果 handler 抛出一个普通的 ValueError，传输层返回什么？",
       "options": [
         "Method not found (-32601)",
         "Invalid params (-32602)",
-        "Internal error (-32603) with the exception class name in data",
-        "It does not return; the connection drops"
+        "Internal error (-32603)，并在 data 中包含异常类名",
+        "不返回任何东西；连接断开"
       ],
       "correct": 2,
-      "explanation": "Unmapped exceptions surface as -32603. data.exception preserves the class name for the client."
+      "explanation": "未映射的异常统一返回 -32603。data.exception 保留了异常的类名供客户端参考。"
     },
     {
       "stage": "check",
-      "question": "What does the server return when a batch contains only notifications?",
+      "question": "当一个 batch 中只包含 notification 时，服务端返回什么？",
       "options": [
-        "An empty array",
-        "Nothing — no bytes are written",
-        "One null per notification",
-        "A single null response"
+        "一个空数组",
+        "什么也不返回——不写任何字节",
+        "每个 notification 对应一个 null",
+        "一个单独的 null 响应"
       ],
       "correct": 1,
-      "explanation": "Spec rule: if every entry is a notification, the server stays silent."
+      "explanation": "规范规定：如果批量请求中的每一条都是 notification，服务端保持沉默。"
     },
     {
       "stage": "post",
-      "question": "A line with broken JSON arrives in the middle of a session. What happens to subsequent lines?",
+      "question": "会话中间收到一行破损的 JSON，之后的行会怎样？",
       "options": [
-        "The transport closes the stream",
-        "They are buffered until the broken line is retried",
-        "The transport writes a -32700 response and continues reading the next line as fresh",
-        "They are all rejected with -32600"
+        "传输层关闭流",
+        "后续行被缓冲，直到破损行被重试",
+        "传输层写一个 -32700 响应，然后继续读取下一行作为新的输入",
+        "后续行全部被 -32600 拒绝"
       ],
       "correct": 2,
-      "explanation": "The framing layer must not poison the stream. One parse error means one error response and the loop continues."
+      "explanation": "帧定界层不能污染整个流。一次解析错误只产生一个错误响应，循环继续运行。"
     },
     {
       "stage": "post",
-      "question": "Why does the transport not consult the tool registry directly?",
+      "question": "为什么传输层不直接查询工具注册中心？",
       "options": [
-        "Because the registry is async",
-        "To keep the transport layer JSON-RPC-shaped only; the handler stitches transport to registry",
-        "Because the registry holds secrets",
-        "Because the transport runs in a different process"
+        "因为注册中心是异步的",
+        "为了让传输层只负责 JSON-RPC 协议；由 handler 来连接传输层和注册中心",
+        "因为注册中心存有机密信息",
+        "因为传输层运行在不同的进程中"
       ],
       "correct": 1,
-      "explanation": "The transport speaks the wire. The dispatcher (next lesson) is where transport meets registry meets timeout."
+      "explanation": "传输层只管线路协议。Dispatcher（下一课）才是传输层、注册中心和超时逻辑汇合的地方。"
     }
   ]
 }

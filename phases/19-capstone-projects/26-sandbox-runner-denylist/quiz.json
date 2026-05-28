@@ -1,78 +1,78 @@
 {
   "lesson": "phase-19/26-sandbox-runner-denylist",
-  "title": "Sandbox Runner with Denylist and Path Jail",
+  "title": "顶点课 26 —— 沙箱执行器：黑名单与路径隔离",
   "questions": [
     {
       "stage": "pre",
-      "question": "Before reading the lesson: what is the strongest reason a sandbox checks argv shapes for interpreter invocations like python3 -c?",
+      "question": "在阅读本课之前：为什么沙箱要检查 python3 -c 这类解释器调用的 argv 形状？",
       "options": [
-        "Interpreters are slow and waste agent budget.",
-        "An interpreter with -c is a shell call by another name and bypasses the executable denylist.",
-        "Interpreters cannot be safely sandboxed at all.",
-        "The model writes better code without them."
+        "解释器太慢，浪费 agent 预算。",
+        "带 -c 的解释器本质上就是换了个名字的 shell 调用，会绕过可执行文件黑名单。",
+        "解释器完全无法被安全地沙箱化。",
+        "不用解释器时模型写的代码更好。"
       ],
       "correct": 1,
-      "explanation": "python3 -c, bash -c, node -e, and friends are functionally identical to giving the model a shell. Blocking the executable name is not enough."
+      "explanation": "python3 -c、bash -c、node -e 等在功能上等同于给模型一个 shell。光拦可执行文件名是不够的。"
     },
     {
       "stage": "check",
-      "question": "The sandbox is configured with project_root=/work. A path argument arrives as ./src/main.py. How is the jail check performed?",
+      "question": "沙箱配置了 project_root=/work。一个路径参数是 ./src/main.py。路径隔离检查怎么做？",
       "options": [
-        "Literal string prefix match against /work.",
-        "os.path.realpath of the joined absolute path is checked for a /work prefix.",
-        "The sandbox refuses every relative path.",
-        "The sandbox spawns the subprocess and checks the working directory after the fact."
+        "对 /work 做字面字符串前缀匹配。",
+        "对拼接后的绝对路径执行 os.path.realpath，然后检查是否以 /work 为前缀。",
+        "沙箱拒绝所有相对路径。",
+        "沙箱先启动子进程，事后再检查工作目录。"
       ],
       "correct": 1,
-      "explanation": "realpath resolves symlinks. A literal prefix check is bypassed by a symlink inside the project root pointing outside. realpath plus prefix-or-equal is the safe check."
+      "explanation": "realpath 会解析符号链接。字面前缀匹配会被项目根目录下指向外部的符号链接绕过。realpath 加前缀相等才是安全的检查方式。"
     },
     {
       "stage": "check",
-      "question": "A SandboxResult comes back with denied=True, timed_out=False, exit_code=-100. What is the canonical interpretation?",
+      "question": "SandboxResult 返回 denied=True、timed_out=False、exit_code=-100。规范解读是什么？",
       "options": [
-        "The subprocess started and was killed by SIGKILL.",
-        "The sandbox never spawned the subprocess; the call was refused before exec.",
-        "The subprocess returned -100 explicitly.",
-        "The wall-clock timeout fired."
+        "子进程已启动并被 SIGKILL 杀掉。",
+        "沙箱在 exec 之前就拒绝了，从未启动子进程。",
+        "子进程显式返回了 -100。",
+        "墙钟超时触发了。"
       ],
       "correct": 1,
-      "explanation": "The sentinel exit_code -100 paired with denied=True means the sandbox short-circuited before subprocess.run was called."
+      "explanation": "哨兵值 exit_code -100 搭配 denied=True 表示沙箱在调用 subprocess.run 之前就短路了。"
     },
     {
       "stage": "check",
-      "question": "Why does the sandbox prefer shell=False by default and refuse shell metacharacters?",
+      "question": "为什么沙箱默认使用 shell=False 并拒绝 shell 元字符？",
       "options": [
-        "shell=True is slower in CPython.",
-        "Shell parsing exposes the entire shell DSL to the model, which is the surface the sandbox is trying to shrink.",
-        "subprocess does not accept shell=True on macOS.",
-        "It makes the test suite simpler."
+        "shell=True 在 CPython 上更慢。",
+        "Shell 解析会把整个 shell DSL 暴露给模型，而沙箱的目的就是缩小这个攻击面。",
+        "subprocess 在 macOS 上不接受 shell=True。",
+        "这样测试套件写起来更简单。"
       ],
       "correct": 1,
-      "explanation": "shell=True turns argv into a shell-interpreted string. Pipes, redirects, command substitution, and globbing all become available. The sandbox cannot meaningfully refuse a payload once shell parsing runs."
+      "explanation": "shell=True 会把 argv 变成 shell 解释的字符串。管道、重定向、命令替换和通配符全部可用。一旦 shell 解析运行起来，沙箱就无法有效拒绝任何负载了。"
     },
     {
       "stage": "post",
-      "question": "You want to add a per-process memory limit to the sandbox. The lesson's sandbox does not implement this. What is the correct next step?",
+      "question": "你想给沙箱加上进程级内存限制。本课的沙箱没有实现这个。正确的下一步是什么？",
       "options": [
-        "Use os.setrlimit(RLIMIT_AS) in a preexec_fn passed to subprocess.run.",
-        "Add the limit to the denylist as a string.",
-        "Increase the wall-clock timeout to compensate.",
-        "Skip it: a denylist is sufficient for memory bombs."
+        "在传给 subprocess.run 的 preexec_fn 中使用 os.setrlimit(RLIMIT_AS)。",
+        "把限制作为字符串加到黑名单里。",
+        "增加墙钟超时来弥补。",
+        "跳过：黑名单足以应对内存炸弹。"
       ],
       "correct": 0,
-      "explanation": "subprocess.run accepts preexec_fn (POSIX) or a similar mechanism. setrlimit(RLIMIT_AS) caps the address space of the child. The sandbox in this lesson does not ship this; lesson 29's end-to-end demo discusses how to layer container-level limits on top."
+      "explanation": "subprocess.run 接受 preexec_fn（POSIX）或类似机制。setrlimit(RLIMIT_AS) 限制子进程的地址空间。本课的沙箱没有提供这个功能；第 29 课的端到端演示会讨论如何在上面叠加容器级限制。"
     },
     {
       "stage": "post",
-      "question": "The model invokes the sandbox with argv=['cat', 'src/../src/main.py']. The file exists under project_root. Should the call pass the path jail?",
+      "question": "模型用 argv=['cat', 'src/../src/main.py'] 调用沙箱。文件确实在 project_root 下。这个调用能通过路径隔离吗？",
       "options": [
-        "No, any .. in a path is an automatic refusal.",
-        "Yes: realpath collapses src/../src to src and the resolved path is inside project_root.",
-        "No: argv is rejected by the regex gate before the sandbox sees it.",
-        "It depends on whether the user is root."
+        "不能，路径中有 .. 就自动拒绝。",
+        "能：realpath 把 src/../src 折叠为 src，解析后的路径在 project_root 内。",
+        "不能：argv 在沙箱看到之前就被正则 gate 拒绝了。",
+        "取决于用户是否是 root。"
       ],
       "correct": 1,
-      "explanation": "realpath normalises the path. The sandbox does not blanket-refuse .. tokens; it checks the resolved target. This is intentional: legitimate paths sometimes go through .. legitimately."
+      "explanation": "realpath 会规范化路径。沙箱不会一刀切地拒绝 .. 标记；它检查的是解析后的目标。这是有意为之：合法路径有时确实会经过 ..。"
     }
   ]
 }

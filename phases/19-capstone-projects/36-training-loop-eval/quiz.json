@@ -1,78 +1,78 @@
 {
   "lesson": "36-training-loop-eval",
-  "title": "Training Loop and Evaluation",
+  "title": "顶点课 36 —— 训练循环与评估",
   "questions": [
     {
       "stage": "pre",
-      "question": "Why must the target tensor be the input tensor shifted by one position?",
+      "question": "为什么 target tensor 必须是 input tensor 偏移一位？",
       "options": [
-        "Cross entropy needs identical tensors",
-        "Next token prediction is the training objective: at every position the model predicts the token that comes next; forgetting the shift trains the model to predict itself, which learns nothing useful",
-        "It speeds up the optimizer",
-        "It is required by AdamW"
+        "cross entropy 需要两个一模一样的 tensor",
+        "next-token prediction 就是训练目标：模型在每个位置预测下一个 token；忘了做偏移就等于训模型预测自己，什么有用的都学不到",
+        "加速优化器",
+        "AdamW 要求的"
       ],
       "correct": 1,
-      "explanation": "Input is tokens 0..T-1; target is tokens 1..T; loss is computed on the flattened (batch*seq, vocab) and (batch*seq,) shapes."
+      "explanation": "input 是 token 0..T-1；target 是 token 1..T；loss 在 flatten 后的 (batch*seq, vocab) 和 (batch*seq,) shape 上计算。"
     },
     {
       "stage": "pre",
-      "question": "What does evaluate_model do that the training step does not?",
+      "question": "evaluate_model 做了什么训练步没做的事？",
       "options": [
-        "It runs the optimizer",
-        "It runs a fixed number of validation batches under no_grad and with dropout disabled, returning a reproducible mean loss",
-        "It changes the model weights",
-        "It computes gradients twice"
+        "运行优化器",
+        "在 no_grad 且关闭 dropout 的条件下跑固定数量的验证 batch，返回可复现的平均 loss",
+        "修改模型权重",
+        "算两次梯度"
       ],
       "correct": 1,
-      "explanation": "Held out evaluation needs no gradients, no dropout, and a fixed slice of validation data to be reproducible across runs."
+      "explanation": "held-out 评估不需要梯度、不需要 dropout，且用固定的验证数据切片来保证跨次运行可复现。"
     },
     {
       "stage": "check",
-      "question": "Which AdamW parameters get weight decay?",
+      "question": "AdamW 中哪些参数会接受 weight decay？",
       "options": [
-        "Every parameter equally",
-        "Matrix-shaped tensors (linear weights, embedding tables) receive weight decay; scale, shift, and bias tensors receive zero decay",
-        "Only the LM head",
-        "Only the LayerNorm scales"
+        "所有参数一视同仁",
+        "矩阵形状的 tensor（linear weight、embedding table）接受 weight decay；scale、shift 和 bias tensor 的 decay 为零",
+        "只有 LM head",
+        "只有 LayerNorm 的 scale"
       ],
       "correct": 1,
-      "explanation": "Putting decay on a LayerNorm scale drives the scale to zero and breaks normalization; the split is a standard production pattern."
+      "explanation": "如果对 LayerNorm 的 scale 施加 decay，scale 会被推向零从而破坏归一化；这种分组是标准的生产做法。"
     },
     {
       "stage": "check",
-      "question": "What shape does the warmup-plus-cosine schedule trace from step 0 to the final step?",
+      "question": "warmup + cosine 学习率调度从 step 0 到最后一步画出什么形状？",
       "options": [
-        "Constant",
-        "Linear ramp from zero to max over warmup_steps, then cosine decay from max to min_lr over the remaining steps",
-        "Exponential growth",
-        "Step function"
+        "常数",
+        "从零线性上升到最大值（warmup_steps 步），然后从最大值余弦衰减到 min_lr（剩余步数）",
+        "指数增长",
+        "阶梯函数"
       ],
       "correct": 1,
-      "explanation": "Warmup populates optimizer state; cosine decay tapers the step size so the final phase fine-tunes the weights."
+      "explanation": "warmup 阶段让优化器状态充分填充；cosine decay 逐渐缩小步长，让最后阶段对权重做精调。"
     },
     {
       "stage": "check",
-      "question": "Why clip gradient norm before optimizer.step()?",
+      "question": "为什么在 optimizer.step() 之前做梯度范数裁剪？",
       "options": [
-        "It accelerates the matmul",
-        "A bad batch can produce a huge gradient that wipes out hours of training; clipping to max_norm=1.0 keeps the optimizer in a safe range without distorting normal updates",
-        "It reduces memory usage",
-        "It removes the warmup requirement"
+        "加速 matmul",
+        "一个坏 batch 可能产生巨大梯度，瞬间毁掉几小时的训练；裁剪到 max_norm=1.0 把优化器限制在安全范围内，又不会扭曲正常的更新",
+        "减少内存用量",
+        "去掉对 warmup 的需求"
       ],
       "correct": 1,
-      "explanation": "Gradient clipping is the cheapest insurance against divergence; one is the default that survives most setups."
+      "explanation": "梯度裁剪是防止发散的最低成本保险；1.0 是在大多数场景下都能用的默认值。"
     },
     {
       "stage": "post",
-      "question": "Why log per step records as JSONL instead of pickled state?",
+      "question": "为什么把每步记录以 JSONL 而不是 pickle 状态来保存？",
       "options": [
-        "JSONL is required by the optimizer",
-        "JSONL records are durable across refactors, greppable, plottable in thirty lines, and survive crashes; pickled state ties you to the module layout that produced it",
-        "JSONL trains faster",
-        "JSONL uses less GPU memory"
+        "JSONL 是优化器要求的",
+        "JSONL 记录在重构后仍然有效、可以 grep、用三十行代码就能画图，而且能扛住 crash；pickle 状态则绑定在生成它的模块结构上",
+        "JSONL 训练更快",
+        "JSONL 占用更少 GPU 内存"
       ],
       "correct": 1,
-      "explanation": "Any crash leaves a readable artifact; resume reads the last step; tooling on top is trivial."
+      "explanation": "任何 crash 都会留下可读的产物；恢复时读最后一步就行；上面搭工具链极其简单。"
     }
   ]
 }
