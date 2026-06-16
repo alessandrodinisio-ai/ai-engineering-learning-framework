@@ -8,8 +8,12 @@
  * Called automatically by GitHub Actions on every push.
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const README_PATH = path.join(REPO_ROOT, 'README.md');
@@ -17,8 +21,8 @@ const ROADMAP_PATH = path.join(REPO_ROOT, 'ROADMAP.md');
 const GLOSSARY_PATH = path.join(REPO_ROOT, 'glossary', 'terms.md');
 const OUTPUT_PATH = path.join(__dirname, 'data.js');
 
-const GITHUB_BASE = 'https://github.com/fancyboi999/ai-engineering-from-scratch-zh/tree/main/';
-const SITE_ORIGIN = 'https://aieng-zh.cn';
+const GITHUB_BASE = 'https://github.com/rohitg00/ai-engineering-from-scratch/tree/main/';
+const SITE_ORIGIN = 'https://aieng.dev';
 
 // GITHUB_BASE lesson url -> site path "phases/<phase>/<lesson>"
 function lessonPath(url) {
@@ -230,9 +234,9 @@ function parseReadme(content, roadmapStatuses) {
   return phases;
 }
 
-// ─── Extract lesson summary + keywords from docs/zh.md ───────────────
+// ─── Extract lesson summary + keywords from docs/en.md ───────────────
 /**
- * Single-pass read of a lesson's docs/zh.md.
+ * Single-pass read of a lesson's docs/en.md.
  *
  * Returns:
  *   summary  — first `> blockquote` line (the lesson's one-liner motto).
@@ -245,7 +249,7 @@ function parseReadme(content, roadmapStatuses) {
  * matching content — expected for planned lessons with no docs yet.
  */
 function extractLessonMeta(relPath) {
-  const docPath = path.join(REPO_ROOT, relPath, 'docs', 'zh.md');
+  const docPath = path.join(REPO_ROOT, relPath, 'docs', 'en.md');
   const result = { summary: '', keywords: '' };
   try {
     const lines = fs.readFileSync(docPath, 'utf8').split(/\r?\n/);
@@ -417,7 +421,7 @@ function build() {
   console.log('🔍 Discovering outputs + Phase 14 missions...');
   const artifacts = discoverArtifacts();
 
-  console.log('📚 Extracting lesson summaries + keywords from docs/zh.md...');
+  console.log('📚 Extracting lesson summaries + keywords from docs/en.md...');
   let summarized = 0, withKeywords = 0;
   for (const phase of phases) {
     for (const lesson of phase.lessons) {
@@ -465,7 +469,7 @@ const ARTIFACTS = ${JSON.stringify(artifacts, null, 2)};
   writeLlms(phases, glossaryTerms.length, artifacts.length);
 }
 
-// ─── sitemap.xml：从站点渲染的同一份 PHASES 生成 ─────────────────────
+// ─── sitemap.xml: generated from the same PHASES used by the site ────
 function writeSitemap(phases, glossaryCount) {
   const today = new Date().toISOString().slice(0, 10);
   const urls = [
@@ -491,18 +495,17 @@ function writeSitemap(phases, glossaryCount) {
   console.log(`   wrote sitemap.xml (${urls.length} URLs)`);
 }
 
-// ─── llms.txt：给 AI agent 的课程地图（链接丰富）─────────────────────
+// ─── llms.txt: course map for AI agents (link-rich) ─────────────────
 function writeLlms(phases, glossaryCount, artifactCount) {
   let total = 0;
   phases.forEach(p => { total += p.lessons.filter(l => lessonPath(l.url)).length; });
-  let out = `# AI Engineering from Scratch · 简体中文版\n\n`;
-  out += `> 一套免费、开源的 AI 工程课程，从零亲手实现每一个核心算法——${total} 节课，横跨 ${phases.length} 个阶段，从线性代数到自主 agent。Python、TypeScript、Rust、Julia。本站为简体中文翻译版。\n\n`;
+  let out = `# AI Engineering from Scratch\n\n`;
+  out += `> A free, open-source AI engineering curriculum that builds every core algorithm from scratch — ${total} lessons across ${phases.length} phases, from linear algebra to autonomous agents. Python, TypeScript, Rust, Julia.\n\n`;
   out += `Canonical site: ${SITE_ORIGIN}\n`;
-  out += `Source: https://github.com/fancyboi999/ai-engineering-from-scratch-zh\n`;
-  out += `Upstream: https://github.com/rohitg00/ai-engineering-from-scratch\n`;
+  out += `Source: https://github.com/rohitg00/ai-engineering-from-scratch\n`;
   out += `Glossary terms: ${glossaryCount} · Reusable outputs (prompts/skills/agents): ${artifactCount}\n\n`;
   for (const phase of phases) {
-    out += `## 阶段 ${phase.id}：${phase.name}\n`;
+    out += `## Phase ${phase.id}: ${phase.name}\n`;
     if (phase.desc) out += `${phase.desc}\n`;
     out += `\n`;
     for (const l of phase.lessons) {
@@ -513,19 +516,19 @@ function writeLlms(phases, glossaryCount, artifactCount) {
     }
     out += `\n`;
   }
-  out += `## 其它\n`;
-  out += `- [课程表](${SITE_ORIGIN}/catalog.html) — 可搜索的完整课程索引\n`;
-  out += `- [路线图](${SITE_ORIGIN}/prereqs.html) — 跨阶段的前置依赖顺序\n`;
-  if (glossaryCount > 0) out += `- [术语表](${SITE_ORIGIN}/glossary.html) — ${glossaryCount} 个术语的通俗定义\n`;
+  out += `## Other\n`;
+  out += `- [Catalog](${SITE_ORIGIN}/catalog.html) — searchable full course index\n`;
+  out += `- [Roadmap](${SITE_ORIGIN}/prereqs.html) — cross-phase prerequisite order\n`;
+  if (glossaryCount > 0) out += `- [Glossary](${SITE_ORIGIN}/glossary.html) — plain-language definitions for ${glossaryCount} terms\n`;
   fs.writeFileSync(path.join(__dirname, 'llms.txt'), out, 'utf8');
   console.log(`   wrote llms.txt`);
 }
 
-// ─── 自动同步站点文案里的课程数 / 产出数（单一真相 = 本次构建）─────
-// 每次同步新课只需在 README 表格补行 + 跑 build，站点这些散落的数字
-// 会自动对齐，不必手动逐个改（435 漂了好几个月、489 项产出过时都因此）。
-// 只处理站点模板文件，不碰 README——README 每个 phase 标题有
-// `<code>N lessons</code>` 单 phase 课数，全局替换会误伤成全局总数。
+// ─── Auto-sync lesson/output counts in site template files ──────────
+// On every build the scattered numbers in site templates are aligned
+// to the single source of truth (this build). Only site template files
+// are touched, not README — README has per-phase `<code>N lessons</code>`
+// counts that would be incorrectly overwritten with the global total.
 function syncCounts(lessons, outputs) {
   const targets = ['index.html', 'catalog.html', 'prereqs.html', 'lesson.html', 'cmdpalette.js'];
   for (const f of targets) {
@@ -533,11 +536,9 @@ function syncCounts(lessons, outputs) {
     if (!fs.existsSync(p)) continue;
     const before = fs.readFileSync(p, 'utf8');
     const after = before
-      .replace(/\d+( 节课程)/g, lessons + '$1')        // 节课程 先于 节课，避免误伤
-      .replace(/\d+ 节课(?!程)/g, lessons + ' 节课')   // 节课（后面不是「程」）
-      .replace(/\d+( 节 AI 工程)/g, lessons + '$1')
-      .replace(/\d+( lessons)\b/g, lessons + '$1')      // 英文 og/meta
-      .replace(/\d+( 项产出)/g, outputs + '$1');
+      .replace(/\d+( lessons)\b/g, lessons + '$1')
+      .replace(/\d+( AI engineering)/g, lessons + '$1')
+      .replace(/\d+( outputs)/g, outputs + '$1');
     if (after !== before) {
       fs.writeFileSync(p, after, 'utf8');
       console.log(`   synced counts in ${f}`);

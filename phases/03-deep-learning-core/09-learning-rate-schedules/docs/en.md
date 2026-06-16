@@ -1,0 +1,427 @@
+# Learning Rate Schedules and Warmup
+
+> The learning rate is the single most important hyperparameter. Not the architecture. Not the dataset size. Not the activation function. The learning rate. If you tune nothing else, tune this.
+
+**Type:** Build
+**Languages:** Python
+**Prerequisites:** Lesson 03.06 (Optimizers), Lesson 03.08 (Weight Initialization)
+**Time:** ~90 minutes
+
+## Learning Objectives
+
+- Implement five learning rate schedules from scratch: constant, step decay, cosine annealing, warmup + cosine, and 1cycle
+- Demonstrate the three failure modes of learning rate selection: divergence (too high), stagnation (too low), oscillation (no decay)
+- Explain why Adam-based optimizers need warmup and how it stabilizes early training
+- Compare convergence speed of all five schedules on the same task and choose the right one for a given training budget
+
+## The Problem
+
+Set the learning rate to 0.1. Training diverges—loss jumps to infinity within 3 steps. Set it to 0.0001. Training crawls—after 100 epochs, the model has barely moved from its random start. Set it to 0.01. Training works for the first 50 epochs, then loss oscillates around a minimum it can never reach because steps are too large.
+
+The optimal learning rate isn't a constant. It changes during training. Early on, you want large steps to cover ground quickly. Late in training, you want tiny steps to settle into a sharp minimum. The difference between a 90% accuracy model and a 95% accuracy model is often just the schedule.
+
+Every significant model published in the last three years uses a learning rate schedule. Llama 3 uses peak lr=3e-4, 2000-step warmup, cosine decay to 3e-5. GPT-3 uses lr=6e-4, warmup over 375 million tokens. These aren't arbitrary. They're the result of extensive hyperparameter sweeps costing millions of dollars.
+
+You need to understand schedules because defaults won't work for your problem. When you fine-tune a pretrained model, the right schedule differs from training from scratch. When you increase batch size, warmup duration needs to change. When training crashes at step 10,000, you need to know whether it's a schedule issue or something else.
+
+## The Concept
+
+### Constant Learning Rate
+
+The simplest approach. Pick a number, use it every step.
+
+```
+lr(t) = lr_0
+```
+
+Rarely optimal. It's either too high for late training (oscillates around minimum) or too low for early training (wastes compute on tiny steps). Fine for small models and debugging. A bad choice for anything training longer than an hour.
+
+### Step Decay
+
+Old-school from the ResNet era. Cut the learning rate by a factor (usually 10x) at fixed epoch boundaries.
+
+```
+lr(t) = lr_0 * gamma^(floor(epoch / step_size))
+```
+
+Where gamma = 0.1 and step_size = 30 means: lr drops 10x every 30 epochs. ResNet-50 used exactly this—lr=0.1, dropping 10x at epochs 30, 60, 90.
+
+The problem: optimal drop points depend on dataset and architecture. Change the problem and you need to re-tune when to drop. The transitions are abrupt—loss can spike when the rate suddenly changes.
+
+### Cosine Annealing
+
+Smooth decay from maximum to minimum learning rate following a cosine curve:
+
+```
+lr(t) = lr_min + 0.5 * (lr_max - lr_min) * (1 + cos(pi * t / T))
+```
+
+Where t is current step and T is total steps.
+
+At t=0, the cosine term is 1, so lr = lr_max. At t=T, the cosine term is -1, so lr = lr_min. Decay is gentle early, steepest in the middle, gentle again near the end.
+
+This is the default for most modern training. No hyperparameters to tune beyond lr_max and lr_min. The cosine shape matches an empirical observation: most learning happens in the middle of training—you want to maintain reasonable step sizes during that critical period.
+
+### Warmup: Why Start Small
+
+Adam and other adaptive optimizers maintain running estimates of gradient mean and variance. At step 0, these estimates are initialized to zero. The first few gradient updates are based on garbage statistics. If your learning rate is large during this period, the model takes huge, poorly-directed steps.
+
+Warmup fixes this. Start from a tiny learning rate (often lr_max / warmup_steps or even zero) and linearly ramp to lr_max over the first N steps. By the time you reach full learning rate, Adam's statistics have stabilized.
+
+```
+lr(t) = lr_max * (t / warmup_steps)     for t < warmup_steps
+```
+
+Typical warmup: 1-5% of total training steps. Llama 3 trained for ~1.8 trillion tokens and warmed up for 2000 steps. GPT-3 warmed up over 375 million tokens.
+
+### Linear Warmup + Cosine Decay
+
+The modern default. Ramp up linearly, then decay with cosine:
+
+```
+if t < warmup_steps:
+    lr(t) = lr_max * (t / warmup_steps)
+else:
+    progress = (t - warmup_steps) / (total_steps - warmup_steps)
+    lr(t) = lr_min + 0.5 * (lr_max - lr_min) * (1 + cos(pi * progress))
+```
+
+This is what Llama, GPT, PaLM, and most modern transformers use. Warmup prevents early instability. Cosine decay lets the model settle into a good minimum.
+
+### 1cycle Policy
+
+Leslie Smith's discovery (2018): ramp learning rate from a low value to a high value in the first half of training, then back down in the second half. Counterintuitive—why would you *increase* learning rate mid-training?
+
+The theory: high learning rates act as regularization by adding noise to the optimization trajectory. The model explores more of the loss surface during the ramp-up phase, finding better basins. The ramp-down phase then refines within the best basin found.
+
+```
+Phase 1 (0 to T/2):    lr ramps from lr_max/25 to lr_max
+Phase 2 (T/2 to T):    lr ramps from lr_max to lr_max/10000
+```
+
+1cycle often trains faster than cosine annealing for a fixed compute budget. The cost: you must know total steps in advance.
+
+### Schedule Shapes
+
+```mermaid
+graph LR
+    subgraph "Constant"
+        C1["lr"] --- C2["lr"] --- C3["lr"]
+    end
+
+    subgraph "Step Decay"
+        S1["0.1"] --- S2["0.1"] --- S3["0.01"] --- S4["0.001"]
+    end
+
+    subgraph "Cosine Annealing"
+        CS1["lr_max"] --> CS2["gentle decay"] --> CS3["steep decay"] --> CS4["lr_min"]
+    end
+
+    subgraph "Warmup + Cosine"
+        WC1["0"] --> WC2["lr_max"] --> WC3["cosine"] --> WC4["lr_min"]
+    end
+```
+
+### Decision Flowchart
+
+```mermaid
+flowchart TD
+    Start["Choose LR Schedule"] --> Know{"Know total<br/>training steps?"}
+
+    Know -->|"Yes"| Budget{"Compute budget?"}
+    Know -->|"No"| Constant["Use constant LR<br/>with manual decay"]
+
+    Budget -->|"Large (days/weeks)"| WarmCos["Warmup + Cosine Decay<br/>(Llama/GPT default)"]
+    Budget -->|"Small (hours)"| OneCycle["1cycle Policy<br/>(fastest convergence)"]
+    Budget -->|"Medium"| Cosine["Cosine Annealing<br/>(safe default)"]
+
+    WarmCos --> Warmup["Warmup = 1-5% of total steps"]
+    OneCycle --> FindLR["Use LR range test to find lr_max"]
+    Cosine --> MinLR["Set lr_min = lr_max / 10"]
+```
+
+### Real Numbers from Published Models
+
+```mermaid
+graph TD
+    subgraph "Published LR Configurations"
+        L3["Llama 3 (405B)<br/>Peak: 3e-4<br/>Warmup: 2000 steps<br/>Schedule: cosine decay to 3e-5"]
+        G3["GPT-3 (175B)<br/>Peak: 6e-4<br/>Warmup: 375M tokens<br/>Schedule: cosine decay to 0"]
+        R50["ResNet-50<br/>Peak: 0.1<br/>Warmup: none<br/>Schedule: 0.1x at epoch 30/60/90"]
+        B["BERT (340M)<br/>Peak: 1e-4<br/>Warmup: 10k steps<br/>Schedule: linear decay"]
+    end
+```
+
+## Build It
+
+### Step 1: Schedule Functions
+
+Each function takes the current step and returns the learning rate for that step.
+
+```python
+import math
+
+
+def constant_schedule(step, lr=0.01, **kwargs):
+    return lr
+
+
+def step_decay_schedule(step, lr=0.1, step_size=100, gamma=0.1, **kwargs):
+    return lr * (gamma ** (step // step_size))
+
+
+def cosine_schedule(step, lr=0.01, total_steps=1000, lr_min=1e-5, **kwargs):
+    if step >= total_steps:
+        return lr_min
+    return lr_min + 0.5 * (lr - lr_min) * (1 + math.cos(math.pi * step / total_steps))
+
+
+def warmup_cosine_schedule(step, lr=0.01, total_steps=1000, warmup_steps=100, lr_min=1e-5, **kwargs):
+    if total_steps <= warmup_steps:
+        return lr * (step / max(warmup_steps, 1))
+    if step < warmup_steps:
+        return lr * step / warmup_steps
+    progress = (step - warmup_steps) / (total_steps - warmup_steps)
+    return lr_min + 0.5 * (lr - lr_min) * (1 + math.cos(math.pi * progress))
+
+
+def one_cycle_schedule(step, lr=0.01, total_steps=1000, **kwargs):
+    mid = max(total_steps // 2, 1)
+    if step < mid:
+        return (lr / 25) + (lr - lr / 25) * step / mid
+    else:
+        progress = (step - mid) / max(total_steps - mid, 1)
+        return lr * (1 - progress) + (lr / 10000) * progress
+```
+
+### Step 2: Visualize All Schedules
+
+Print a text-based chart showing how each schedule evolves during training.
+
+```python
+def visualize_schedule(name, schedule_fn, total_steps=500, **kwargs):
+    steps = list(range(0, total_steps, total_steps // 20))
+    if total_steps - 1 not in steps:
+        steps.append(total_steps - 1)
+
+    lrs = [schedule_fn(s, total_steps=total_steps, **kwargs) for s in steps]
+    max_lr = max(lrs) if max(lrs) > 0 else 1.0
+
+    print(f"\n{name}:")
+    for s, lr_val in zip(steps, lrs):
+        bar_len = int(lr_val / max_lr * 40)
+        bar = "#" * bar_len
+        print(f"  Step {s:4d}: lr={lr_val:.6f} {bar}")
+```
+
+### Step 3: Train a Network
+
+A simple two-layer network on the circle dataset, same as previous lessons, but now we swap schedules.
+
+```python
+import random
+
+
+def sigmoid(x):
+    x = max(-500, min(500, x))
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def relu(x):
+    return max(0.0, x)
+
+
+def relu_deriv(x):
+    return 1.0 if x > 0 else 0.0
+
+
+def make_circle_data(n=200, seed=42):
+    random.seed(seed)
+    data = []
+    for _ in range(n):
+        x = random.uniform(-2, 2)
+        y = random.uniform(-2, 2)
+        label = 1.0 if x * x + y * y < 1.5 else 0.0
+        data.append(([x, y], label))
+    return data
+
+
+def train_with_schedule(schedule_fn, schedule_name, data, epochs=300, base_lr=0.05, **kwargs):
+    random.seed(0)
+    hidden_size = 8
+    total_steps = epochs * len(data)
+
+    std = math.sqrt(2.0 / 2)
+    w1 = [[random.gauss(0, std) for _ in range(2)] for _ in range(hidden_size)]
+    b1 = [0.0] * hidden_size
+    w2 = [random.gauss(0, std) for _ in range(hidden_size)]
+    b2 = 0.0
+
+    step = 0
+    epoch_losses = []
+
+    for epoch in range(epochs):
+        total_loss = 0
+        correct = 0
+
+        for x, target in data:
+            lr = schedule_fn(step, lr=base_lr, total_steps=total_steps, **kwargs)
+
+            z1 = []
+            h = []
+            for i in range(hidden_size):
+                z = w1[i][0] * x[0] + w1[i][1] * x[1] + b1[i]
+                z1.append(z)
+                h.append(relu(z))
+
+            z2 = sum(w2[i] * h[i] for i in range(hidden_size)) + b2
+            out = sigmoid(z2)
+
+            error = out - target
+            d_out = error * out * (1 - out)
+
+            for i in range(hidden_size):
+                d_h = d_out * w2[i] * relu_deriv(z1[i])
+                w2[i] -= lr * d_out * h[i]
+                for j in range(2):
+                    w1[i][j] -= lr * d_h * x[j]
+                b1[i] -= lr * d_h
+            b2 -= lr * d_out
+
+            total_loss += (out - target) ** 2
+            if (out >= 0.5) == (target >= 0.5):
+                correct += 1
+            step += 1
+
+        avg_loss = total_loss / len(data)
+        accuracy = correct / len(data) * 100
+        epoch_losses.append(avg_loss)
+
+    return epoch_losses
+```
+
+### Step 4: Compare All Schedules
+
+Train the same network with each schedule and compare final loss and convergence behavior.
+
+```python
+def compare_schedules(data):
+    configs = [
+        ("Constant", constant_schedule, {}),
+        ("Step Decay", step_decay_schedule, {"step_size": 15000, "gamma": 0.1}),
+        ("Cosine", cosine_schedule, {"lr_min": 1e-5}),
+        ("Warmup+Cosine", warmup_cosine_schedule, {"warmup_steps": 3000, "lr_min": 1e-5}),
+        ("1cycle", one_cycle_schedule, {}),
+    ]
+
+    print(f"\n{'Schedule':<20} {'Start Loss':>12} {'Mid Loss':>12} {'End Loss':>12} {'Best Loss':>12}")
+    print("-" * 70)
+
+    for name, schedule_fn, extra_kwargs in configs:
+        losses = train_with_schedule(schedule_fn, name, data, epochs=300, base_lr=0.05, **extra_kwargs)
+        mid_idx = len(losses) // 2
+        best = min(losses)
+        print(f"{name:<20} {losses[0]:>12.6f} {losses[mid_idx]:>12.6f} {losses[-1]:>12.6f} {best:>12.6f}")
+```
+
+### Step 5: LR Too High vs Too Low
+
+Demonstrate the three failure modes: too high (diverges), too low (crawls), just right.
+
+```python
+def lr_sensitivity(data):
+    learning_rates = [1.0, 0.1, 0.01, 0.001, 0.0001]
+
+    print("\nLR Sensitivity (constant schedule, 100 epochs):")
+    print(f"  {'LR':>10} {'Start Loss':>12} {'End Loss':>12} {'Status':>15}")
+    print("  " + "-" * 52)
+
+    for lr in learning_rates:
+        losses = train_with_schedule(constant_schedule, f"lr={lr}", data, epochs=100, base_lr=lr)
+        start = losses[0]
+        end = losses[-1]
+
+        if end > start or math.isnan(end) or end > 1.0:
+            status = "DIVERGED"
+        elif end > start * 0.9:
+            status = "BARELY MOVED"
+        elif end < 0.15:
+            status = "CONVERGED"
+        else:
+            status = "LEARNING"
+
+        end_str = f"{end:.6f}" if not math.isnan(end) else "NaN"
+        print(f"  {lr:>10.4f} {start:>12.6f} {end_str:>12} {status:>15}")
+```
+
+## Use It
+
+PyTorch provides schedulers in `torch.optim.lr_scheduler`:
+
+```python
+import torch
+import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, StepLR
+
+model = nn.Sequential(nn.Linear(10, 64), nn.ReLU(), nn.Linear(64, 1))
+optimizer = optim.Adam(model.parameters(), lr=3e-4)
+
+scheduler = CosineAnnealingLR(optimizer, T_max=1000, eta_min=1e-5)
+
+for step in range(1000):
+    loss = train_step(model, optimizer)
+    scheduler.step()
+```
+
+For warmup + cosine, use a lambda scheduler or HuggingFace's `get_cosine_schedule_with_warmup`:
+
+```python
+from transformers import get_cosine_schedule_with_warmup
+
+scheduler = get_cosine_schedule_with_warmup(
+    optimizer,
+    num_warmup_steps=2000,
+    num_training_steps=100000,
+)
+```
+
+This HuggingFace function is what most Llama and GPT fine-tuning scripts use. When in doubt, use warmup + cosine with warmup at 3-5% of total steps. It works for almost everything.
+
+## Ship It
+
+This lesson produces:
+- `outputs/prompt-lr-schedule-advisor.md` — a prompt for recommending the right learning rate schedule and hyperparameters for your training configuration
+
+## Exercises
+
+1. Implement exponential decay: lr(t) = lr_0 * gamma^t, gamma = 0.999. Compare against cosine annealing on the circle dataset.
+
+2. Implement the learning rate range test (Leslie Smith): train for a few hundred steps while exponentially increasing LR from 1e-7 to 1. Plot loss vs LR. The optimal max LR is just before the loss starts climbing.
+
+3. Train with warmup + cosine but vary warmup length: 0%, 1%, 5%, 10%, 20% of total steps. Find the sweet spot where training is most stable.
+
+4. Implement cosine annealing with warm restarts (SGDR): reset the learning rate back to lr_max every T steps and decay again. Compare against standard cosine for longer training runs.
+
+5. Build a "schedule surgeon" that monitors training loss and automatically switches from warmup to cosine when loss stabilizes, and reduces lr when loss plateaus for too long.
+
+## Key Terms
+
+| Term | What people say | What it actually is |
+|------|----------------|----------------------|
+| Learning rate | "How fast the model learns" | A scalar that multiplies the gradient, controlling the magnitude of parameter updates |
+| Schedule | "Changing LR over time" | A function mapping training step to learning rate, designed to optimize convergence |
+| Warmup | "Start with small LR" | Linearly ramping LR from near-zero to target over the first N steps to stabilize optimizer statistics |
+| Cosine annealing | "Smooth LR decay" | Decreasing LR from lr_max to lr_min following a cosine curve during training |
+| Step decay | "Drop LR at milestones" | Multiplying LR by a factor (usually 0.1) at fixed epoch intervals |
+| 1cycle policy | "Up then down" | Leslie Smith's method of ramping LR up then down in a single cycle for faster convergence |
+| LR range test | "Find the best learning rate" | Training briefly while increasing LR to find the value where loss begins to diverge |
+| Cosine with warm restarts | "Reset and repeat" | Periodically resetting LR back to lr_max and decaying again (SGDR) |
+| Eta min | "Floor for LR" | The minimum learning rate that the schedule decays to |
+| Peak learning rate | "Maximum LR" | The highest LR reached during training, typically after warmup |
+
+## Further Reading
+
+- Loshchilov & Hutter, "SGDR: Stochastic Gradient Descent with Warm Restarts" (2017) — Introduces cosine annealing and warm restarts
+- Smith, "Super-Convergence: Very Fast Training of Neural Networks Using Large Learning Rates" (2018) — The 1cycle policy paper
+- Touvron et al., "Llama 2: Open Foundation and Fine-Tuned Chat Models" (2023) — Documents warmup + cosine schedule used at scale
+- Goyal et al., "Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour" (2017) — Linear scaling rule and warmup for large-batch training

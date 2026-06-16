@@ -1,0 +1,15 @@
+{
+  "name": "ai-engineering-learning-framework-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Property-based tests for Chinese-to-English translation validation",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "fast-check": "3.22.0",
+    "vitest": "2.1.8"
+  }
+}

@@ -1,7 +1,7 @@
 """Literature retrieval: BM25 over abstracts plus citation graph traversal, merged.
 
 Conceptual references:
-- ./docs/zh.md (this lesson)
+- ./docs/en.md (this lesson)
 - Phase 19 Track A lessons 20-29 (agent harness primitives)
 
 Stdlib only. Run: python3 code/main.py

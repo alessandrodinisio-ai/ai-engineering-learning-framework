@@ -1,46 +1,46 @@
-# Fork 指南
+# Fork Guide
 
-本课程采用 MIT 许可证。你可以自由 fork 它并按自己的需要改编。下面说说怎么把这件事做好。
+This curriculum is MIT-licensed. You are free to fork it and adapt it to your needs. Here's how to do it well.
 
-## 面向团队
+## For Teams
 
-想拿它做内部培训？fork 下来定制：
+Want to use it for internal training? Fork and customize:
 
-1. Fork 本仓库
-2. 删掉团队用不到的阶段
-3. 加入公司专属的示例和数据
-4. 把内部工具的集成加进产出物里
-5. 保留署名——这有助于社区成长
+1. Fork this repository
+2. Remove phases your team doesn't need
+3. Add company-specific examples and data
+4. Integrate your internal tools into the artifacts
+5. Keep the attribution — it helps the community grow
 
-## 面向学校与大学
+## For Schools and Universities
 
-想拿它做课程材料？
+Want to use it as course material?
 
-1. Fork 本仓库
-2. 把各阶段映射到你的学期排课表
-3. 给练习加上评分标准
-4. 加上你自己的作业和考试
-5. 也欢迎把改进回馈到上游
+1. Fork this repository
+2. Map the phases to your semester schedule
+3. Add grading rubrics to the exercises
+4. Add your own assignments and exams
+5. Contributions back upstream are welcome
 
-## 面向训练营
+## For Bootcamps
 
-在办收费训练营？在 MIT 许可证下完全没问题。
+Running a paid bootcamp? Fully permitted under the MIT license.
 
-1. Fork 下来，按你的班期时间线重新编排
-2. 加上视频内容、直播课、导师辅导
-3. 代码和文档随你拿去搭建
-4. 也欢迎赞助本项目或回馈贡献
+1. Fork and rearrange around your cohort timeline
+2. Add video content, live sessions, mentorship
+3. Use the code and docs as your foundation
+4. Sponsoring the project or contributing back is welcome
 
-## 面向其他编程语言
+## For Other Programming Languages
 
-想用另一种编程语言来教这套课程？
+Want to teach this curriculum in a different language?
 
-1. Fork 本仓库
-2. 用你的语言重新实现代码示例
-3. 保留课程结构和文档
-4. 提一个 PR，从主 README 链接到你的 fork
+1. Fork this repository
+2. Reimplement code examples in your language
+3. Keep the lesson structure and documentation
+4. Open a PR to link your fork from the main README
 
-## 让你的 fork 保持更新
+## Keeping Your Fork Up to Date
 
 ```bash
 git remote add upstream https://github.com/rohitg00/ai-engineering-from-scratch.git
@@ -49,9 +49,9 @@ git fetch upstream
 git merge upstream/main
 ```
 
-## 署名
+## Attribution
 
-MIT 许可证并不强制要求，但我们会很感激：
+The MIT license does not require it, but we appreciate:
 
 ```
 Based on AI Engineering from Scratch

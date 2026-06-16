@@ -1,38 +1,38 @@
-# 贡献指南
+# Contributing Guide
 
-课程、翻译、修复、产出物——都欢迎。一个 PR 只做一件事，评审更快，贡献者计数和署名也能正确归属。
+Lessons, translations, fixes, artifacts — all welcome. One PR does one thing: reviews are faster, and contributor credit gets attributed correctly.
 
-## 重要：README 和 ROADMAP 喂给网站
+## Important: README and ROADMAP Feed the Website
 
-`site/build.js` 会解析 `README.md`、`ROADMAP.md` 和 `glossary/terms.md` 来生成 `site/data.js`。任何动到这些文件的 PR，都必须保持下面两类格式完好：
+`site/build.js` parses `README.md`, `ROADMAP.md`, and `glossary/terms.md` to generate `site/data.js`. Any PR that touches these files must keep the following two format types intact:
 
-- 阶段标题，采用 `### Phase N: Name \`X lessons\`` 形式，或
-  `<details><summary><b>Phase N — Name</b> ... <code>X lessons</code> ... <em>Description</em></summary>` 形式。
-- 课程表格采用 `| # | Lesson | Type | Lang |` 的列结构（顶点项目表格则是
-  `| # | Project | Combines | Lang |`）。`Lang` 列可以是纯文本（`Python, TypeScript`），也可以是早期的 emoji 旗标
-  （`🐍 🟦 🦀 🟣 ⚛️`）；两者对解析器是等价的。
-- ROADMAP 的状态字符（`✅`、`🚧`、`⬚`）出现在阶段标题和课程行上。
-  不要把它们换成文字——解析器是按这几个确切字符来识别的。
+- Phase headings use either `### Phase N: Name \`X lessons\`` form, or
+  `<details><summary><b>Phase N — Name</b> ... <code>X lessons</code> ... <em>Description</em></summary>` form.
+- Lesson tables use the `| # | Lesson | Type | Lang |` column structure (capstone project tables use
+  `| # | Project | Combines | Lang |`). The `Lang` column can be plain text (`Python, TypeScript`) or the older emoji flags
+  (`🐍 🟦 🦀 🟣 ⚛️`); both are equivalent to the parser.
+- ROADMAP status characters (`✅`, `🚧`, `⬚`) appear on phase headings and lesson rows.
+  Do not replace them with text — the parser identifies them by these exact characters.
 
-编辑这些文件后运行 `node site/build.js`；如果你的改动在结构上是安全的，`git diff site/data.js`
-应该只显示时间戳的变化。
+After editing these files, run `node site/build.js`; if your changes are structurally safe, `git diff site/data.js`
+should show only a timestamp change.
 
-## 贡献方式
+## Ways to Contribute
 
-### 1. 新增一节课程
+### 1. Add a New Lesson
 
-每节课程位于 `phases/XX-phase-name/NN-lesson-name/`，结构如下：
+Each lesson lives in `phases/XX-phase-name/NN-lesson-name/` with this structure:
 
 ```
 NN-lesson-name/
-├── code/           至少一个可运行的实现
-├── notebook/       用于实验的 Jupyter notebook（可选）
+├── code/           at least one runnable implementation
+├── notebook/       Jupyter notebook for experimentation (optional)
 ├── docs/
-│   └── en.md       课程文档（必需）
-└── outputs/        本节课产出的提示词、技能或智能体（如适用）
+│   └── en.md       lesson document (required)
+└── outputs/        prompts, skills, or agents produced by this lesson (if applicable)
 ```
 
-**课程文档格式**（`en.md`）：
+**Lesson document format** (`en.md`):
 
 ```markdown
 # Lesson Title
@@ -66,30 +66,30 @@ The prompt, skill, agent, or tool this lesson produces.
 3. Challenge exercise
 ```
 
-### 2. 新增一份翻译
+### 2. Add a Translation
 
-在任意课程的 `docs/` 文件夹里新建一个文件：
+Create a new file in any lesson's `docs/` folder:
 
 ```
 docs/
-├── en.md    （英文——始终必需）
-├── zh.md    （中文）
-├── ja.md    （日文）
-├── es.md    （西班牙文）
-├── hi.md    （印地文）
+├── en.md    (English — always required)
+├── zh.md    (Chinese)
+├── ja.md    (Japanese)
+├── es.md    (Spanish)
+├── hi.md    (Hindi)
 └── ...
 ```
 
-保持与英文版相同的结构。翻译内容，不要翻译代码。
+Keep the same structure as the English version. Translate content, not code.
 
-### 3. 新增一个产出物
+### 3. Add an Artifact
 
-如果某节课程应该产出一个可复用的提示词、技能、智能体或 MCP 服务器：
+If a lesson should produce a reusable prompt, skill, agent, or MCP server:
 
-1. 在课程的 `outputs/` 文件夹里创建它
-2. 在顶层 `outputs/` 索引中加一条引用
+1. Create it in the lesson's `outputs/` folder
+2. Add a reference in the top-level `outputs/` index
 
-**提示词格式：**
+**Prompt format:**
 
 ```markdown
 ---
@@ -102,7 +102,7 @@ lesson: 01
 [System prompt or template here]
 ```
 
-**技能格式：**
+**Skill format:**
 
 ```markdown
 ---
@@ -117,41 +117,41 @@ tags: [agents, loops]
 [Skill content here]
 ```
 
-### 4. 修复缺陷或改进现有课程
+### 4. Fix Bugs or Improve Existing Lessons
 
-- 修复跑不起来的代码
-- 改进讲解
-- 加上更好的图示
-- 更新过时的信息
+- Fix code that doesn't run
+- Improve explanations
+- Add better diagrams
+- Update outdated information
 
-### 5. 新增练习或项目
+### 5. Add Exercises or Projects
 
-随时欢迎更多练习和项目，尤其是那些把多个阶段串联起来的。
+More exercises and projects are always welcome, especially those that tie multiple phases together.
 
-## 规范
+## Standards
 
-- **代码必须能跑。** 每个代码文件都应该用列出的依赖无报错地执行。
-- **代码里不写注释。** 代码应当自解释。讲解放到文档里。
-- **用最适合的语言。** 别在 TypeScript 或 Rust 更合适的地方硬塞 Python。
-- **先从零实现。** 在展示框架版本之前，总是先用第一性原理把概念实现一遍。
-- **保持实用。** 理论服务于实践，而不是反过来。
-- **拒绝 AI 流水线产物。** 像人一样写作。直接了当。砍掉废话。
+- **Code must run.** Every code file should execute without errors using the listed dependencies.
+- **No comments in code.** Code should be self-explanatory. Explanations belong in the docs.
+- **Use the right language.** Don't force Python where TypeScript or Rust fits better.
+- **Build from scratch first.** Always implement the concept from first principles before showing the framework version.
+- **Stay practical.** Theory serves practice, not the other way around.
+- **No AI-generated filler.** Write like a human. Be direct. Cut the fluff.
 
-## 提交 Pull Request 的流程
+## Pull Request Workflow
 
-1. Fork 本仓库
-2. 创建一个特性分支（`git checkout -b add-lesson-phase3-gradient-descent`）
-3. 做你的改动
-4. 确保所有代码都能跑
-5. 提交一个带清晰描述的 pull request
+1. Fork the repository
+2. Create a feature branch (`git checkout -b add-lesson-phase3-gradient-descent`)
+3. Make your changes
+4. Ensure all code runs
+5. Submit a pull request with a clear description
 
-## 行为准则
+## Code of Conduct
 
-参见 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。友善、乐于助人、建设性。
+See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Be kind, helpful, and constructive.
 
-## 风格
+## Style
 
-- 直白的行文。砍掉废话。贴合本手册的语气，而不是营销文案。
-- 标题里不放装饰性 emoji。Lang 列的 emoji 旗标是唯一例外，而且只因为解析器会映射它们。
-- 代码按课程里列出的依赖原样可运行。
-- 先从零实现，框架其次。
+- Direct prose. Cut the fluff. Match this handbook's tone, not marketing copy.
+- No decorative emoji in headings. The emoji flags in the Lang column are the only exception, and only because the parser maps them.
+- Code runs as-is with the dependencies listed in the lesson.
+- Build from scratch first, frameworks second.

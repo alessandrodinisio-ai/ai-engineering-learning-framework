@@ -1,7 +1,7 @@
 """Tool registry with JSON Schema 2020-12 subset validation.
 
 Conceptual references:
-- ./docs/zh.md (this lesson)
+- ./docs/en.md (this lesson)
 - IETF draft draft-bhutton-json-schema-2020-12 (subset: type, properties,
   required, enum, minLength, maxLength, pattern, items)
 - RFC 6901 (JSON Pointer for error paths)
