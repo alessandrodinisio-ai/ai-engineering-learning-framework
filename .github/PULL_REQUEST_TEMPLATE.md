@@ -1,31 +1,29 @@
-<!-- 感谢你的贡献。填写适用的部分，删掉用不上的。 -->
+## What this PR does
 
-## 这个 PR 做了什么
+<!-- One-sentence summary. -->
 
-<!-- 一句话概括。 -->
+## Change type
 
-## 改动类型
+- [ ] New lesson
+- [ ] Fix existing lesson
+- [ ] Translation
+- [ ] New output (prompt, skill, agent, MCP server)
+- [ ] Docs / site / toolchain
 
-- [ ] 新课程
-- [ ] 修复现有课程
-- [ ] 翻译
-- [ ] 新产出（提示词、技能、智能体、MCP 服务器）
-- [ ] 文档 / 网站 / 工具链
+## Checklist
 
-## 检查清单
+- [ ] Code runs without errors using listed dependencies
+- [ ] No comments in code files (explanations go in docs, code is self-explanatory)
+- [ ] Implements from scratch first, then demonstrates with frameworks (for new lessons)
+- [ ] Lesson directory follows `LESSON_TEMPLATE.md` structure
+- [ ] ROADMAP.md row for this lesson is a markdown link (`[Name](phases/...)`), not plain text
+- [ ] Each commit contains only one lesson (atomic commit rule)
+- [ ] Tested locally / code output matches what `docs/en.md` describes
 
-- [ ] 按列出的依赖运行，代码无报错
-- [ ] 代码文件里没有注释（解释写在文档里，代码本身自解释）
-- [ ] 先从零实现，再用框架演示（针对新课程）
-- [ ] 课程目录符合 `LESSON_TEMPLATE.md` 的结构
-- [ ] ROADMAP.md 中该课程那一行是 markdown 链接（`[Name](phases/...)`），而不是纯文本
-- [ ] 每个提交只包含一节课（每课原子化提交规则）
-- [ ] 已在本地测试 / 代码输出与 `docs/zh.md` 所述一致
+## Phase / Lesson
 
-## 阶段 / 课程
+<!-- e.g. Phase 5 · 03-tokenizers -->
 
-<!-- 例如 Phase 5 · 03-tokenizers -->
+## Notes for reviewers
 
-## 给评审者的说明
-
-<!-- 任何意外之处、对模板的偏离、待讨论的问题。 -->
+<!-- Anything unexpected, deviations from template, open questions. -->
