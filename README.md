@@ -22,6 +22,8 @@
 >
 > You don't just learn AI — you build it from scratch. End to end, by hand.
 
+> **Credits:** Forked from [ai-engineering-from-scratch-zh](https://github.com/M4xwell-fish/ai-engineering-from-scratch-zh) (Simplified Chinese translation), itself based on [AI Engineering from Scratch](https://github.com/rohitg00/ai-engineering-from-scratch) by [Rohit Ghumare](https://github.com/rohitg00).
+
 ## How this works
 
 Most AI curricula teach in fragments. A paper here, a fine-tuning walkthrough there, a flashy agent
